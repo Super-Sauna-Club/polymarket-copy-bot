@@ -384,9 +384,11 @@ def main():
                         _pnl = round(-(_ot["size"] or 0), 2)
                         _conn.execute("UPDATE copy_trades SET status='closed', pnl_realized=?, closed_at=datetime('now') WHERE id=?",
                                       (_pnl, _ot["id"]))
+                        _conn.execute("INSERT INTO activity_log (event_type, icon, title, detail, pnl) VALUES (?,?,?,?,?)",
+                                      ("resolved", "LOSS", "Position lost", "%s — P&L $%.2f" % ((_ot["market_question"] or "")[:35], _pnl), _pnl))
                         _cleaned += 1
-                    elif _cp >= 0.99:
-                        # Won: shares × $1 - invested. Need entry_price from DB.
+                    elif _cp >= 0.98:
+                        # Won: shares × $1 - invested
                         _ep = 0
                         try:
                             _ep_row = _conn.execute("SELECT entry_price FROM copy_trades WHERE id=?", (_ot["id"],)).fetchone()
@@ -397,6 +399,8 @@ def main():
                         _pnl = round(_shares * 1.0 - (_ot["size"] or 0), 2)
                         _conn.execute("UPDATE copy_trades SET status='closed', pnl_realized=?, closed_at=datetime('now') WHERE id=?",
                                       (_pnl, _ot["id"]))
+                        _conn.execute("INSERT INTO activity_log (event_type, icon, title, detail, pnl) VALUES (?,?,?,?,?)",
+                                      ("resolved", "WIN", "Position won", "%s — P&L $+%.2f" % ((_ot["market_question"] or "")[:35], _pnl), _pnl))
                         _cleaned += 1
                 if _cleaned:
                     logger.info("[STARTUP] Cleaned %d zombie positions (resolved while bot was down)", _cleaned)

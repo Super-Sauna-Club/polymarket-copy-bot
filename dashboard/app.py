@@ -153,8 +153,8 @@ def api_live_data():
 
             if cv < 0.001 and cp < 0.001:
                 continue
-            # Skip resolved positions (won at 100c or lost at 0c) — waiting for redeem
-            if cp >= 0.99 or (cp <= 0.01 and iv > 0.01):
+            # Skip resolved positions (won at 98c+ or lost at 0c) — waiting for redeem
+            if cp >= 0.98 or (cp <= 0.01 and iv > 0.01):
                 continue
 
             if outcome.lower() in ("yes", "y"): side = "YES"
