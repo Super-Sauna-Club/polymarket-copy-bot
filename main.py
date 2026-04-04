@@ -107,6 +107,11 @@ def update_prices():
                                     logger.info("[AUTO-CLOSE] Lost position marked closed: $%.2f | %s", _iv, (_p.get("title") or "")[:40])
                                     _db.log_activity("resolved", "LOSS", "Position lost",
                                                      "%s — P&L $%.2f" % ((_p.get("title") or "")[:35], round(-_iv, 2)), round(-_iv, 2))
+                                    try:
+                                        from dashboard.app import broadcast_event
+                                        broadcast_event("trade_closed", {"market": (_p.get("title") or "")[:50], "pnl": round(-_iv, 2), "price": 0, "trader": "auto"})
+                                    except Exception:
+                                        pass
                         except Exception:
                             pass
                     # Close won positions in DB (price at 100c, resolved)
@@ -124,6 +129,11 @@ def update_prices():
                                     logger.info("[AUTO-CLOSE] Won position marked closed: +$%.2f | %s", _pnl_won, (_p.get("title") or "")[:40])
                                     _db.log_activity("resolved", "WIN", "Position won",
                                                      "#%s — P&L $+%.2f" % ((_p.get("title") or "")[:35], _pnl_won), _pnl_won)
+                                    try:
+                                        from dashboard.app import broadcast_event
+                                        broadcast_event("trade_closed", {"market": (_p.get("title") or "")[:50], "pnl": _pnl_won, "price": 100, "trader": "auto"})
+                                    except Exception:
+                                        pass
                         except Exception:
                             pass
                     if _cp >= 0.96 and _cv > 0.50 and _pnl_check > 0:
@@ -139,6 +149,11 @@ def update_prices():
                             _db.log_activity("sell", "WIN" if _pnl >= 0 else "LOSS",
                                              "Position closed — %s" % ("profit" if _pnl >= 0 else "sold"),
                                              "%s — sold $%.2f, P&L $%+.2f" % ((_p.get("title") or "")[:35], _cv, _pnl), _pnl)
+                            try:
+                                from dashboard.app import broadcast_event
+                                broadcast_event("trade_closed", {"market": (_p.get("title") or "")[:50], "pnl": _pnl, "price": round(_cp * 100), "trader": "auto"})
+                            except Exception:
+                                pass
                             # Close matching copy_trade in DB
                             try:
                                 from database.db import get_connection
