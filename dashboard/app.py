@@ -104,11 +104,13 @@ def api_live_data():
     _trader_by_cid = {}
     _time_by_cid = {}
     _closed_at_by_cid = {}
+    _db_open_trades = []
     try:
         from database.db import get_connection
         with get_connection() as _conn:
             for _row in _conn.execute(
-                "SELECT condition_id, wallet_username, created_at, closed_at FROM copy_trades "
+                "SELECT condition_id, wallet_username, created_at, closed_at, "
+                "size, entry_price, status FROM copy_trades "
                 "WHERE condition_id != '' AND status != 'baseline' "
                 "ORDER BY created_at DESC"
             ).fetchall():
@@ -116,6 +118,8 @@ def api_live_data():
                 _time_by_cid[_row["condition_id"]] = _row["created_at"] or ""
                 if _row["closed_at"]:
                     _closed_at_by_cid[_row["condition_id"]] = _row["closed_at"]
+                if _row["status"] == "open":
+                    _db_open_trades.append(dict(_row))
     except Exception:
         pass
 
@@ -157,6 +161,21 @@ def api_live_data():
             _sport = _detect_sport(rp.get("slug", ""), rp.get("title", ""))
 
             _cid = rp.get("conditionId", "")
+            # Use DB values for size/entry if available (accurate for bot copies)
+            _db_size = None
+            _db_entry = None
+            if _cid in _trader_by_cid:
+                for _dbt in _db_open_trades:
+                    if _dbt["condition_id"] == _cid:
+                        _db_size = _dbt["size"]
+                        _db_entry = _dbt["entry_price"]
+                        break
+            _show_size = round(_db_size, 2) if _db_size else round(iv, 2)
+            _show_entry = _db_entry if _db_entry else ap
+            # PnL: shares × (current_price - entry_price)
+            _shares = _show_size / _show_entry if _show_entry > 0 else 0
+            _show_pnl = round(_shares * (cp - _show_entry), 2) if _shares > 0 else round(cv - iv, 2)
+
             open_positions.append({
                 "id": hash(_cid) % 10000,
                 "wallet_username": _trader_by_cid.get(_cid, "—"),
@@ -167,106 +186,55 @@ def api_live_data():
                 "event_slug": rp.get("eventSlug", ""),
                 "side": side,
                 "outcome_label": outcome if side not in ("YES", "NO") else "",
-                "entry_price": ap,
+                "entry_price": _show_entry,
                 "current_price": cp,
-                "size": round(iv, 2),
-                "pnl_unrealized": round(cv - float(rp.get("initialValue", 0) or 0), 2),
+                "size": _show_size,
+                "pnl_unrealized": _show_pnl,
                 "condition_id": _cid,
                 "created_at": _time_by_cid.get(_cid, ""),
             })
     except Exception:
         pass
 
-    # Count W/L from positions: 0c = lost, 100c = won, sold via activity = closed
-    wins = 0
-    losses = 0
-    resolved_list = []
-    for rp in all_raw:
-        cp = float(rp.get("curPrice", 0) or 0)
-        cv = float(rp.get("currentValue", 0) or 0)
-        iv = float(rp.get("initialValue", 0) or 0)
-        cashpnl = float(rp.get("cashPnl", 0) or 0)
-        if cp >= 0.99 and iv > 0.01:  # won
-            wins += 1
-            resolved_list.append({"q": rp.get("title", ""), "pnl": cashpnl, "status": "won", "cid": rp.get("conditionId", "")})
-        elif cp < 0.01 and iv > 0.01:  # lost
-            losses += 1
-            resolved_list.append({"q": rp.get("title", ""), "pnl": cashpnl, "status": "lost", "cid": rp.get("conditionId", "")})
-
-    # Sells W/L from buy vs sell comparison + build closed_positions list
-    sell_wins = 0
-    sell_losses = 0
+    # Closed positions from DB (accurate bot-level data)
     closed_positions = []
     try:
-        buys_r = _req.get(f"{DATA_API}/activity", params={
-            "user": funder, "type": "TRADE", "side": "BUY", "limit": 500}, timeout=15)
-        sells_r = _req.get(f"{DATA_API}/activity", params={
-            "user": funder, "type": "TRADE", "side": "SELL", "limit": 200}, timeout=10)
-        buy_data = {}
-        for b in (buys_r.json() if buys_r.ok else []):
-            cid = b.get("conditionId", "")
-            if cid not in buy_data:
-                buy_data[cid] = {"cost": 0, "title": b.get("title", ""), "outcome": b.get("outcome", ""),
-                                 "slug": b.get("slug", ""), "eventSlug": b.get("eventSlug", ""),
-                                 "avg_price": float(b.get("price", 0) or 0)}
-            buy_data[cid]["cost"] += float(b.get("usdcSize", 0))
-        sell_data = {}
-        for s in (sells_r.json() if sells_r.ok else []):
-            cid = s.get("conditionId", "")
-            if cid not in sell_data:
-                sell_data[cid] = {"rev": 0, "price": float(s.get("price", 0) or 0),
-                                  "timestamp": s.get("timestamp", 0)}
-            sell_data[cid]["rev"] += float(s.get("usdcSize", 0))
-        for cid, sv in sell_data.items():
-            bv = buy_data.get(cid)
-            if not bv or bv["cost"] <= 0:
-                continue
-            pnl = round(sv["rev"] - bv["cost"], 2)
-            if pnl >= 0:
-                sell_wins += 1
-            else:
-                sell_losses += 1
-            outcome = bv["outcome"]
-            side = outcome if outcome.lower() not in ("yes","no","y","n","") else outcome.upper()[:3] or "?"
-            _csport = _detect_sport(bv.get("slug", ""), bv["title"])
-            closed_positions.append({
-                "id": hash(cid) % 10000,
-                "wallet_username": _trader_by_cid.get(cid, "—"),
-                "wallet_address": funder,
-                "market_question": bv["title"],
-                "side": side,
-                "outcome_label": outcome if side not in ("YES","NO") else "",
-                "entry_price": bv["avg_price"],
-                "current_price": sv["price"],
-                "size": round(bv["cost"], 2),
-                "pnl_realized": pnl,
-                "status": "closed",
-                "market_slug": bv.get("slug", ""),
-                "event_slug": bv.get("eventSlug", ""),
-                "sport": _csport,
-                "closed_at": _closed_at_by_cid.get(cid, datetime.fromtimestamp(sv["timestamp"]).strftime("%Y-%m-%d %H:%M") if sv.get("timestamp") else ""),
-                "created_at": "",
-            })
+        from database.db import get_connection
+        with get_connection() as _conn:
+            _closed_rows = _conn.execute(
+                "SELECT id, wallet_username, market_question, side, outcome_label, "
+                "entry_price, current_price, size, pnl_realized, closed_at, created_at, "
+                "market_slug, event_slug FROM copy_trades "
+                "WHERE status='closed' AND wallet_username != '' "
+                "ORDER BY closed_at DESC LIMIT 100"
+            ).fetchall()
+            for _cr in _closed_rows:
+                _q = _cr["market_question"] or ""
+                _side = _cr["side"] or ""
+                closed_positions.append({
+                    "id": _cr["id"],
+                    "wallet_username": _cr["wallet_username"],
+                    "wallet_address": funder,
+                    "market_question": _q,
+                    "side": _side,
+                    "outcome_label": _cr["outcome_label"] or "",
+                    "entry_price": _cr["entry_price"] or 0,
+                    "current_price": _cr["current_price"] or 0,
+                    "size": round(_cr["size"] or 0, 2),
+                    "pnl_realized": round(_cr["pnl_realized"] or 0, 2),
+                    "status": "closed",
+                    "market_slug": _cr["market_slug"] or "",
+                    "event_slug": _cr["event_slug"] or "",
+                    "sport": _detect_sport(_cr["market_slug"] or "", _q),
+                    "closed_at": _cr["closed_at"] or "",
+                    "created_at": _cr["created_at"] or "",
+                })
     except Exception:
         pass
 
-    # Add resolved positions (won/lost at 0c/100c)
-    for rl in resolved_list:
-        closed_positions.append({
-            "id": 0, "wallet_username": _trader_by_cid.get(rl.get("cid", ""), "—"),
-            "wallet_address": funder,
-            "market_question": rl["q"], "side": "", "outcome_label": "",
-            "entry_price": 0, "current_price": 1.0 if rl["status"] == "won" else 0,
-            "size": abs(rl["pnl"]), "pnl_realized": round(rl["pnl"], 2),
-            "status": "closed", "market_slug": "", "event_slug": "",
-            "sport": _detect_sport("", rl["q"]),
-            "closed_at": "", "created_at": "",
-        })
-
-    closed_positions.sort(key=lambda x: x.get("closed_at", "") or "", reverse=True)
-    total_closed = wins + losses + sell_wins + sell_losses
-    wins += sell_wins
-    losses += sell_losses
+    wins = sum(1 for p in closed_positions if p["pnl_realized"] > 0)
+    losses = sum(1 for p in closed_positions if p["pnl_realized"] < 0)
+    total_closed = len(closed_positions)
 
     # Polymarket values (use ALL positions for accurate totals)
     open_value = sum(p["size"] for p in open_positions)
@@ -282,11 +250,11 @@ def api_live_data():
     display_open = sorted(
         [p for p in open_positions if p["wallet_username"] != "—"],
         key=lambda p: p.get("created_at", "") or "", reverse=True)
-    display_closed = [p for p in closed_positions if p["wallet_username"] != "—"]
+    display_closed = closed_positions  # already from DB, no "—" entries
 
-    # Counts from bot-copies only (display), values from API (real)
-    bot_wins = sum(1 for p in display_closed if p.get("pnl_realized", 0) >= 0)
-    bot_losses = sum(1 for p in display_closed if p.get("pnl_realized", 0) < 0)
+    # Counts from bot-copies only
+    bot_wins = wins
+    bot_losses = losses
     bot_wr = round(bot_wins / max(bot_wins + bot_losses, 1) * 100, 1)
 
     summary = {
