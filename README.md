@@ -9,8 +9,8 @@ Automated copybot for [Polymarket](https://polymarket.com). Follows top traders 
 - **Fast-Sell Detection** — Detects when trader sells and mirrors within 5 seconds
 - **Auto-Close** — Closes positions when markets resolve (via Positions API + Gamma API fallback)
 - **Auto-Redeem** — Redeems resolved positions via Polymarket Builder Relayer (gas-free)
-- **Live Dashboard** — Real-time web dashboard with SSE updates, trade alerts, equity curve
-- **Sound Alerts** — Browser audio notification for new trades and closes
+- **Live Dashboard** — Real-time web dashboard with SSE updates, position alerts, equity curve
+- **Sound Alerts** — Browser audio notification for new positions and closes
 - **Activity Log** — CLI-style live feed of all bot actions
 
 ## Dashboard
@@ -76,7 +76,7 @@ LIVE_MODE=true python main.py
 
 Dashboard at `http://localhost:8090`
 
-### 4. Follow a trader
+### 4. Follow a Trader
 
 ```bash
 # Via API (replace ADDRESS and KEY)
@@ -93,7 +93,7 @@ python redeem_positions.py --exec
 # See PROJECT_INFO.md for systemd setup
 ```
 
-## Trading Parameters
+## Bot Parameters
 
 All configurable via `.env`:
 
@@ -116,7 +116,7 @@ All configurable via `.env`:
 
 - Python 3.12+
 - Flask (dashboard)
-- SQLite (trade tracking + activity log)
+- SQLite (position tracking + activity log)
 - py-clob-client (Polymarket CLOB API)
 - poly-web3 (Builder Relayer for redemption)
 - WebSocket (real-time prices)

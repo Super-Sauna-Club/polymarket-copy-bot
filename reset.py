@@ -4,7 +4,7 @@ Vollständiger Neustart: Löscht alle offenen Trades, geschlossenen Trades,
 Snapshots und Baselines. Portfolio wird auf $100 zurückgesetzt.
 
 Usage:
-    python reset_copy_trading.py
+    python reset.py
 """
 import logging
 import sys

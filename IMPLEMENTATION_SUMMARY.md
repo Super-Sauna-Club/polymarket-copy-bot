@@ -38,7 +38,7 @@ reset_copy_trading()
 ### 4. New Utility Scripts ✅
 ```bash
 python show_stats.py              # View current portfolio & stats
-python reset_copy_trading.py      # Full system reset (interactive)
+python reset.py      # Full system reset (interactive)
 ```
 
 ### 5. Enhanced Logging ✅
@@ -78,14 +78,14 @@ python reset_copy_trading.py      # Full system reset (interactive)
   - Recently closed trades
   - Fallback to ASCII when tabulate unavailable
 
-- **`reset_copy_trading.py`** (78 lines)
+- **`reset.py`** (78 lines)
   - Interactive reset confirmation
   - Before/after statistics
   - Clear feedback
 
 ### Documentation
-- **`COPY_TRADING_GUIDE.md`** - Comprehensive guide
-- **`QUICK_START.md`** - Quick reference guide
+- **`GUIDE.md`** - Comprehensive guide
+- **`QUICKSTART.md`** - Quick reference guide
 
 ---
 
@@ -179,7 +179,7 @@ tail -f logs/wallet-scanner.log
 
 ### Full Reset (If Needed)
 ```bash
-python reset_copy_trading.py
+python reset.py
 # Follow interactive prompts for confirmation
 ```
 

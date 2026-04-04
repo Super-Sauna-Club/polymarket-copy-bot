@@ -435,7 +435,7 @@ def copy_trading():
     all_trades = db.get_all_copy_trades(limit=2000)
     followed = db.get_followed_wallets()
     return render_template(
-        "copy_trading.html",
+        "dashboard.html",
         summary=summary,
         open_trades=open_trades,
         closed_trades=closed_trades,
@@ -535,7 +535,7 @@ def api_copy_chart():
 
 @app.route("/copy/history")
 def copy_history():
-    return render_template("copy_history.html")
+    return render_template("history.html")
 
 
 @app.route("/api/copy/history")

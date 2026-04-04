@@ -45,7 +45,7 @@ Shows:
 
 ### Reset System Completely
 ```bash
-python reset_copy_trading.py
+python reset.py
 ```
 ⚠️ **WARNING**: This will delete:
 - ✓ All open trades

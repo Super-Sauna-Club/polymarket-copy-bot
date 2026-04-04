@@ -35,7 +35,7 @@ Then open: http://localhost:8501
 
 ### 3️⃣ Reset Everything (⚠️ Be careful!)
 ```bash
-python reset_copy_trading.py
+python reset.py
 ```
 - Deletes ALL trades and history
 - Sets portfolio back to $100
@@ -99,9 +99,9 @@ Day 4:
 | File | Purpose |
 |------|---------|
 | `show_stats.py` | View portfolio, trades, stats |
-| `reset_copy_trading.py` | Wipe all trades (reset fresh) |
+| `reset.py` | Wipe all trades (reset fresh) |
 | `test_reset.py` | Test reset functionality |
-| `COPY_TRADING_GUIDE.md` | Detailed documentation |
+| `GUIDE.md` | Detailed documentation |
 
 ---
 
@@ -144,7 +144,7 @@ tail -f logs/wallet-scanner.log
 
 1. **See current state**: `python show_stats.py`
 2. **Check logs**: `tail -f logs/wallet-scanner.log`
-3. **Read full guide**: `COPY_TRADING_GUIDE.md`
+3. **Read full guide**: `GUIDE.md`
 
 ---
 
