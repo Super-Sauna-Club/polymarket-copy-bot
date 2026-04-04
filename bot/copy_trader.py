@@ -976,7 +976,7 @@ def update_copy_positions():
                                        status, trade["id"], close_price * 100, pnl,
                                        trade["market_question"][:40], trade["side"])
                             db.log_activity("resolved", "WIN" if pnl > 0 else "LOSS",
-                                            "Market resolved — %s" % ("won!" if pnl > 0 else "lost"),
+                                            "Position %s" % ("won" if pnl > 0 else "lost"),
                                             "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:40], pnl), pnl)
                             continue
 
@@ -1073,7 +1073,7 @@ def update_copy_positions():
                                             logger.info("%s Trade #%d AUTO-CLOSED (Gamma resolved): PnL=$%.2f | %s",
                                                         st, trade["id"], pnl, trade["market_question"][:40])
                                             db.log_activity("resolved", "WIN" if pnl > 0 else "LOSS",
-                                                            "Market resolved — %s" % ("won!" if pnl > 0 else "lost"),
+                                                            "Position %s" % ("won" if pnl > 0 else "lost"),
                                                             "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:40], pnl), pnl)
                                             try:
                                                 from dashboard.app import broadcast_event
