@@ -696,15 +696,15 @@ function buildPreview(raw){
     // Best/worst
     const bHtml=best?'<span style="color:var(--green)"><span style="font-size:.82em;opacity:.6">best:</span> '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>').replace(/ W$/,' <span style="background:var(--green);color:#0a0a0a;font-size:.82em;padding:1px 4px;border-radius:2px;font-weight:700">WIN</span>')+'</span>':'';
     const wHtml=worst?'<span style="color:var(--red)"><span style="font-size:.82em;opacity:.6">worst:</span> '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>').replace(/ L$/,' <span style="background:var(--red);color:#0a0a0a;font-size:.82em;padding:1px 4px;border-radius:2px;font-weight:700">LOSS</span>')+'</span>':'';
-    return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:nowrap;overflow-x:auto">
-      <span style="color:var(--gold);font-weight:700;font-size:1.05em;white-space:nowrap">${name}</span>
-      <span style="color:${pnlCol};font-weight:700;font-size:1.1em;font-family:var(--mono);white-space:nowrap">\$${pnlStr}</span>
-      <span style="font-size:.88em;white-space:nowrap">${recHtml}</span>
-      <span style="color:${vc};font-weight:700;font-size:.7em;letter-spacing:.06em;background:${vBg};padding:2px 7px;border-radius:3px;text-transform:uppercase;white-space:nowrap">${verdict}</span>
-      ${lastPnl?'<span style="white-space:nowrap;font-size:.88em;color:var(--text-dim)">'+lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:600">$'+v+'</span>')+'</span>':''}
-      ${bHtml?'<span style="white-space:nowrap;font-size:.88em">'+bHtml+'</span>':''}
-      ${wHtml?'<span style="white-space:nowrap;font-size:.88em">'+wHtml+'</span>':''}
-    </div>`;
+    return`<table style="width:100%;border-bottom:1px solid var(--border);border-collapse:collapse"><tr>
+      <td style="color:var(--gold);font-weight:700;font-size:1.05em;padding:8px 0;width:90px">${name}</td>
+      <td style="color:${pnlCol};font-weight:700;font-size:1.1em;font-family:var(--mono);width:80px">\$${pnlStr}</td>
+      <td style="font-size:.88em;width:65px">${recHtml}</td>
+      <td style="width:100px"><span style="color:${vc};font-weight:700;font-size:.7em;letter-spacing:.06em;background:${vBg};padding:2px 7px;border-radius:3px;text-transform:uppercase">${verdict}</span></td>
+      <td style="font-size:.88em;color:var(--text-dim);width:100px">${lastPnl?lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:600">$'+v+'</span>'):''}</td>
+      <td style="font-size:.88em">${bHtml||''}</td>
+      <td style="font-size:.88em">${wHtml||''}</td>
+    </tr></table>`;
   }).join('');
 }
 function loadReport(){
