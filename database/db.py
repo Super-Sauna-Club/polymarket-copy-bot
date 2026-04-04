@@ -155,7 +155,7 @@ def get_wallet_history(address: str, limit=30):
         ).fetchall()
 
 
-# --- Copy Trades ---
+# --- Positions ---
 
 def create_copy_trade(trade: dict):
     with get_connection() as conn:

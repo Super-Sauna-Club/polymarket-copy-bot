@@ -31,7 +31,7 @@ AKTUELLE OFFENE POSITIONEN:
 
 AUFGABE:
 1. Bewerte die Qualität dieses Traders (Konsistenz, Risikomanagement, Strategie)
-2. Schätze wie gut er als Copy-Trade-Ziel geeignet ist (1-10)
+2. Schätze wie gut er als Copy-Ziel geeignet ist (1-10)
 3. Identifiziere Stärken und Schwächen
 4. Gib eine kurze Empfehlung
 5. WICHTIG: Bewerte kritisch! Ein Trader mit negativem All-Time PnL ist KEIN guter Copy-Trader.

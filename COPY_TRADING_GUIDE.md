@@ -1,8 +1,8 @@
-# Copy Trading Bot - Updates & Usage Guide
+# Poly Copybot - Updates & Usage Guide
 
 ## What's New ✨
 
-This update introduces **smart position detection** and **intelligent trade management** for the Polymarket copy trading bot.
+This update introduces **smart position detection** and **intelligent trade management** for the Polymarket Poly Copybot.
 
 ### Key Improvements
 
@@ -61,7 +61,7 @@ python reset_copy_trading.py
 ```bash
 python main.py
 ```
-Runs the copy trading bot with:
+Runs the Poly Copybot with:
 - **Copy Scan**: Every 30 seconds (detects new positions)
 - **Price Update**: Every 30 seconds (updates P&L, closes positions)
 - **Dashboard**: Available at http://localhost:8501
@@ -70,7 +70,7 @@ Runs the copy trading bot with:
 
 ## How It Works
 
-### Trading Flow
+### Position Flow
 
 ```
 1. BASELINE SCAN (First time only)
@@ -151,9 +151,9 @@ AUTO_FOLLOW_COUNT = 10      # Auto-follow top N traders
 SCAN_WALLET_LIMIT = 500     # Wallets to scan
 ```
 
-**Copy Trading Constants** (in `bot/copy_trader.py`):
+**Position Copying Constants** (in `bot/copy_trader.py`):
 ```python
-STARTING_BALANCE = 100      # Paper trading capital
+STARTING_BALANCE = 100      # Paper mode capital
 MAX_INVESTED_PCT = 0.50     # Max 50% invested (50% cash reserve)
 MAX_POSITION_SIZE = 5       # Max $5 per trade
 MIN_TRADE_SIZE = 1.0        # Min $1 per trade

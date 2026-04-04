@@ -1,4 +1,4 @@
-"""Massive.com market data integration for additional trading signals."""
+"""Massive.com market data integration for additional market data signals."""
 
 import logging
 import time

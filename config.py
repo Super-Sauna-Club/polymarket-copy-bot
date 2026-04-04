@@ -36,7 +36,7 @@ POLYMARKET_PASSPHRASE = os.getenv("POLYMARKET_PASSPHRASE", "")
 POLYMARKET_PRIVATE_KEY = os.getenv("POLYMARKET_PRIVATE_KEY", "")
 POLYMARKET_FUNDER = os.getenv("POLYMARKET_FUNDER", "")
 
-# --- Copy Trading Parameters ---
+# --- Copybot Parameters ---
 LIVE_MODE = os.getenv("LIVE_MODE", "true").lower() in ("true", "1", "yes")
 STARTING_BALANCE = float(os.getenv("STARTING_BALANCE", "200"))
 MAX_POSITION_SIZE = float(os.getenv("MAX_POSITION_SIZE", "5"))

@@ -292,7 +292,7 @@ def api_live_data():
 
 @app.route("/")
 def index():
-    """Root redirects to copy trading dashboard."""
+    """Root redirects to copybot dashboard."""
     from flask import redirect
     return redirect("/copy")
 
@@ -307,11 +307,11 @@ def api_settings():
     """Current bot settings (read-only)."""
     followed = db.get_followed_wallets()
     settings = [
-        {"key": "LIVE_MODE", "value": str(config.LIVE_MODE), "desc": "Real money trading"},
+        {"key": "LIVE_MODE", "value": str(config.LIVE_MODE), "desc": "Real money mode"},
         {"key": "STARTING_BALANCE", "value": "$" + str(config.STARTING_BALANCE), "desc": "Total deposited (for profit calculation)"},
         {"key": "BET_SIZE_PCT", "value": str(config.BET_SIZE_PCT), "desc": "% of portfolio per position"},
         {"key": "MAX_POSITION_SIZE", "value": "$" + str(config.MAX_POSITION_SIZE), "desc": "Max $ per position"},
-        {"key": "MIN_TRADER_USD", "value": "$" + str(config.MIN_TRADER_USD), "desc": "Only copy trades where trader spends $X+"},
+        {"key": "MIN_TRADER_USD", "value": "$" + str(config.MIN_TRADER_USD), "desc": "Only positions where trader spends $X+"},
         {"key": "MIN_ENTRY_PRICE", "value": str(int(config.MIN_ENTRY_PRICE * 100)) + "c", "desc": "Skip trash farming below this"},
         {"key": "MAX_ENTRY_PRICE", "value": str(int(config.MAX_ENTRY_PRICE * 100)) + "c", "desc": "Skip hedges above this"},
         {"key": "MAX_COPIES_PER_MARKET", "value": str(config.MAX_COPIES_PER_MARKET), "desc": "Max copies of same market"},
@@ -423,7 +423,7 @@ def api_trigger_scan():
     return jsonify({"status": "scan_started"})
 
 
-# --- Copy Trading ---
+# --- Position Copying ---
 
 @app.route("/copy")
 def copy_trading():
@@ -501,7 +501,7 @@ def api_copy_scan():
 
 @app.route("/api/copy/update", methods=["POST"])
 def api_copy_update():
-    """Update prices for open copy trades."""
+    """Update prices for open positions."""
     import threading
     from bot.copy_trader import update_copy_positions
 
@@ -540,7 +540,7 @@ def copy_history():
 
 @app.route("/api/copy/history")
 def api_copy_history():
-    """Return copy trades, chart data, and stats filtered by period."""
+    """Return positions, chart data, and stats filtered by period."""
     period = request.args.get("period", "week")
     date_from = request.args.get("from")
     date_to = request.args.get("to")

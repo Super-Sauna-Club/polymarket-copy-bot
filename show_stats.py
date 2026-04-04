@@ -1,5 +1,5 @@
 """
-View Current Copy Trading Statistics
+View Current Position Statistics
 Shows: Open Trades, Closed Trades, Latest Trades, P&L, etc.
 
 Usage:
@@ -52,7 +52,7 @@ def format_percent(value, total):
 def show_portfolio_summary():
     """Show portfolio overview."""
     print("\n" + "=" * 80)
-    print("[*] COPY TRADING PORTFOLIO SUMMARY")
+    print("[*] POSITION PORTFOLIO SUMMARY")
     print("=" * 80)
     
     summary = get_copy_portfolio_summary()

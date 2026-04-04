@@ -1,4 +1,4 @@
-# Copy Trading Bot - Implementation Summary
+# Poly Copybot - Implementation Summary
 
 **Date**: 2026-03-26  
 **Status**: ✅ COMPLETE & TESTED  
@@ -259,7 +259,7 @@ Trader Positions (Polymarket API)
 ## Next Steps
 
 1. ✅ **Review this implementation** - All code is ready
-2. ✅ **Test with real trading** - Can start immediately
+2. ✅ **Test with live mode** - Can start immediately
 3. **Monitor performance** - Check logs daily
 4. **Adjust parameters** - Fine-tune based on results
 5. **Expand trader list** - Add more followed wallets

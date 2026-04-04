@@ -4,7 +4,7 @@ Automated copybot for [Polymarket](https://polymarket.com). Follows top traders 
 
 ## Features
 
-- **Copy Trading** — Automatically copies trades from followed wallets (e.g. RN1)
+- **Position Copying** — Automatically copies trades from followed wallets (e.g. RN1)
 - **Smart Filters** — Min trade size, price range, hedge detection, duplicate blocking
 - **Fast-Sell Detection** — Detects when trader sells and mirrors within 5 seconds
 - **Auto-Close** — Closes positions when markets resolve (via Positions API + Gamma API fallback)
@@ -76,7 +76,7 @@ LIVE_MODE=true python main.py
 
 Dashboard at `http://localhost:8090`
 
-### 4. Follow a Trader
+### 4. Follow a trader
 
 ```bash
 # Via API (replace ADDRESS and KEY)
@@ -107,7 +107,7 @@ All configurable via `.env`:
 | `MAX_OPEN_POSITIONS` | 100 | Max simultaneous positions |
 | `COPY_SCAN_INTERVAL` | 5 | Seconds between scans |
 | `BET_SIZE_PCT` | 0.02 | % of portfolio per position |
-| `MIN_TRADER_USD` | 15 | Only copy trades where trader spends $X+ |
+| `MIN_TRADER_USD` | 15 | Only positions where trader spends $X+ |
 | `MIN_ENTRY_PRICE` | 0.05 | Skip trash farming (<5c) |
 | `MAX_ENTRY_PRICE` | 0.92 | Skip hedges (>92c) |
 | `MAX_COPIES_PER_MARKET` | 2 | Max copies of same market per wallet |

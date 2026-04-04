@@ -1,8 +1,8 @@
-# Quick Start Guide - Copy Trading Bot Updates
+# Quick Start Guide - Poly Copybot Updates
 
 ## What Changed? ✅
 
-Your copy trading bot now has **intelligent position detection** that:
+Your Poly Copybot now has **intelligent position detection** that:
 1. ✅ Only copies NEW trader positions (not existing ones)
 2. ✅ Automatically closes copies when trader closes theirs
 3. ✅ Tracks position history to detect changes accurately
@@ -63,7 +63,7 @@ python reset_copy_trading.py
 
 ---
 
-## Example Trading Session
+## Example Session
 
 ```
 TRADER: 0xDEADBEEF
