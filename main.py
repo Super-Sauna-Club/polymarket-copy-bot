@@ -109,7 +109,7 @@ def update_prices():
                                                      "%s — P&L $%.2f" % ((_p.get("title") or "")[:35], round(-_iv, 2)), round(-_iv, 2))
                         except Exception:
                             pass
-                    if _cp >= 0.97 and _cv > 0.50 and _pnl_check > 0:
+                    if _cp >= 0.96 and _cv > 0.50 and _pnl_check > 0:
                         _out = _p.get("outcome", "")
                         if _out.lower() in ("yes", "y"): _side = "YES"
                         elif _out.lower() in ("no", "n"): _side = "NO"
