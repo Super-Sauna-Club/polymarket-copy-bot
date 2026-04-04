@@ -544,6 +544,12 @@ def copy_followed_wallets():
                                 wait, side, td["question"][:40])
                     # Re-inject into the activity feed by creating the trade directly
                     entry_price = td["entry_price"]
+                    # Check trader exposure limit (1/3 of portfolio)
+                    _max_t = cash / 3.0
+                    _t_inv = sum(x["size"] for x in db.get_open_copy_trades() if x["wallet_address"] == td["address"])
+                    if _t_inv >= _max_t:
+                        logger.info("[HEDGE-WAIT] Trader exposure $%.0f >= max $%.0f, skipping: %s", _t_inv, _max_t, td["question"][:40])
+                        continue
                     size = _calculate_position_size(entry_price, cash, 1.0)
                     if size < MIN_TRADE_SIZE or cash < size:
                         continue
@@ -825,6 +831,17 @@ def copy_followed_wallets():
 
             # Apply realistic entry slippage (+1 tick) — simulates execution delay
             entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, 0.97), 4)
+
+            # Max exposure per trader: 1/3 of portfolio
+            max_per_trader = balance / 3.0
+            trader_invested = sum(
+                t["size"] for t in db.get_open_copy_trades()
+                if t["wallet_address"] == address
+            )
+            if trader_invested >= max_per_trader:
+                logger.info("[SKIP] Trader exposure $%.0f >= max $%.0f (1/3 portfolio): %s",
+                            trader_invested, max_per_trader, question[:40])
+                continue
 
             # Proportionaler Trader-Multiplikator: dieser Trade vs. Trader-Durchschnitt
             trader_ratio = (dollar_value / avg_trader_size) if avg_trader_size > 0 else 1.0
