@@ -273,6 +273,17 @@ def api_live_data():
     total_pnl = total_value - DEPOSIT
     wr = round(wins / max(wins + losses, 1) * 100, 1)
 
+    followed = db.get_followed_wallets()
+
+    # Filter out unattributed old positions from display (keep values in summary)
+    display_open = [p for p in open_positions if p["wallet_username"] != "—"]
+    display_closed = [p for p in closed_positions if p["wallet_username"] != "—"]
+
+    # Counts from bot-copies only (display), values from API (real)
+    bot_wins = sum(1 for p in display_closed if p.get("pnl_realized", 0) >= 0)
+    bot_losses = sum(1 for p in display_closed if p.get("pnl_realized", 0) < 0)
+    bot_wr = round(bot_wins / max(bot_wins + bot_losses, 1) * 100, 1)
+
     summary = {
         "total_value": round(total_value, 2),
         "wallet_usdc": wallet,
@@ -284,18 +295,13 @@ def api_live_data():
         "realized_pnl": 0,
         "unrealized_pnl": 0,
         "daily_pnl": 0,
-        "open_trades": len(open_positions),
-        "closed_trades": total_closed,
-        "wins": wins,
-        "win_rate": wr,
+        "open_trades": len(display_open),
+        "closed_trades": len(display_closed),
+        "wins": bot_wins,
+        "losses": bot_losses,
+        "win_rate": bot_wr,
         "starting_balance": DEPOSIT,
     }
-
-    followed = db.get_followed_wallets()
-
-    # Filter out unattributed old positions from display (keep values in summary)
-    display_open = [p for p in open_positions if p["wallet_username"] != "—"]
-    display_closed = [p for p in closed_positions if p["wallet_username"] != "—"]
 
     return jsonify({
         "summary": summary,

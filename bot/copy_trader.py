@@ -347,6 +347,14 @@ def _position_diff_scan(address: str, username: str, balance: float,
             if entry_price_raw <= 0 or entry_price_raw >= 1:
                 continue
 
+            # Max exposure per trader
+            _max_exp = balance * config.MAX_EXPOSURE_PER_TRADER
+            _t_exp = sum(t["size"] for t in db.get_open_copy_trades() if t["wallet_address"] == address)
+            if _t_exp >= _max_exp:
+                logger.info("[DIFF] Trader exposure $%.0f >= max $%.0f, skipping: %s",
+                            _t_exp, _max_exp, pos["market_question"][:40])
+                continue
+
             # Market-close guard
             end_ts = _parse_end_ts(pos.get("end_date", ""))
             if end_ts and (_time.time() - end_ts) > 0:
