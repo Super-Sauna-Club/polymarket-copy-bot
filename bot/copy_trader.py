@@ -733,8 +733,8 @@ def copy_followed_wallets():
                             logger.info("[SKIP] Recently closed (no-rebuy %dmin): %s",
                                         config.NO_REBUY_MINUTES, question[:40])
                             continue
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
 
             # === RN1 SMART-FILTER ===
             # 1) Min Trader USD: Nur echte Conviction-Trades kopieren, Noise ignorieren
