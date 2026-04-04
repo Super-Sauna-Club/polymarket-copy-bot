@@ -61,8 +61,8 @@ MAX_COPIES_PER_MARKET = int(os.getenv("MAX_COPIES_PER_MARKET", "2"))
 # If both sides bought within this window → skip both (hedge detected)
 # Set to 0 to disable
 HEDGE_WAIT_SECS = int(os.getenv("HEDGE_WAIT_SECS", "120"))
-# Comma-separated list of strategy types that need hedge-wait (e.g. "Esports,Sports")
-HEDGE_WAIT_TYPES = os.getenv("HEDGE_WAIT_TYPES", "Esports")
+# Comma-separated usernames that need hedge-wait (e.g. "xsaghav,RN1")
+HEDGE_WAIT_TRADERS = os.getenv("HEDGE_WAIT_TRADERS", "")
 
 # Massive.com Market Data
 MASSIVE_API_KEY = os.getenv("MASSIVE_API_KEY", "")

@@ -707,8 +707,8 @@ def copy_followed_wallets():
 
             # Hedge-Wait: hold trade and check if trader buys opposite side
             # Only for traders known to hedge (strategy_type contains "Esports")
-            _hw_types = [t.strip().lower() for t in config.HEDGE_WAIT_TYPES.split(",")]
-            trader_hedges = (wallet.get("strategy_type") or "").lower() in _hw_types
+            _hw_traders = [t.strip().lower() for t in config.HEDGE_WAIT_TRADERS.split(",") if t.strip()]
+            trader_hedges = (wallet.get("username") or "").lower() in _hw_traders
             if config.HEDGE_WAIT_SECS > 0 and cid and trader_hedges:
                 event_key = t.get("event_slug", "") or t.get("market_slug", "") or cid[:20]
                 if event_key in _hedge_queue:
