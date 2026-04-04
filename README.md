@@ -157,8 +157,6 @@ python redeem_positions.py --exec
 | `CASH_FLOOR` | 0 | Stop buying below this cash level |
 | `MAX_OPEN_POSITIONS` | 100 | Maximum simultaneous positions |
 | `MAX_EXPOSURE_PER_TRADER` | 0.33 | Max 33% of portfolio per trader |
-
-> **Risk Management:** No single trader can use more than 33% of your portfolio. With a $300 portfolio and 3 traders, each trader is capped at ~$100 in open positions. This prevents one trader from dominating your portfolio if they go on a buying spree.
 | `DASHBOARD_PORT` | 8090 | Web dashboard port |
 | `DASHBOARD_SECRET` | changeme | Secret key for follow/unfollow API |
 
@@ -191,6 +189,35 @@ main.py                      → Scheduler + Flask + Startup
         ├── index.html       → Settings page
         └── history.html     → Position history
 ```
+
+## Risk Management
+
+The bot has several layers of protection built in:
+
+### Trader Exposure Limit
+No single trader can use more than 33% of your portfolio (`MAX_EXPOSURE_PER_TRADER`). This is a hard limit — no exceptions, even for positions that look like they're about to win. When positions resolve or get auto-sold, the exposure drops and the trader can be copied again. With 3 traders at 33% each, your portfolio is naturally diversified.
+
+```
+Portfolio: $300, 3 traders
+
+Trader A: $95 in positions  → can still open $5 more
+Trader B: $40 in positions  → can open $60 more  
+Trader C: $0 in positions   → can open $100
+
+Trader A wins $50 → positions drop to $45 → can open $55 more
+```
+
+### Hedge Detection
+Waits 60s before executing a trade. If the trader buys the opposite side within that window, both are cancelled. This prevents copying hedged positions where you'd lose to fees regardless of outcome.
+
+### Proportional Sizing
+Small trader bets (noise/testing) get small copies. Large trader bets (high conviction) get larger copies. Your bet mirrors the trader's conviction level, not just a flat amount.
+
+### Auto-Sell at 96¢
+Won positions are automatically sold at 96¢+ to recycle capital. No need to wait for market resolution — the bot takes profit and frees up cash for new trades.
+
+### One Copy Per Market
+`MAX_COPIES_PER_MARKET=1` prevents the bot from doubling up on the same market when a trader adds to their position in waves.
 
 ## Risks
 
