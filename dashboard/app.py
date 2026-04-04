@@ -308,6 +308,7 @@ def api_settings():
     followed = db.get_followed_wallets()
     settings = [
         {"key": "LIVE_MODE", "value": str(config.LIVE_MODE), "desc": "Real money trading"},
+        {"key": "STARTING_BALANCE", "value": "$" + str(config.STARTING_BALANCE), "desc": "Total deposited (for profit calculation)"},
         {"key": "BET_SIZE_PCT", "value": str(config.BET_SIZE_PCT), "desc": "% of portfolio per position"},
         {"key": "MAX_POSITION_SIZE", "value": "$" + str(config.MAX_POSITION_SIZE), "desc": "Max $ per position"},
         {"key": "MIN_TRADER_USD", "value": "$" + str(config.MIN_TRADER_USD), "desc": "Only copy trades where trader spends $X+"},
