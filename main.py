@@ -80,7 +80,8 @@ def update_prices():
                     _cp = float(_p.get("curPrice", 0) or 0)
                     _cv = float(_p.get("currentValue", 0) or 0)
                     _iv = float(_p.get("initialValue", 0) or 0)
-                    if _cp >= 0.97 and _cv > 0.50:
+                    _pnl_check = _cv - _iv
+                    if _cp >= 0.97 and _cv > 0.50 and _pnl_check > 0:
                         _out = _p.get("outcome", "")
                         if _out.lower() in ("yes", "y"): _side = "YES"
                         elif _out.lower() in ("no", "n"): _side = "NO"
