@@ -353,6 +353,37 @@ def main():
 
     from database.db import log_activity
 
+    # STARTUP CLEANUP: close any zombie positions (resolved while bot was down)
+    try:
+        import requests as _req_startup
+        from database.db import get_connection
+        _r_startup = _req_startup.get("https://data-api.polymarket.com/positions", params={
+            "user": config.POLYMARKET_FUNDER, "limit": 500, "sizeThreshold": 0
+        }, timeout=15)
+        if _r_startup.ok:
+            _api_prices = {p.get("conditionId", ""): float(p.get("curPrice", 0) or 0) for p in _r_startup.json()}
+            with get_connection() as _conn:
+                _open_trades = _conn.execute(
+                    "SELECT id, condition_id, size, market_question FROM copy_trades WHERE status='open'"
+                ).fetchall()
+                _cleaned = 0
+                for _ot in _open_trades:
+                    _cp = _api_prices.get(_ot["condition_id"], -1)
+                    if _cp <= 0.01 and _cp >= 0:
+                        _pnl = round(-(_ot["size"] or 0), 2)
+                        _conn.execute("UPDATE copy_trades SET status='closed', pnl_realized=?, closed_at=datetime('now') WHERE id=?",
+                                      (_pnl, _ot["id"]))
+                        _cleaned += 1
+                    elif _cp >= 0.99:
+                        _pnl = round((_ot["size"] or 0) * (1 / (_api_prices.get(_ot["condition_id"], 0.5) or 0.5) - 1), 2)
+                        _conn.execute("UPDATE copy_trades SET status='closed', pnl_realized=?, closed_at=datetime('now') WHERE id=?",
+                                      (_pnl, _ot["id"]))
+                        _cleaned += 1
+                if _cleaned:
+                    logger.info("[STARTUP] Cleaned %d zombie positions (resolved while bot was down)", _cleaned)
+    except Exception as e:
+        logger.debug("Startup cleanup skipped: %s", e)
+
     # STARTUP BASELINE: Immer beim Start neue Baseline erstellen
     # → verhindert, dass bestehende Positionen kopiert werden
     run_startup_baseline()
