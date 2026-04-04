@@ -142,6 +142,8 @@ python redeem_positions.py --exec
 | `MAX_COPIES_PER_MARKET` | 1 | One copy per market (prevents doubling up) |
 | `ENTRY_TRADE_SEC` | 300 | Ignore trades older than 5 minutes |
 | `MAX_HOURS_BEFORE_EVENT` | 0 | Only buy X hours before event (0=disabled) |
+| `MAX_PER_EVENT` | 15 | Max $ per event/game (0=disabled) |
+| `NO_REBUY_MINUTES` | 0 | Block re-entry after close (0=disabled) |
 
 ### Hedge Detection
 | Parameter | Default | Description |
@@ -232,6 +234,24 @@ Won positions are automatically sold at 96¢+ to recycle capital. No need to wai
 
 ### One Copy Per Market
 `MAX_COPIES_PER_MARKET=1` prevents the bot from doubling up on the same market when a trader adds to their position in waves.
+
+### Max Per Event
+Limits total $ invested per event/game. A trader might place 5 different bets on the same NBA game (Spread -17.5, Spread -18.5, O/U 245.5, O/U 246.5, O/U 248.5). All share the same underlying thesis — if the game goes wrong, all 5 lose simultaneously.
+
+```env
+MAX_PER_EVENT=15   # Max $15 per game — first bet copied, rest blocked
+MAX_PER_EVENT=0    # Disabled — copy all bets on same game
+```
+
+Real example: sovereign2013 placed 5 bets on Wizards vs Heat ($39 total). All lost. With `MAX_PER_EVENT=15`, only 1 bet ($10) would have been copied — saving $29.
+
+### No-Rebuy (optional)
+After selling a position, optionally block re-entering the same market for X minutes.
+
+```env
+NO_REBUY_MINUTES=60   # Block re-entry for 1 hour after close
+NO_REBUY_MINUTES=0    # Disabled (default) — allow re-entry
+```
 
 ### Event Timing Filter (optional)
 When enabled, the bot only copies trades if the event starts within X hours. This prevents capital being locked in positions hours before games start. Uses the Polymarket Gamma API to fetch event start times.
