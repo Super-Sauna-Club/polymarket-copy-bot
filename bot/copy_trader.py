@@ -644,7 +644,7 @@ def copy_followed_wallets():
                     logger.info("[FAST-SELL] #%d CLOSED (trader sold): PnL=$%.2f @ %.0fc | %s",
                                 our_trade["id"], pnl, sell_price * 100, our_trade["market_question"][:40])
                     db.log_activity("sell", "WIN" if pnl > 0 else "LOSS",
-                                    "Trader sold — position closed",
+                                    "Position closed — sold",
                                     "#%d %s — P&L $%+.2f" % (our_trade["id"], our_trade["market_question"][:40], pnl), pnl)
                     try:
                         from dashboard.app import broadcast_event
