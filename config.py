@@ -64,6 +64,10 @@ HEDGE_WAIT_SECS = int(os.getenv("HEDGE_WAIT_SECS", "120"))
 # Comma-separated usernames that need hedge-wait (e.g. "xsaghav,RN1")
 HEDGE_WAIT_TRADERS = os.getenv("HEDGE_WAIT_TRADERS", "")
 
+# Followed traders: comma-separated "username:address" pairs
+# e.g. "Jargs:0xf164...,xsaghav:0xdbb3..."
+FOLLOWED_TRADERS = os.getenv("FOLLOWED_TRADERS", "")
+
 # Massive.com Market Data
 MASSIVE_API_KEY = os.getenv("MASSIVE_API_KEY", "")
 

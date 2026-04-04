@@ -219,6 +219,29 @@ def main():
     init_db()
     logger.info("Database initialized.")
 
+    # Sync followed traders from .env
+    if config.FOLLOWED_TRADERS:
+        from database.db import upsert_wallet, toggle_follow, unfollow_all
+        unfollow_all()
+        for entry in config.FOLLOWED_TRADERS.split(","):
+            entry = entry.strip()
+            if ":" not in entry:
+                continue
+            parts = entry.split(":", 1)
+            name = parts[0].strip()
+            addr = parts[1].strip()
+            upsert_wallet({
+                "address": addr, "username": name,
+                "rank": 0, "volume": 0, "pnl": 0, "markets_traded": 0,
+                "score": 0, "strategy_type": "",
+                "strengths": "", "weaknesses": "",
+                "recommendation": "COPY", "reasoning": "From .env",
+                "win_rate": 0, "total_trades": 0,
+                "profile_url": "https://polymarket.com/profile/" + addr,
+            })
+            toggle_follow(addr, 1)
+            logger.info("Following %s (%s) from .env", name, addr[:16])
+
     # Startup-Validierung: Keys prüfen BEVOR der Bot losläuft
     from bot.copy_trader import LIVE_MODE, STARTING_BALANCE
     balance = 0
