@@ -708,7 +708,6 @@ function buildPreview(raw){
       <td style="font-size:.88em;padding:8px 4px">${wH}</td>
     </tr>`;
   }).join('')+'</table>';
-  }).join('');
 }
 function loadReport(){
   fetch('/api/report/latest').then(r=>r.json()).then(d=>{
