@@ -465,7 +465,7 @@ function renderLog(){
       else if(t==='sell'||t==='resolved'){pCol=a.pnl>=0?'g':'r';sym=a.pnl>=0?'\u2713':'\u2717'}
       else if(t==='redeem'){pCol='b';sym='\u21BB'}
       const hlC=pCol==='g'?'hl-g':pCol==='r'?'hl-r':pCol==='y'?'hl-y':pCol==='b'?'hl-b':'';
-      const pnlHtml=a.pnl?`<div class="cl-pnl" style="color:var(${a.pnl>=0?'--green':'--red'})">${a.pnl>=0?'+':''}$${a.pnl.toFixed(2)}</div>`:`<div class="cl-pnl"></div>`;
+      const pnlHtml=a.pnl?`<div class="cl-pnl" style="color:var(${a.pnl>=0?'--green':'--red'})">${a.pnl>=0?'+':''}$${a.pnl.toFixed(2)}</div>`:'';
       const detail=a.detail?` <span class="${hlC}">${a.detail}</span>`:'';
       const{e:ae,l:al2}=dSp(a);const aSp=(ae&&al2)?ae+' '+al2+' ':(ae?ae+' ':(a.icon==='CASH'||a.icon==='SYS')?'':'\uD83D\uDCCA ');
       const amtMatch=(a.detail||'').match(/\$(\d+\.?\d*)/);
