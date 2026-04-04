@@ -95,12 +95,12 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
             logger.error("Kein Token fuer %s / %s", condition_id[:20], side)
             return None
 
-        # Fee Rate holen (braucht token_id), default 100bps = 1%
-        fee_rate = 100
+        # Fee Rate holen (braucht token_id), default 200bps = 2%
+        fee_rate = 200
         try:
             fee_rate = int(client.get_fee_rate_bps(token_id))
         except Exception:
-            logger.debug("Fee rate lookup failed, using default 100bps")
+            logger.debug("Fee rate lookup failed, using default 200bps")
 
         # Market Order: price mit +3c Slippage damit Order eher füllt
         limit_price = round(min(price + 0.03, 0.99), 2)
