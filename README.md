@@ -1,6 +1,6 @@
 # Poly Copybot
 
-Automated copy-trading bot for [Polymarket](https://polymarket.com). Follows top traders and automatically copies their positions with real money via the Polymarket CLOB API.
+Automated copybot for [Polymarket](https://polymarket.com). Follows top traders and automatically copies their positions with real money via the Polymarket CLOB API.
 
 ## Features
 
