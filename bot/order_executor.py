@@ -103,7 +103,7 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
             logger.debug("Fee rate lookup failed, using default 100bps")
 
         # Market Order: price mit +3c Slippage damit Order eher füllt
-        limit_price = round(min(price + 0.03, 0.99), 2)
+        limit_price = round(min(price + 0.05, 0.99), 2)
 
         order_args = MarketOrderArgs(
             token_id=token_id,

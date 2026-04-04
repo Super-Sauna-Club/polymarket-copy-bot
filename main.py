@@ -62,12 +62,35 @@ def copy_scan():
 _update_counter = 0
 
 def update_prices():
-    """Update copy trade prices (every 30s), save snapshot every 5 min."""
+    """Update copy trade prices (every 30s), auto-sell wins, save snapshot every 5 min."""
     global _update_counter
     from bot.copy_trader import update_copy_positions
     from database import db as _db
     try:
         update_copy_positions()
+        # Auto-sell won positions every cycle (recycle capital fast)
+        try:
+            from bot.order_executor import sell_shares, get_wallet_balance
+            import requests as _rq
+            _r = _rq.get("https://data-api.polymarket.com/positions", params={
+                "user": config.POLYMARKET_FUNDER, "limit": 100, "sizeThreshold": 0
+            }, timeout=10)
+            if _r.ok:
+                for _p in _r.json():
+                    _cp = float(_p.get("curPrice", 0) or 0)
+                    _cv = float(_p.get("currentValue", 0) or 0)
+                    if _cp >= 0.95 and _cv > 0.50:
+                        _out = _p.get("outcome", "")
+                        if _out.lower() in ("yes", "y"): _side = "YES"
+                        elif _out.lower() in ("no", "n"): _side = "NO"
+                        else: _side = _out
+                        _resp = sell_shares(_p.get("conditionId", ""), _side, _cp)
+                        if _resp:
+                            logger.info("[AUTO-SELL] Sold won position: $%.2f | %s", _cv, (_p.get("title") or "")[:40])
+                            _db.log_activity("redeem", "CASH", "Auto-sold won position",
+                                             "%s — $%.2f" % ((_p.get("title") or "")[:35], _cv), round(_cv, 2))
+        except Exception:
+            pass
         _update_counter += 1
         # Snapshot alle 10 Updates (= 5 Min bei 30s Intervall)
         if _update_counter >= 10:
