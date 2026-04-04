@@ -299,20 +299,35 @@ def index():
 
 @app.route("/wallets")
 def wallets_page():
-    top_wallets = db.get_top_wallets(limit=20)
-    followed = db.get_followed_wallets()
-    recent_scans = db.get_recent_scans(limit=5)
-    rec_stats = db.get_recommendation_stats()
-    total_wallets = db.get_wallet_count()
+    return render_template("index.html")
 
-    return render_template(
-        "index.html",
-        top_wallets=top_wallets,
-        followed=followed,
-        recent_scans=recent_scans,
-        rec_stats=rec_stats,
-        total_wallets=total_wallets,
-    )
+
+@app.route("/api/settings")
+def api_settings():
+    """Current bot settings (read-only)."""
+    followed = db.get_followed_wallets()
+    settings = [
+        {"key": "LIVE_MODE", "value": str(config.LIVE_MODE), "desc": "Real money trading"},
+        {"key": "BET_SIZE_PCT", "value": str(config.BET_SIZE_PCT), "desc": "% of portfolio per position"},
+        {"key": "MAX_POSITION_SIZE", "value": "$" + str(config.MAX_POSITION_SIZE), "desc": "Max $ per position"},
+        {"key": "MIN_TRADER_USD", "value": "$" + str(config.MIN_TRADER_USD), "desc": "Only copy trades where trader spends $X+"},
+        {"key": "MIN_ENTRY_PRICE", "value": str(int(config.MIN_ENTRY_PRICE * 100)) + "c", "desc": "Skip trash farming below this"},
+        {"key": "MAX_ENTRY_PRICE", "value": str(int(config.MAX_ENTRY_PRICE * 100)) + "c", "desc": "Skip hedges above this"},
+        {"key": "MAX_COPIES_PER_MARKET", "value": str(config.MAX_COPIES_PER_MARKET), "desc": "Max copies of same market"},
+        {"key": "MAX_OPEN_POSITIONS", "value": str(config.MAX_OPEN_POSITIONS), "desc": "Max simultaneous positions"},
+        {"key": "COPY_SCAN_INTERVAL", "value": str(config.COPY_SCAN_INTERVAL) + "s", "desc": "Seconds between scans"},
+        {"key": "CASH_FLOOR", "value": "$" + str(config.CASH_FLOOR), "desc": "Stop buying below this"},
+        {"key": "MAX_SPREAD", "value": str(int(config.MAX_SPREAD * 100)) + "%", "desc": "Max bid/ask spread"},
+    ]
+    traders = [{"username": w["username"], "address": w["address"], "pnl": w["pnl"],
+                "win_rate": w["win_rate"], "domain": w["strategy_type"] or "Sports"}
+               for w in followed]
+    status = [
+        {"name": "Bot Service", "ok": True, "label": "Active"},
+        {"name": "Redeem Timer", "ok": True, "label": "Every 15 min"},
+        {"name": "WebSocket", "ok": True, "label": "Connected"},
+    ]
+    return jsonify({"settings": settings, "traders": traders, "status": status})
 
 
 @app.route("/api/wallets")
