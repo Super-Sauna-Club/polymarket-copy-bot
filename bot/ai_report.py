@@ -230,6 +230,7 @@ def generate_report() -> str:
         best = max(trades, key=lambda t: t["pnl"]) if trades else None
         worst = min(trades, key=lambda t: t["pnl"]) if trades else None
 
+        total_pnl = cp["realized"] + cp["unrealized"]
         parts = ["Last %d from %s: $%+.2f" % (n, cp["name"], pnl)]
         rec = []
         if wins_n: rec.append("%dW" % wins_n)
@@ -238,6 +239,7 @@ def generate_report() -> str:
         if rec:
             parts.append("/".join(rec))
         parts.append(_verdict(wins_n, loss_n))
+        parts.append("total: $%+.2f" % total_pnl)
         if best and best["pnl"] > 0.20:
             tag = " W" if best["current"] >= 0.99 else ""
             parts.append("best: %s +$%.2f%s" % (_short(best["market"], 18), best["pnl"], tag))
@@ -259,8 +261,10 @@ def generate_report() -> str:
         avg_w = sum(t["pnl"] for t in trades if t["pnl"] > 0.10) / max(w, 1)
         avg_l = sum(t["pnl"] for t in trades if t["pnl"] < -0.10) / max(l, 1)
 
-        full.append("%s — %d positions $%+.2f | %dW/%dL %d%% | avg win $%.2f avg loss $%.2f" % (
-            cp["name"], n, pnl, w, l, wr, avg_w, abs(avg_l)))
+        total_pnl_all = cp["realized"] + cp["unrealized"]
+        total_trades = cp["open"] + cp["closed"]
+        full.append("%s — last %d: $%+.2f | total (%d): $%+.2f | %dW/%dL %d%% | avg win $%.2f avg loss $%.2f" % (
+            cp["name"], n, pnl, total_trades, total_pnl_all, w, l, wr, avg_w, abs(avg_l)))
         for t in trades:
             t["trader"] = cp["name"]
             full.append("  " + _trade_line(t))

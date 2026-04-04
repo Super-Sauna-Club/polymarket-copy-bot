@@ -602,9 +602,11 @@ function fmtReport(t){
     .replace(/(all losing|mostly losing)/g,'<span style="color:var(--red);font-weight:700">$1</span>')
     .replace(/(mixed)/g,'<span style="color:var(--gold);font-weight:600">$1</span>')
     .replace(/(no results yet|no copies yet)/g,'<span style="color:var(--text-dim)">$1</span>')
-    // best/worst labels
+    // best/worst/total labels
     .replace(/(best:)/g,'<span style="color:var(--green);font-weight:500">$1</span>')
     .replace(/(worst:)/g,'<span style="color:var(--red);font-weight:500">$1</span>')
+    .replace(/(total:)/g,'<span style="font-weight:600;color:var(--text)">$1</span>')
+    .replace(/(total \(\d+\):)/g,'<span style="font-weight:600;color:var(--text)">$1</span>')
     // Trader section header: "Name — X positions..."
     .replace(/(\w+)( \u2014 \d+ positions)/g,'<div style="margin-top:6px;padding-bottom:4px;border-bottom:1px solid rgba(201,168,76,.2)"><span style="color:var(--gold);font-weight:700;font-size:1.05em">$1</span><span style="color:var(--text-mid)">$2</span></div>')
     // Recommendation
@@ -633,12 +635,13 @@ function buildPreview(raw){
     const pnlCol=pnl>=0?'var(--green)':'var(--red)';
     // Parse segments
     const segs=rest.split(/\s*\|\s*/);
-    let record='',verdict='',best='',worst='';
+    let record='',verdict='',best='',worst='',totalPnl='';
     for(const s of segs){
       if(s.match(/^\d+[WL]/))record=s;
       else if(s.match(/^(all |mostly |mixed|no )/))verdict=s;
       else if(s.startsWith('best:'))best=s.replace('best: ','');
       else if(s.startsWith('worst:'))worst=s.replace('worst: ','');
+      else if(s.startsWith('total:'))totalPnl=s.replace('total: ','');
     }
     // Verdict badge
     const vc=verdict.includes('profitable')||verdict.includes('winning')?'var(--green)':
@@ -660,7 +663,7 @@ function buildPreview(raw){
         <span style="color:${vc};font-weight:700;font-size:.78em;letter-spacing:.08em;background:${vBg};padding:3px 10px;border-radius:3px;text-transform:uppercase;white-space:nowrap">${verdict}</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:1em">
-        ${bHtml}${wHtml?'<span style="color:var(--border-h);margin:0 1px">·</span>'+wHtml:''}
+        ${totalPnl?'<span style="font-size:.82em;color:var(--text-dim)">total:</span> <span style="font-weight:600;color:'+(totalPnl.includes('-')?'var(--red)':'var(--green)')+'">'+totalPnl+'</span><span style="color:var(--border-h);margin:0 4px">·</span>':''}${bHtml}${wHtml?'<span style="color:var(--border-h);margin:0 1px">·</span>'+wHtml:''}
       </div>
     </div>`;
   }).join('');
