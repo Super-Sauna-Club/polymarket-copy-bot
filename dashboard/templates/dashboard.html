@@ -663,7 +663,7 @@ function buildPreview(raw){
         <span style="color:${vc};font-weight:700;font-size:.78em;letter-spacing:.08em;background:${vBg};padding:3px 10px;border-radius:3px;text-transform:uppercase;white-space:nowrap">${verdict}</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;font-size:1em">
-        ${lastPnl?'<span style="font-size:.82em;color:var(--text-dim)">'+lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+'">$'+v+'</span>')+'</span><span style="color:var(--border-h);margin:0 4px">·</span>':''}${bHtml}${wHtml?'<span style="color:var(--border-h);margin:0 1px">·</span>'+wHtml:''}
+        ${lastPnl?'<span style="color:var(--text-dim)">'+lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:600">$'+v+'</span>')+'</span><span style="color:var(--border-h);margin:0 4px">·</span>':''}${bHtml}${wHtml?'<span style="color:var(--border-h);margin:0 1px">·</span>'+wHtml:''}
       </div>
     </div>`;
   }).join('');
