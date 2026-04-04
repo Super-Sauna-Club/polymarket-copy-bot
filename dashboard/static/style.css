@@ -1,0 +1,66 @@
+/* ═══ SUPER SAUNA CLUB — BASE STYLES ═══ */
+/* Fonts loaded via <link> in HTML templates */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#06060a;--bg-card:#0c0c12;--bg-table:#12121c;
+  --border:#1e1e30;--border2:#2e2e48;
+  --gold:#c9a84c;--blue:#c9a84c;--purple:#c9a84c;--yellow:#c9a84c;
+  --green:#34d399;--red:#f87171;
+  --text:#e8e4dc;--text-dim:#5c5a6a;--text-bright:#fff;
+}
+html{font-size:15px}
+body{background:var(--bg);color:var(--text);font-family:'Manrope',system-ui,sans-serif;
+  font-weight:300;line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--gold);text-decoration:none}a:hover{opacity:.8}
+.container{max-width:1200px;margin:0 auto;padding:0 5% 60px}
+header{display:flex;align-items:center;justify-content:space-between;padding:28px 0;
+  border-bottom:1px solid var(--border);margin-bottom:28px;flex-wrap:wrap;gap:16px}
+header h1{font-size:1.2rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.nav{display:flex;gap:6px}
+.nav a,.btn{font-size:.78rem;color:#8a889a;text-decoration:none;padding:8px 18px;
+  border:1px solid transparent;letter-spacing:.12em;text-transform:uppercase;font-weight:400;
+  transition:all .25s;background:transparent;cursor:pointer;font-family:'Manrope',sans-serif}
+.nav a:hover,.btn:hover{color:var(--gold);border-color:rgba(201,168,76,.35);opacity:1}
+.btn-primary{color:var(--gold);border-color:rgba(201,168,76,.35)}
+.section{margin-bottom:32px}
+.section h2{font-size:.82rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;
+  color:#8a889a;padding:14px 0;border-bottom:1px solid var(--border);margin-bottom:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:32px}
+.card{background:var(--bg-card);border:1px solid var(--border);padding:20px 22px}
+.card-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.18em;color:var(--text-dim);font-weight:500;margin-bottom:8px}
+.card-value{font-size:1.5rem;font-weight:700;font-family:'Fira Code',monospace}
+.positive{color:var(--green)!important}.negative{color:var(--red)!important}
+.table-wrapper{overflow-x:auto;max-height:460px;overflow-y:auto;border:1px solid var(--border);background:var(--bg-card)}
+table{width:100%;border-collapse:collapse}
+thead{position:sticky;top:0;z-index:2}
+th{background:var(--bg-table);color:var(--text-dim);font-weight:500;text-transform:uppercase;
+  letter-spacing:.14em;font-size:.68rem;padding:13px 16px;text-align:left;border-bottom:1px solid var(--border)}
+td{padding:11px 16px;border-bottom:1px solid rgba(30,30,48,.6);font-weight:300;font-size:.88rem}
+tr:hover{background:rgba(201,168,76,.03)}
+.empty{text-align:center;padding:40px;color:var(--text-dim);font-size:.9rem}
+.chart-container{background:var(--bg-card);border:1px solid var(--border);padding:16px;height:280px}
+footer{text-align:center;color:var(--text-dim);font-size:.75rem;padding:24px 0;
+  border-top:1px solid var(--border);margin-top:32px;letter-spacing:.1em}
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.filter-btn{padding:8px 18px;border:1px solid var(--border);background:transparent;color:#8a889a;
+  cursor:pointer;font-size:.78rem;font-family:'Manrope',sans-serif;letter-spacing:.1em;text-transform:uppercase;transition:all .25s}
+.filter-btn.active{background:rgba(201,168,76,.15);color:var(--gold);border-color:rgba(201,168,76,.4);font-weight:600}
+.filter-btn:hover{border-color:rgba(201,168,76,.2);color:var(--gold)}
+.date-input{padding:8px 12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);font-size:.82rem;font-family:'Manrope',sans-serif}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+.stat-box{background:var(--bg-card);border:1px solid var(--border);padding:18px;text-align:center}
+.stat-box .val{font-size:1.4rem;font-weight:700;font-family:'Fira Code',monospace}
+.stat-box .lbl{font-size:.68rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.15em;margin-top:6px}
+.scroll-table{max-height:600px;overflow-y:auto}
+.side-badge{font-weight:600;font-size:.72rem;padding:4px 12px;display:inline-block}
+.side-yes,.side-YES{background:rgba(52,211,153,.08);color:var(--green);border:1px solid rgba(52,211,153,.2)}
+.side-no,.side-NO{background:rgba(248,113,113,.08);color:var(--red);border:1px solid rgba(248,113,113,.2)}
+.risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.risk-item{background:var(--bg-card);border:1px solid var(--border);padding:18px}
+.risk-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.15em;color:var(--text-dim);margin-bottom:8px}
+.risk-text{font-size:.88rem}.risk-text.big{font-size:1.5rem;font-weight:700;font-family:'Fira Code',monospace}
+.progress-bar{height:6px;background:var(--bg-table);border-radius:3px;overflow:hidden;margin:8px 0}
+.progress-fill{height:100%;background:var(--gold);border-radius:3px;transition:width .3s}
+.progress-fill.danger{background:var(--red)}
+.status-open{color:var(--gold)}.status-closed{color:var(--text-dim)}
+@media(max-width:782px){.container{padding:0 16px 40px}header{flex-direction:column;align-items:flex-start}}

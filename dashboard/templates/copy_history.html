@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History — Super Sauna Club</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display:flex;align-items:center;gap:12px"><img src="/static/logo.png" alt="SSC" style="height:36px"><h1>Super Sauna Club — History</h1></div>
+            <div class="nav">
+                <a href="/copy">Terminal</a>
+                <a href="/wallets">Wallets</a>
+                <a href="/copy/history" style="color:var(--gold);border:1px solid rgba(201,168,76,.35)">History</a>
+            </div>
+        </header>
+
+        <!-- Trader Suche -->
+        <div style="margin-bottom:12px;">
+            <input type="text" id="traderSearch" placeholder="Trader suchen... (z.B. gatorr)" oninput="applySearch()"
+                style="width:100%;max-width:340px;padding:8px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem;">
+            <span id="searchLabel" style="margin-left:10px;color:var(--text-dim);font-size:0.82rem;"></span>
+        </div>
+
+        <!-- Period Filter -->
+        <div class="filters">
+            <button class="filter-btn" data-period="day" onclick="setPeriod('day')">1 Tag</button>
+            <button class="filter-btn active" data-period="week" onclick="setPeriod('week')">1 Woche</button>
+            <button class="filter-btn" data-period="month" onclick="setPeriod('month')">1 Monat</button>
+            <button class="filter-btn" data-period="year" onclick="setPeriod('year')">1 Jahr</button>
+            <button class="filter-btn" data-period="all" onclick="setPeriod('all')">Alles</button>
+            <span style="color: var(--text-dim); margin: 0 8px;">|</span>
+            <label style="color: var(--text-dim); font-size: 0.85rem;">Von:</label>
+            <input type="date" class="date-input" id="dateFrom">
+            <label style="color: var(--text-dim); font-size: 0.85rem;">Bis:</label>
+            <input type="date" class="date-input" id="dateTo">
+            <button class="filter-btn" onclick="setCustomRange()">Filtern</button>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row" id="statsRow">
+            <div class="stat-box"><div class="val" id="statTrades">-</div><div class="lbl">Trades</div></div>
+            <div class="stat-box"><div class="val" id="statWins">-</div><div class="lbl">Gewonnen</div></div>
+            <div class="stat-box"><div class="val" id="statLosses">-</div><div class="lbl">Verloren</div></div>
+            <div class="stat-box"><div class="val" id="statWinRate">-</div><div class="lbl">Win Rate</div></div>
+            <div class="stat-box"><div class="val" id="statPnl">-</div><div class="lbl">Profit</div></div>
+        </div>
+
+        <!-- Chart -->
+        <div class="section">
+            <h2>Portfolio-Verlauf</h2>
+            <div class="chart-container" style="height: 350px;">
+                <canvas id="historyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Trade History Table -->
+        <div class="section">
+            <h2>Alle Copy-Trades</h2>
+            <div class="table-wrapper scroll-table">
+                <table id="tradesTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Wallet</th>
+                            <th>Markt</th>
+                            <th>Seite</th>
+                            <th>Entry</th>
+                            <th>Size</th>
+                            <th>Profit</th>
+                            <th>Status</th>
+                            <th>Datum</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesBody"></tbody>
+                </table>
+            </div>
+            <p class="empty" id="noTrades" style="display:none;">Keine Trades in diesem Zeitraum</p>
+        </div>
+
+        <footer>Super Sauna Club Trading Dashboard</footer>
+    </div>
+
+    <script>
+    let chart = null;
+    let allTrades = [];
+    let chartData = { labels: [], values: [] };
+
+    function setPeriod(period) {
+        document.querySelectorAll('.filter-btn[data-period]').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.filter-btn[data-period="${period}"]`).classList.add('active');
+        document.getElementById('dateFrom').value = '';
+        document.getElementById('dateTo').value = '';
+        loadData(period);
+    }
+
+    function setCustomRange() {
+        const from = document.getElementById('dateFrom').value;
+        const to = document.getElementById('dateTo').value;
+        if (from && to) {
+            document.querySelectorAll('.filter-btn[data-period]').forEach(b => b.classList.remove('active'));
+            loadData('custom', from, to);
+        }
+    }
+
+    function applySearch() {
+        const q = document.getElementById('traderSearch').value.trim().toLowerCase();
+        const filtered = q ? allTrades.filter(t => (t.wallet_username||t.wallet_address||'').toLowerCase().includes(q)) : allTrades;
+        const label = document.getElementById('searchLabel');
+        label.textContent = q ? `${filtered.length} Trade(s) von "${q}"` : '';
+        renderStats(filtered);
+        renderTable(filtered);
+    }
+
+    function renderStats(trades) {
+        const closed = trades.filter(t => t.status === 'closed');
+        const wins = closed.filter(t => (t.pnl_realized || 0) > 0).length;
+        const losses = closed.filter(t => (t.pnl_realized || 0) <= 0).length;
+        const pnl = closed.reduce((s, t) => s + (t.pnl_realized || 0), 0)
+                  + trades.filter(t => t.status === 'open').reduce((s, t) => s + (t.pnl_unrealized || 0), 0);
+        const wr = closed.length > 0 ? Math.round(wins / closed.length * 100) : 0;
+
+        document.getElementById('statTrades').textContent = trades.length;
+        document.getElementById('statWins').textContent = wins;
+        document.getElementById('statLosses').textContent = losses;
+        document.getElementById('statWinRate').textContent = wr + '%';
+        const pnlEl = document.getElementById('statPnl');
+        pnlEl.textContent = (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2);
+        pnlEl.className = 'val ' + (pnl >= 0 ? 'positive' : 'negative');
+    }
+
+    function renderTable(trades) {
+        const tbody = document.getElementById('tradesBody');
+        const noTrades = document.getElementById('noTrades');
+        tbody.innerHTML = '';
+        if (trades.length === 0) {
+            noTrades.style.display = 'block';
+        } else {
+            noTrades.style.display = 'none';
+            trades.forEach(t => {
+                const pnl = t.status === 'closed' ? (t.pnl_realized || 0) : (t.pnl_unrealized || 0);
+                const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+                const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+                const slug = t.market_slug || '';
+                const eventSlug = t.event_slug || slug;
+                const question = (t.market_question||'').substring(0,50);
+                const href = eventSlug && slug && eventSlug !== slug
+                    ? `https://polymarket.com/event/${eventSlug}/${slug}`
+                    : `https://polymarket.com/event/${eventSlug || slug}`;
+                const marketCell = (eventSlug || slug)
+                    ? `<a href="${href}" target="_blank" style="color:var(--gold);text-decoration:none;">${question}</a>`
+                    : question;
+                tbody.innerHTML += `<tr>
+                    <td>${t.id}</td>
+                    <td><a href="https://polymarket.com/profile/${t.wallet_address||''}" target="_blank" style="color:var(--gold);text-decoration:none;">${(t.wallet_username||t.wallet_address||'').substring(0,12)}</a></td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${marketCell}</td>
+                    <td><span class="side-badge side-${t.side.toLowerCase()}" style="padding:2px 8px;border-radius:4px;font-size:0.75rem;font-weight:700;">${(() => { if (t.outcome_label) return t.outcome_label; const q = t.market_question || ''; if (q && !q.includes('?') && q.length < 50) { if (q.includes(' vs ') || q.includes(' vs. ')) { const parts = q.split(/ vs\.? /); return t.side === 'YES' ? parts[0].trim() : (parts[1]||'').trim(); } return q; } return t.side; })()}</span></td>
+                    <td>${Math.round(t.entry_price * 100)}¢</td>
+                    <td>$${t.size.toFixed(2)}</td>
+                    <td class="${pnlClass}">${pnlStr}</td>
+                    <td><span style="color:${t.status === 'open' ? 'var(--blue)' : 'var(--text-dim)'};">${t.status}</span></td>
+                    <td>${(t.created_at||'').substring(0,16)}</td>
+                </tr>`;
+            });
+        }
+    }
+
+    async function loadData(period, from, to) {
+        let url = `/api/copy/history?period=${period}`;
+        if (from && to) url += `&from=${from}&to=${to}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        allTrades = data.trades;
+        chartData = data.chart;
+
+        // Chart
+        if (chart) chart.destroy();
+        const labels = data.chart.labels.map(l => {
+            const d = new Date(l);
+            return d.toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit'})
+                + ' ' + d.toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'});
+        });
+        chart = new Chart(document.getElementById('historyChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Portfolio ($)',
+                    data: data.chart.values,
+                    borderColor: '#c9a84c',
+                    backgroundColor: 'rgba(201,168,76,0.06)',
+                    fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => '$' + c.parsed.y.toFixed(2) }}},
+                scales: {
+                    x: { ticks: { color: '#8b949e', maxTicksLimit: 8 }, grid: { color: 'rgba(48,54,61,0.5)' }},
+                    y: { ticks: { color: '#8b949e', callback: v => '$' + v.toFixed(0) }, grid: { color: 'rgba(48,54,61,0.5)' }}
+                }
+            }
+        });
+
+        applySearch();
+    }
+
+    setPeriod('week');
+    </script>
+</body>
+</html>

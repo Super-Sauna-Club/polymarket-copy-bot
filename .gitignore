@@ -1,0 +1,36 @@
+# Environment & Secrets
+.env
+PROJECT_INFO.md
+redeem_status.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Database
+database/scanner.db
+database/*.db
+
+# Logs
+logs/
+*.log
+bot.log
+bot_output.log
+
+# Reports
+reports/
+
+# IDE
+.claude/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dynamic state files
+dynamic_floor.txt
+save_point.txt

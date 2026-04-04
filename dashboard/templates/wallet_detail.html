@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet Detail - {{ wallet.username or wallet.address[:12] }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Wallet Detail</h1>
+            <div class="nav">
+                <a href="/">Dashboard</a>
+                <a href="/reports">Reports</a>
+            </div>
+        </header>
+
+        {% if wallet %}
+        <div class="section">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <div>
+                    <h2 style="margin-bottom:4px;font-size:1.3rem;color:var(--text);">{{ wallet.username or 'Unknown' }}</h2>
+                    <div style="font-family:monospace;color:var(--text-dim);font-size:0.85rem;">
+                        <a href="https://polymarket.com/profile/{{ wallet.address }}" target="_blank" style="color:var(--blue);text-decoration:none;">{{ wallet.address }}</a>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="score {{ 'score-high' if wallet.score >= 7 else 'score-mid' if wallet.score >= 5 else 'score-low' }}" style="font-size:2rem;">{{ wallet.score }}/10</div>
+                    <div style="margin-top:6px;"><span class="rec rec-{{ wallet.recommendation | lower }}">{{ wallet.recommendation }}</span></div>
+                </div>
+            </div>
+
+            <div class="cards" style="margin-bottom:20px;">
+                <div class="card">
+                    <div class="card-label">P&L</div>
+                    <div class="card-value {{ 'positive' if wallet.pnl >= 0 else 'negative' }}">{{ '+' if wallet.pnl >= 0 else '' }}${{ "%.2f" | format(wallet.pnl) }}</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Volume</div>
+                    <div class="card-value">${{ "%.0f" | format(wallet.volume) }}</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Win Rate</div>
+                    <div class="card-value">{{ "%.1f" | format(wallet.win_rate or 0) }}%</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Trades</div>
+                    <div class="card-value">{{ wallet.total_trades or 0 }}</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Rang</div>
+                    <div class="card-value">#{{ wallet.rank }}</div>
+                </div>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <span class="tag">{{ wallet.strategy_type or 'Unknown' }}</span>
+                <span class="tag">Märkte: {{ wallet.markets_traded or 0 }}</span>
+                <span class="tag">Zuletzt gescannt: {{ wallet.last_scanned[:16] if wallet.last_scanned else 'Nie' }}</span>
+            </div>
+
+            <div style="background:var(--bg);padding:16px;border-radius:8px;margin-bottom:16px;">
+                <div style="margin-bottom:8px;"><strong>Stärken:</strong> <span style="color:var(--green);">{{ wallet.strengths or '-' }}</span></div>
+                <div style="margin-bottom:8px;"><strong>Schwächen:</strong> <span style="color:var(--red);">{{ wallet.weaknesses or '-' }}</span></div>
+                <div><strong>Analyse:</strong> <span style="color:var(--text-dim);">{{ wallet.reasoning or '-' }}</span></div>
+            </div>
+
+            <div style="display:flex;gap:10px;">
+                {% if wallet.followed %}
+                <button class="btn btn-unfollow" onclick="toggleFollow('{{ wallet.address }}', false)">Entfolgen</button>
+                {% else %}
+                <button class="btn btn-follow" onclick="toggleFollow('{{ wallet.address }}', true)">Folgen</button>
+                {% endif %}
+                <a href="https://polymarket.com/profile/{{ wallet.address }}" target="_blank" class="btn" style="text-decoration:none;">Auf Polymarket ansehen</a>
+            </div>
+        </div>
+
+        <!-- History -->
+        {% if history %}
+        <div class="section">
+            <h2>Scan-Verlauf</h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Score</th>
+                            <th>P&L</th>
+                            <th>Volume</th>
+                            <th>Win Rate</th>
+                            <th>Rang</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in history %}
+                        <tr>
+                            <td>{{ h.created_at[:16] if h.created_at else '' }}</td>
+                            <td>{{ h.score }}/10</td>
+                            <td class="{{ 'positive' if h.pnl >= 0 else 'negative' }}">${{ "%.2f" | format(h.pnl) }}</td>
+                            <td>${{ "%.0f" | format(h.volume) }}</td>
+                            <td>{{ "%.1f" | format(h.win_rate or 0) }}%</td>
+                            <td>#{{ h.rank }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="section">
+            <p class="empty">Wallet nicht gefunden.</p>
+        </div>
+        {% endif %}
+
+        <footer>Polymarket AI Wallet Scanner</footer>
+    </div>
+
+    <script>
+    function toggleFollow(address, follow) {
+        const action = follow ? 'follow' : 'unfollow';
+        fetch(`/api/wallet/${address}/${action}`, {method: 'POST'})
+            .then(() => location.reload());
+    }
+    </script>
+</body>
+</html>

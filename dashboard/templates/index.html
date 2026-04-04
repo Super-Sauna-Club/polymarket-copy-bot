@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wallets — Super Sauna Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+    <header>
+        <div style="display:flex;align-items:center;gap:12px"><img src="/static/logo.png" alt="SSC" style="height:36px"><h1>Super Sauna Club — Wallets</h1></div>
+        <div class="nav">
+            <a href="/copy">Terminal</a>
+            <a href="/wallets" style="color:var(--gold);border:1px solid rgba(201,168,76,.35)">Wallets</a>
+            <a href="/copy/history">History</a>
+        </div>
+    </header>
+
+    <div class="cards">
+        <div class="card"><div class="card-label">Total Wallets</div><div class="card-value">{{ total_wallets }}</div></div>
+        <div class="card"><div class="card-label">Followed</div><div class="card-value">{{ followed|length }}</div></div>
+        <div class="card">
+            <div class="card-label">Recommendations</div>
+            <div style="font-size:.85rem;margin-top:8px">
+                {% for k,v in rec_stats.items() %}
+                <span style="margin-right:12px;{% if k=='COPY' %}color:var(--green){% elif k=='SKIP' %}color:var(--red){% else %}color:var(--gold){% endif %}">{{ k }}: {{ v }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {% if followed %}
+    <div class="section">
+        <h2>Followed Wallets ({{ followed|length }})</h2>
+        <div class="table-wrapper">
+            <table>
+                <thead><tr><th>Trader</th><th>PnL</th><th>Volume</th><th>Win Rate</th><th>Trades</th><th>Domain</th><th>Action</th></tr></thead>
+                <tbody>
+                {% for w in followed %}
+                <tr>
+                    <td><a href="https://polymarket.com/profile/{{ w.address }}" target="_blank">{{ w.username or w.address[:12] }}</a></td>
+                    <td class="{{ 'positive' if w.pnl >= 0 else 'negative' }}">${{ "{:,.0f}".format(w.pnl or 0) }}</td>
+                    <td>${{ "{:,.0f}".format(w.volume or 0) }}</td>
+                    <td>{{ "%.1f"|format(w.win_rate or 0) }}%</td>
+                    <td>{{ w.total_trades or "?" }}</td>
+                    <td style="color:var(--text-dim)">{{ w.strategy_type or "General" }}</td>
+                    <td><span style="color:var(--green);font-size:.75rem">Following</span></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if top_wallets %}
+    <div class="section">
+        <h2>Top Wallets</h2>
+        <div class="table-wrapper">
+            <table>
+                <thead><tr><th>Rank</th><th>Trader</th><th>Score</th><th>PnL</th><th>Win Rate</th><th>Rec</th><th>Action</th></tr></thead>
+                <tbody>
+                {% for w in top_wallets %}
+                <tr>
+                    <td style="color:var(--text-dim)">#{{ w.rank }}</td>
+                    <td><a href="https://polymarket.com/profile/{{ w.address }}" target="_blank">{{ w.username or w.address[:12] }}</a></td>
+                    <td style="font-weight:700">{{ w.score }}/10</td>
+                    <td class="{{ 'positive' if w.pnl >= 0 else 'negative' }}">${{ "{:,.0f}".format(w.pnl or 0) }}</td>
+                    <td>{{ "%.1f"|format(w.win_rate or 0) }}%</td>
+                    <td><span style="{% if w.recommendation == 'COPY' %}color:var(--green){% elif w.recommendation == 'SKIP' %}color:var(--red){% else %}color:var(--gold){% endif %};font-weight:600;font-size:.75rem">{{ w.recommendation }}</span></td>
+                    <td>
+                        {% if w.followed %}
+                        <span style="color:var(--green);font-size:.75rem">Following</span>
+                        {% else %}
+                        <span style="color:var(--text-dim);font-size:.75rem">Not following</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <footer>Super Sauna Club Trading Dashboard</footer>
+</div>
+</body>
+</html>
