@@ -141,6 +141,7 @@ python redeem_positions.py --exec
 | `MAX_ENTRY_PRICE` | 0.92 | Skip near-certain bets above 92¢ |
 | `MAX_COPIES_PER_MARKET` | 1 | One copy per market (prevents doubling up) |
 | `ENTRY_TRADE_SEC` | 300 | Ignore trades older than 5 minutes |
+| `MAX_HOURS_BEFORE_EVENT` | 0 | Only buy X hours before event (0=disabled) |
 
 ### Hedge Detection
 | Parameter | Default | Description |
@@ -231,6 +232,19 @@ Won positions are automatically sold at 96¢+ to recycle capital. No need to wai
 
 ### One Copy Per Market
 `MAX_COPIES_PER_MARKET=1` prevents the bot from doubling up on the same market when a trader adds to their position in waves.
+
+### Event Timing Filter (optional)
+When enabled, the bot only copies trades if the event starts within X hours. This prevents capital being locked in positions hours before games start. Uses the Polymarket Gamma API to fetch event start times.
+
+```env
+# Disabled (default) — copies immediately when trader buys
+MAX_HOURS_BEFORE_EVENT=0
+
+# Only copy if game starts within 3 hours
+MAX_HOURS_BEFORE_EVENT=3
+```
+
+Works for all sports (NBA, MLB, NHL, NCAA). For esports where the Gamma API doesn't have start times, the check is skipped and trades copy normally.
 
 ## Risks
 
