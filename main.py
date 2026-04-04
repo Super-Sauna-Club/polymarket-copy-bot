@@ -375,7 +375,15 @@ def main():
                                       (_pnl, _ot["id"]))
                         _cleaned += 1
                     elif _cp >= 0.99:
-                        _pnl = round((_ot["size"] or 0) * (1 / (_api_prices.get(_ot["condition_id"], 0.5) or 0.5) - 1), 2)
+                        # Won: shares × $1 - invested. Need entry_price from DB.
+                        _ep = 0
+                        try:
+                            _ep_row = _conn.execute("SELECT entry_price FROM copy_trades WHERE id=?", (_ot["id"],)).fetchone()
+                            _ep = _ep_row["entry_price"] if _ep_row else 0
+                        except Exception:
+                            pass
+                        _shares = (_ot["size"] or 0) / _ep if _ep > 0 else 0
+                        _pnl = round(_shares * 1.0 - (_ot["size"] or 0), 2)
                         _conn.execute("UPDATE copy_trades SET status='closed', pnl_realized=?, closed_at=datetime('now') WHERE id=?",
                                       (_pnl, _ot["id"]))
                         _cleaned += 1
