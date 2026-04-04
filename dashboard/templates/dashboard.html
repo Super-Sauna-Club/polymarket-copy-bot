@@ -696,16 +696,13 @@ function buildPreview(raw){
     // Best/worst
     const bHtml=best?'<span style="color:var(--green)"><span style="font-size:.82em;opacity:.6">best:</span> '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>').replace(/ W$/,' <span style="background:var(--green);color:#0a0a0a;font-size:.82em;padding:1px 4px;border-radius:2px;font-weight:700">WIN</span>')+'</span>':'';
     const wHtml=worst?'<span style="color:var(--red)"><span style="font-size:.82em;opacity:.6">worst:</span> '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>').replace(/ L$/,' <span style="background:var(--red);color:#0a0a0a;font-size:.82em;padding:1px 4px;border-radius:2px;font-weight:700">LOSS</span>')+'</span>':'';
-    return`<div style="display:grid;grid-template-columns:90px 80px 70px auto;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+    return`<div style="display:grid;grid-template-columns:90px 85px 70px 110px 1fr 1fr;gap:4px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
       <span style="color:var(--gold);font-weight:700;font-size:1.05em;overflow:hidden;text-overflow:ellipsis">${name}</span>
       <span style="color:${pnlCol};font-weight:700;font-size:1.15em;font-family:var(--mono)">\$${pnlStr}</span>
       <span style="font-size:.88em">${recHtml}</span>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="color:${vc};font-weight:700;font-size:.75em;letter-spacing:.08em;background:${vBg};padding:2px 8px;border-radius:3px;text-transform:uppercase;white-space:nowrap">${verdict}</span>
-        ${lastPnl?'<span style="color:var(--text-dim);font-size:.88em">'+lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:600">$'+v+'</span>')+'</span>':''}
-        ${bHtml?'<span style="font-size:.88em">'+bHtml+'</span>':''}
-        ${wHtml?'<span style="font-size:.88em">'+wHtml+'</span>':''}
-      </div>
+      <span style="color:${vc};font-weight:700;font-size:.72em;letter-spacing:.08em;background:${vBg};padding:2px 8px;border-radius:3px;text-transform:uppercase;white-space:nowrap;text-align:center">${verdict}${lastPnl?' <span style="color:var(--text-mid);font-weight:400;text-transform:none">'+lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:600">$'+v+'</span>')+'</span>':''}</span>
+      <span style="font-size:.88em">${bHtml||''}</span>
+      <span style="font-size:.88em">${wHtml||''}</span>
     </div>`;
   }).join('');
 }
