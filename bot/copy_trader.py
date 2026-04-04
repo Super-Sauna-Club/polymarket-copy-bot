@@ -909,7 +909,8 @@ def copy_followed_wallets():
                     except Exception:
                         pass  # API fail → don't block, just skip check
 
-            # Max $ per event (same game/match)
+            # Max $ per event (same game/match) — cap size to remaining budget
+            _evt_remaining = None
             if config.MAX_PER_EVENT > 0:
                 _evt = t.get("event_slug", "") or ""
                 if _evt:
@@ -917,8 +918,9 @@ def copy_followed_wallets():
                         ot["size"] for ot in _cached_open_trades
                         if ot.get("event_slug", "") == _evt
                     )
-                    if _evt_invested >= config.MAX_PER_EVENT:
-                        logger.info("[SKIP] Event exposure $%.0f >= max $%.0f: %s",
+                    _evt_remaining = config.MAX_PER_EVENT - _evt_invested
+                    if _evt_remaining < MIN_TRADE_SIZE:
+                        logger.info("[SKIP] Event full $%.0f/$%.0f: %s",
                                     _evt_invested, config.MAX_PER_EVENT, question[:40])
                         continue
 
@@ -946,8 +948,14 @@ def copy_followed_wallets():
             # Proportionaler Trader-Multiplikator: dieser Trade vs. Trader-Durchschnitt
             trader_ratio = (dollar_value / avg_trader_size) if avg_trader_size > 0 else 1.0
             size = _calculate_position_size(entry_price, balance, trader_ratio=trader_ratio)
-            logger.info("[SIZE] %s: trader=$%.0f avg=$%.0f ratio=%.2f → our=$%.2f | %s",
-                        username, dollar_value, avg_trader_size, trader_ratio, size, question[:35])
+            # Cap to event remaining budget
+            if _evt_remaining is not None and size > _evt_remaining:
+                size = round(_evt_remaining, 2)
+                logger.info("[SIZE] Capped to event budget: $%.2f (remaining $%.2f of $%.0f) | %s",
+                            size, _evt_remaining, config.MAX_PER_EVENT, question[:35])
+            else:
+                logger.info("[SIZE] %s: trader=$%.0f avg=$%.0f ratio=%.2f → our=$%.2f | %s",
+                            username, dollar_value, avg_trader_size, trader_ratio, size, question[:35])
 
             cash_left = balance - total_invested - size
             if cash_left < _load_dynamic_floor():
