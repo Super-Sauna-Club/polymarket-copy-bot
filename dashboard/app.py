@@ -74,11 +74,16 @@ def api_live_data():
     _sport_map = {"mlb": "\u26BE MLB", "nba": "\U0001F3C0 NBA", "nhl": "\U0001F3D2 NHL",
                   "nfl": "\U0001F3C8 NFL", "ufc": "\U0001F94A UFC", "mma": "\U0001F94A MMA",
                   "atp": "\U0001F3BE ATP", "wta": "\U0001F3BE WTA",
-                  "soccer": "\u26BD SOC", "liga": "\u26BD SOC", "epl": "\u26BD SOC",
-                  "ucl": "\u26BD SOC", "copa": "\U0001F3BE", "charleston": "\U0001F3BE",
+                  "soccer": "\u26BD", "epl": "\u26BD EPL", "ucl": "\u26BD UCL",
+                  "efa-": "\u26BD EPL", "lal-": "\u26BD LAL",
+                  "copa": "\U0001F3BE", "charleston": "\U0001F3BE",
                   "lol": "\U0001F3AE LOL", "csgo": "\U0001F3AE CS", "ncaa": "\U0001F3C0 NCAA",
                   "bundesliga": "\u26BD BL", "freiburg": "\u26BD BL", "bayern": "\u26BD BL",
-                  "puebla": "\u26BD MX", "juarez": "\u26BD MX", "cruz": "\u26BD MX"}
+                  "mex-": "\u26BD MX", "liga mx": "\u26BD MX",
+                  "puebla": "\u26BD MX", "juarez": "\u26BD MX", "cruz": "\u26BD MX",
+                  "necaxa": "\u26BD MX", "tigre": "\u26BD MX", "tijuana": "\u26BD MX", "mazatl": "\u26BD MX",
+                  "southampton": "\u26BD EPL", "barcelona": "\u26BD LAL", "madrid": "\u26BD LAL",
+                  "serie a": "\u26BD SA", "premier": "\u26BD EPL"}
 
     def _detect_sport(slug, title):
         s = (slug or "").lower() + " " + (title or "").lower()

@@ -351,14 +351,17 @@ function alert_(t){const o=$('alOv');o.style.display='flex';
 function dSp(t){const s=((t.market_slug||t.slug||'')+(t.market_question||t.title||t.detail||'')).toLowerCase();
   const m=[['mlb','\u26BE'],['nba','\uD83C\uDFC0'],['nhl','\uD83C\uDFD2'],['nfl','\uD83C\uDFC8'],
     ['ufc','\uD83E\uDD4A'],['mma','\uD83E\uDD4A'],['atp','\uD83C\uDFBE'],['wta','\uD83C\uDFBE'],
-    ['charleston','\uD83C\uDFBE'],['copa','\uD83C\uDFBE'],['soccer','\u26BD'],['liga','\u26BD'],
+    ['charleston','\uD83C\uDFBE'],['copa','\uD83C\uDFBE'],['soccer','\u26BD'],
+    ['efa-','\u26BD'],['lal-','\u26BD'],['mex-','\u26BD'],
     ['epl','\u26BD'],['ucl','\u26BD'],['bundesliga','\u26BD'],['freiburg','\u26BD'],['bayern','\u26BD'],
-    ['puebla','\u26BD'],['juarez','\u26BD'],['lol','\uD83C\uDFAE'],['ncaa','\uD83C\uDFC0']];
+    ['puebla','\u26BD'],['juarez','\u26BD'],['necaxa','\u26BD'],['tigre','\u26BD'],['tijuana','\u26BD'],['mazatl','\u26BD'],
+    ['southampton','\u26BD'],['barcelona','\u26BD'],['madrid','\u26BD'],
+    ['lol','\uD83C\uDFAE'],['ncaa','\uD83C\uDFC0']];
   for(const[k,v]of m){if(s.includes(k))return v}return''}
 function ticker(){const el=$('ticker');
   if(!hist.length&&D&&D.open_trades&&D.open_trades.length){
     const it=D.open_trades.slice(0,12).map(t=>{const p=t.pnl_unrealized||0;const e=dSp(t);
-      return`<span class="tk-i"><span class="s">${e||'#'+t.id}</span>${(t.market_question||'').substring(0,30)} \u00B7 ${t.side} @ ${Math.round((t.entry_price||0)*100)}\u00A2 \u00B7 <span class="${p>=0?'up':'dn'}">${sg(p)}$${fm(p)}</span></span>`});
+      return`<span class="tk-i"><span class="s">${e} #${t.id}</span>${(t.market_question||'').substring(0,30)} \u00B7 ${t.side} @ ${Math.round((t.entry_price||0)*100)}\u00A2 \u00B7 <span class="${p>=0?'up':'dn'}">${sg(p)}$${fm(p)}</span></span>`});
     el.innerHTML=it.join('')+it.join('');return}
   if(hist.length){const it=hist.slice(0,12).map(t=>
     `<span class="tk-i"><span class="s">\u26A1</span>${t.trader} \u2192 ${(t.market||'').substring(0,25)} \u00B7 ${t.side} @ ${t.price}\u00A2 \u00B7 <span class="up">$${fm(t.size)}</span></span>`);
