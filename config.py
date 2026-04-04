@@ -28,7 +28,9 @@ RATIO_MAX = float(os.getenv("RATIO_MAX", "3.0"))
 CASH_FLOOR = float(os.getenv("CASH_FLOOR", "0"))
 CASH_RECOVERY = float(os.getenv("CASH_RECOVERY", "6"))
 MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "100"))
-MAX_EXPOSURE_PER_TRADER = float(os.getenv("MAX_EXPOSURE_PER_TRADER", "0.33"))  # Max % of portfolio per trader
+MAX_EXPOSURE_PER_TRADER = float(os.getenv("MAX_EXPOSURE_PER_TRADER", "0.33"))  # Default max % per trader
+# Per-trader override: "name:pct,name:pct" e.g. "sovereign2013:0.40,xsaghav:0.30"
+TRADER_EXPOSURE_MAP = os.getenv("TRADER_EXPOSURE_MAP", "")
 
 # --- Trade Filters ---
 MIN_TRADER_USD = float(os.getenv("MIN_TRADER_USD", "3"))
