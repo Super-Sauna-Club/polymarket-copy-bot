@@ -29,31 +29,31 @@
 
         <!-- Period Filter -->
         <div class="filters">
-            <button class="filter-btn" data-period="day" onclick="setPeriod('day')">1 Tag</button>
-            <button class="filter-btn active" data-period="week" onclick="setPeriod('week')">1 Woche</button>
-            <button class="filter-btn" data-period="month" onclick="setPeriod('month')">1 Monat</button>
-            <button class="filter-btn" data-period="year" onclick="setPeriod('year')">1 Jahr</button>
-            <button class="filter-btn" data-period="all" onclick="setPeriod('all')">Alles</button>
+            <button class="filter-btn" data-period="day" onclick="setPeriod('day')">1 Day</button>
+            <button class="filter-btn active" data-period="week" onclick="setPeriod('week')">1 Week</button>
+            <button class="filter-btn" data-period="month" onclick="setPeriod('month')">1 Month</button>
+            <button class="filter-btn" data-period="year" onclick="setPeriod('year')">1 Year</button>
+            <button class="filter-btn" data-period="all" onclick="setPeriod('all')">All</button>
             <span style="color: var(--text-dim); margin: 0 8px;">|</span>
-            <label style="color: var(--text-dim); font-size: 0.85rem;">Von:</label>
+            <label style="color: var(--text-dim); font-size: 0.85rem;">From:</label>
             <input type="date" class="date-input" id="dateFrom">
-            <label style="color: var(--text-dim); font-size: 0.85rem;">Bis:</label>
+            <label style="color: var(--text-dim); font-size: 0.85rem;">To:</label>
             <input type="date" class="date-input" id="dateTo">
-            <button class="filter-btn" onclick="setCustomRange()">Filtern</button>
+            <button class="filter-btn" onclick="setCustomRange()">Filter</button>
         </div>
 
         <!-- Stats -->
         <div class="stats-row" id="statsRow">
-            <div class="stat-box"><div class="val" id="statTrades">-</div><div class="lbl">Trades</div></div>
-            <div class="stat-box"><div class="val" id="statWins">-</div><div class="lbl">Gewonnen</div></div>
-            <div class="stat-box"><div class="val" id="statLosses">-</div><div class="lbl">Verloren</div></div>
+            <div class="stat-box"><div class="val" id="statTrades">-</div><div class="lbl">Positions</div></div>
+            <div class="stat-box"><div class="val" id="statWins">-</div><div class="lbl">Won</div></div>
+            <div class="stat-box"><div class="val" id="statLosses">-</div><div class="lbl">Lost</div></div>
             <div class="stat-box"><div class="val" id="statWinRate">-</div><div class="lbl">Win Rate</div></div>
             <div class="stat-box"><div class="val" id="statPnl">-</div><div class="lbl">Profit</div></div>
         </div>
 
         <!-- Chart -->
         <div class="section">
-            <h2>Portfolio-Verlauf</h2>
+            <h2>Equity Curve</h2>
             <div class="chart-container" style="height: 350px;">
                 <canvas id="historyChart"></canvas>
             </div>
@@ -61,26 +61,26 @@
 
         <!-- Trade History Table -->
         <div class="section">
-            <h2>Alle Copy-Trades</h2>
+            <h2>All Positions</h2>
             <div class="table-wrapper scroll-table">
                 <table id="tradesTable">
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Wallet</th>
-                            <th>Markt</th>
-                            <th>Seite</th>
+                            <th>Trader</th>
+                            <th>Market</th>
+                            <th>Side</th>
                             <th>Entry</th>
                             <th>Size</th>
                             <th>Profit</th>
                             <th>Status</th>
-                            <th>Datum</th>
+                            <th>Date</th>
                         </tr>
                     </thead>
                     <tbody id="tradesBody"></tbody>
                 </table>
             </div>
-            <p class="empty" id="noTrades" style="display:none;">Keine Trades in diesem Zeitraum</p>
+            <p class="empty" id="noTrades" style="display:none;">No positions in this period</p>
         </div>
 
         <footer>Super Sauna Club Trading Dashboard</footer>
