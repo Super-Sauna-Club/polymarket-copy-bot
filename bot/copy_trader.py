@@ -539,8 +539,9 @@ def copy_followed_wallets():
         cash = 0
     balance = cash
     total_invested = 0
-    # Portfolio value for exposure limit (cash + open positions value)
-    _open_value = sum(t["size"] for t in db.get_open_copy_trades())
+    # Cache open trades for this scan (avoid repeated DB queries in loops)
+    _cached_open_trades = list(db.get_open_copy_trades())
+    _open_value = sum(t["size"] for t in _cached_open_trades)
     portfolio_value = cash + _open_value
     logger.info("PORTFOLIO: Wallet=$%.2f | Positions=$%.2f | Total=$%.2f", cash, _open_value, portfolio_value)
 
@@ -569,7 +570,7 @@ def copy_followed_wallets():
                             _ep = _e.split(":", 1)
                             _hw_exp_map[_ep[0].strip().lower()] = float(_ep[1].strip())
                     _max_t = portfolio_value * _hw_exp_map.get(td["username"].lower(), config.MAX_EXPOSURE_PER_TRADER)
-                    _t_inv = sum(x["size"] for x in db.get_open_copy_trades() if x["wallet_address"] == td["address"])
+                    _t_inv = sum(x["size"] for x in _cached_open_trades if x["wallet_address"] == td["address"])
                     if _t_inv >= _max_t:
                         logger.info("[HEDGE-WAIT] Trader exposure $%.0f >= max $%.0f, skipping: %s", _t_inv, _max_t, td["question"][:40])
                         continue
@@ -653,8 +654,7 @@ def copy_followed_wallets():
         # === FAST SELL DETECTION: RN1 SELLs sofort erkennen (alle 5s) ===
         new_sells = [t for t in recent_trades if t["trade_type"] == "SELL" and t["timestamp"] > last_ts]
         if new_sells:
-            open_trades = db.get_open_copy_trades()
-            open_by_cid = {t["condition_id"]: t for t in open_trades if t["condition_id"] and t["wallet_address"] == address}
+            open_by_cid = {t["condition_id"]: t for t in _cached_open_trades if t["condition_id"] and t["wallet_address"] == address}
             for sell in new_sells:
                 sell_cid = sell.get("condition_id", "")
                 if sell_cid and sell_cid in open_by_cid:
@@ -731,7 +731,7 @@ def copy_followed_wallets():
 
             # Hedge-Detection: wenn wir schon eine Seite offen haben, Gegenseite blocken
             if cid:
-                existing = [x for x in db.get_open_copy_trades()
+                existing = [x for x in _cached_open_trades
                             if x["condition_id"] == cid and x["wallet_address"] == address]
                 if existing:
                     existing_sides = {x["side"] for x in existing}
@@ -887,8 +887,8 @@ def copy_followed_wallets():
             _trader_pct = _exp_map.get(username.lower(), config.MAX_EXPOSURE_PER_TRADER)
             max_per_trader = portfolio_value * _trader_pct
             trader_invested = sum(
-                t["size"] for t in db.get_open_copy_trades()
-                if t["wallet_address"] == address
+                ot["size"] for ot in _cached_open_trades
+                if ot["wallet_address"] == address
             )
             if trader_invested >= max_per_trader:
                 logger.info("[SKIP] Trader exposure $%.0f >= max $%.0f (%.0f%%): %s",

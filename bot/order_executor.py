@@ -102,6 +102,14 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
         except Exception:
             logger.debug("Fee rate lookup failed, using default 200bps")
 
+        # Get balance BEFORE order for delta verification
+        bal_before = 0
+        try:
+            _params_pre = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
+            bal_before = float(client.get_balance_allowance(_params_pre).get("balance", 0)) / 1_000_000
+        except Exception:
+            pass
+
         # Market Order: try with increasing slippage until filled
         for slippage in [0.05, 0.08, 0.12]:
             limit_price = round(min(price + slippage, 0.99), 2)
@@ -124,14 +132,17 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
                 if status in ("matched", "filled", "live"):
                     success = True
                 elif status == "delayed":
-                    # "delayed" = queued, may or may not fill. Verify after short wait.
+                    # "delayed" = queued, may or may not fill. Verify via balance delta.
                     time.sleep(3)
                     try:
-                        params = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
-                        bal_after = float(client.get_balance_allowance(params).get("balance", 0)) / 1_000_000
-                        success = bal_after > 0.1
-                        logger.info("ORDER VERIFY: delayed → %s (balance=%.2f shares)",
-                                    "FILLED" if success else "NOT FILLED", bal_after)
+                        _params_post = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
+                        bal_after = float(client.get_balance_allowance(_params_post).get("balance", 0)) / 1_000_000
+                        delta = bal_after - bal_before
+                        success = delta > 0.1
+                        logger.info("ORDER VERIFY: delayed → %s (before=%.2f after=%.2f delta=%.2f)",
+                                    "FILLED" if success else "NOT FILLED", bal_before, bal_after, delta)
+                        if success:
+                            bal_before = bal_after  # update for next retry iteration
                     except Exception:
                         success = False
                         logger.warning("ORDER VERIFY: could not check balance, treating as failed")
@@ -221,7 +232,7 @@ def get_wallet_balance() -> float:
         collateral = client.get_balance_allowance(params)
         raw = float(collateral.get("balance", 0)) if isinstance(collateral, dict) else 0
         # USDC hat 6 Dezimalstellen (1000000 = $1.00)
-        return raw / 1_000_000 if raw > 1000 else raw
+        return raw / 1_000_000
     except Exception as e:
         logger.error("Fehler beim Abfragen der Balance: %s", e)
         return 0.0
