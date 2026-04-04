@@ -583,6 +583,15 @@ def copy_followed_wallets():
                     if _t_inv >= _max_t:
                         logger.info("[HEDGE-WAIT] Trader exposure $%.0f >= max $%.0f, skipping: %s", _t_inv, _max_t, td["question"][:40])
                         continue
+                    # Max per event check
+                    if config.MAX_PER_EVENT > 0:
+                        _hw_evt = td["trade_data"].get("event_slug", "") or ""
+                        if _hw_evt:
+                            _hw_evt_inv = sum(x["size"] for x in _cached_open_trades if x.get("event_slug", "") == _hw_evt)
+                            if _hw_evt_inv >= config.MAX_PER_EVENT:
+                                logger.info("[HEDGE-WAIT] Event exposure $%.0f >= max $%.0f, skipping: %s",
+                                            _hw_evt_inv, config.MAX_PER_EVENT, td["question"][:40])
+                        continue
                     size = _calculate_position_size(entry_price, cash, 1.0)
                     if size < MIN_TRADE_SIZE or cash < size:
                         continue
@@ -899,6 +908,19 @@ def copy_followed_wallets():
                                     continue
                     except Exception:
                         pass  # API fail → don't block, just skip check
+
+            # Max $ per event (same game/match)
+            if config.MAX_PER_EVENT > 0:
+                _evt = t.get("event_slug", "") or ""
+                if _evt:
+                    _evt_invested = sum(
+                        ot["size"] for ot in _cached_open_trades
+                        if ot.get("event_slug", "") == _evt
+                    )
+                    if _evt_invested >= config.MAX_PER_EVENT:
+                        logger.info("[SKIP] Event exposure $%.0f >= max $%.0f: %s",
+                                    _evt_invested, config.MAX_PER_EVENT, question[:40])
+                        continue
 
             # Apply realistic entry slippage (+1 tick) — simulates execution delay
             entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, 0.97), 4)
