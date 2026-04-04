@@ -319,9 +319,29 @@ def api_settings():
         {"key": "CASH_FLOOR", "value": "$" + str(config.CASH_FLOOR), "desc": "Stop buying below this"},
         {"key": "MAX_SPREAD", "value": str(int(config.MAX_SPREAD * 100)) + "%", "desc": "Max bid/ask spread"},
     ]
-    traders = [{"username": w["username"], "address": w["address"], "pnl": w["pnl"],
-                "win_rate": w["win_rate"], "domain": w["strategy_type"] or "Sports"}
-               for w in followed]
+    traders = []
+    for w in followed:
+        t = {"username": w["username"], "address": w["address"], "pnl": w["pnl"],
+             "win_rate": w["win_rate"], "domain": w["strategy_type"] or "Sports"}
+        # Enrich with live leaderboard data if DB has no stats
+        if not t["pnl"]:
+            try:
+                import requests as _rq2
+                lr = _rq2.get("https://data-api.polymarket.com/v1/leaderboard",
+                              params={"user": w["address"], "timePeriod": "ALL"}, timeout=5)
+                if lr.ok and lr.json():
+                    ld = lr.json()[0]
+                    t["pnl"] = round(float(ld.get("pnl", 0)), 2)
+            except Exception:
+                pass
+        if not t["win_rate"]:
+            try:
+                from bot.wallet_scanner import fetch_wallet_trades
+                st = fetch_wallet_trades(w["address"])
+                t["win_rate"] = st["win_rate"]
+            except Exception:
+                pass
+        traders.append(t)
     status = [
         {"name": "Bot Service", "ok": True, "label": "Active"},
         {"name": "Redeem Timer", "ok": True, "label": "Every 15 min"},
