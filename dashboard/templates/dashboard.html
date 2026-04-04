@@ -365,7 +365,21 @@ function dSp(t){const s=((t.market_slug||t.slug||'')+(t.market_question||'')+(t.
     ['lol','\u2694\uFE0F','LOL'],['league of legends','\u2694\uFE0F','LOL'],['drx','\u2694\uFE0F','LOL'],['t1 ','\u2694\uFE0F','LOL'],['hanwha','\u2694\uFE0F','LOL'],['sk gaming','\u2694\uFE0F','LOL'],['shifters','\u2694\uFE0F','LOL'],['kiwoom','\u2694\uFE0F','LOL'],['dplus','\u2694\uFE0F','LOL'],['top esports','\u2694\uFE0F','LOL'],['invictus','\u2694\uFE0F','LOL'],
     ['valorant','\uD83D\uDD2B','VAL'],['paper rex','\uD83D\uDD2B','VAL'],['nongshim','\uD83D\uDD2B','VAL'],
     ['dota','\uD83E\uDDD9','DOTA'],['nigma','\uD83E\uDDD9','DOTA'],['pipsqueak','\uD83E\uDDD9','DOTA'],
-    ['ncaa','\uD83C\uDFC0','NCAA']];
+    ['ncaa','\uD83C\uDFC0','NCAA'],['cwbb','\uD83C\uDFC0','NCAA'],
+    ['chi-','\u26BD','CHN'],['bl2-','\u26BD','BL2'],['bun-','\u26BD','BL'],['ere-','\u26BD','ERE'],
+    ['es2-','\u26BD','ES2'],['tur-','\u26BD','TUR'],['fl1-','\u26BD','FL1'],['arg-','\u26BD','ARG'],
+    ['ser-','\u26BD','SA'],['por-','\u26BD','POR'],['mls-','\u26BD','MLS'],['jpn-','\u26BD','JPN'],
+    ['kor-','\u26BD','KOR'],['sco-','\u26BD','SCO'],['bel-','\u26BD','BEL'],['ned-','\u26BD','NED'],
+    ['kaiserslautern','\u26BD','BL2'],['darmstadt','\u26BD','BL2'],['bielefeld','\u26BD','BL2'],
+    ['bochum','\u26BD','BL2'],['magdeburg','\u26BD','BL2'],['fortuna','\u26BD','BL2'],
+    ['borussia','\u26BD','BL'],['heidenheim','\u26BD','BL'],['werder','\u26BD','BL'],['leipzig','\u26BD','BL'],
+    ['qingdao','\u26BD','CHN'],['shandong','\u26BD','CHN'],['liaoning','\u26BD','CHN'],
+    ['beijing','\u26BD','CHN'],['shanghai','\u26BD','CHN'],['dalian','\u26BD','CHN'],['henan','\u26BD','CHN'],
+    ['deportivo','\u26BD','ES2'],['mallorca','\u26BD','LAL'],
+    ['nec ','\u26BD','ERE'],['excelsior','\u26BD','ERE'],
+    ['san lorenzo','\u26BD','ARG'],['estudiante','\u26BD','ARG'],
+    ['paris','\u26BD','FL1'],['psg','\u26BD','FL1'],['toulouse','\u26BD','FL1'],
+    ['chelsea','\u26BD','EPL'],['port vale','\u26BD','EFL']];
   for(const[k,e,l]of m){if(s.includes(k))return{e,l}}return{e:'',l:''}}
 function ticker(){const el=$('ticker');
   if(!hist.length&&D&&D.open_trades&&D.open_trades.length){
