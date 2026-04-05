@@ -63,6 +63,8 @@ def sse_stream():
                              "Connection": "keep-alive"})
 
 
+_event_start_cache = {}  # slug -> {"start": iso, "end": iso}
+
 @app.route("/api/live-data")
 def api_live_data():
     """Dashboard data — reads directly from Polymarket API for accuracy."""
@@ -203,6 +205,29 @@ def api_live_data():
             })
     except Exception:
         pass
+
+    # Fetch event start times from Gamma API (cached per slug)
+    _unique_slugs = set(p.get("event_slug", "") for p in open_positions if p.get("event_slug"))
+    _uncached = [s for s in _unique_slugs if s not in _event_start_cache]
+    for _slug in _uncached:
+        try:
+            _ev_r = _req.get("https://gamma-api.polymarket.com/events",
+                             params={"slug": _slug.split("/")[-1]}, timeout=3)
+            _ev_data = _ev_r.json() if _ev_r.ok else None
+            if _ev_data:
+                _ev = _ev_data[0] if isinstance(_ev_data, list) else _ev_data
+                _st = _ev.get("startTime", "") or _ev.get("startDate", "")
+                _et = _ev.get("endTime", "") or _ev.get("endDate", "")
+                if _st:
+                    _event_start_cache[_slug] = {"start": _st, "end": _et}
+        except Exception:
+            _event_start_cache[_slug] = {}  # mark as tried, don't retry
+    for _pos in open_positions:
+        _es = _pos.get("event_slug", "")
+        _cached = _event_start_cache.get(_es)
+        if _cached:
+            _pos["event_start"] = _cached.get("start", "")
+            _pos["event_end"] = _cached.get("end", "")
 
     # Closed positions from DB (accurate bot-level data)
     closed_positions = []
