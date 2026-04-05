@@ -743,7 +743,7 @@ def copy_followed_wallets():
                     with _gc() as _rc:
                         _was_closed = _rc.execute(
                             "SELECT id FROM copy_trades WHERE condition_id=? AND status='closed' "
-                            "AND closed_at > datetime('now', '-%d minutes')" % config.NO_REBUY_MINUTES, (cid,)
+                            "AND closed_at > datetime('now', '-' || ? || ' minutes')", (cid, str(config.NO_REBUY_MINUTES))
                         ).fetchone()
                         if _was_closed:
                             logger.info("[SKIP] Recently closed (no-rebuy %dmin): %s",
