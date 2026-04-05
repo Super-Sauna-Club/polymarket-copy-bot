@@ -29,16 +29,15 @@ ENTRY_TRADE_SEC = config.ENTRY_TRADE_SEC
 MAX_OPEN_POSITIONS = config.MAX_OPEN_POSITIONS
 BET_SIZE_PCT = config.BET_SIZE_PCT
 
-# Feste Werte (selten geändert)
-CASH_RESERVE = 0
-ENTRY_SLIPPAGE = 0.0
-TRADE_SEC_FROM_RESOLVE = 120
-IDLE_TRIGGER_SECS = 20 * 60
-MAX_CATEGORY_PCT = 0.30
-BUY_THRESHOLD = 0.0
-PENDING_BUY_MIN_SECS = 210
-PENDING_BUY_MAX_SECS = 900
-MAX_TRADES_PER_SCAN = 3
+# Alle weiteren Parameter aus config.py (einstellbar via .env)
+CASH_RESERVE = config.CASH_RESERVE
+ENTRY_SLIPPAGE = config.ENTRY_SLIPPAGE
+TRADE_SEC_FROM_RESOLVE = config.TRADE_SEC_FROM_RESOLVE
+IDLE_TRIGGER_SECS = config.IDLE_TRIGGER_SECS
+BUY_THRESHOLD = config.BUY_THRESHOLD
+PENDING_BUY_MIN_SECS = config.PENDING_BUY_MIN_SECS
+PENDING_BUY_MAX_SECS = config.PENDING_BUY_MAX_SECS
+MAX_TRADES_PER_SCAN = config.MAX_TRADES_PER_SCAN
 
 # Per-trader exposure map (parsed once at module load)
 _EXPOSURE_MAP: dict[str, float] = {}
@@ -59,8 +58,8 @@ _idle_replaced_at: dict = {}
 _hedge_queue: dict = {}  # event_slug → {sides: {side: trade_data}, queued_at: ts, address: addr}
 
 # Circuit Breaker: nach N aufeinanderfolgenden API-Fehlern → X Sekunden Pause
-_CB_THRESHOLD = 8
-_CB_PAUSE_SECS = 60
+_CB_THRESHOLD = config.CB_THRESHOLD
+_CB_PAUSE_SECS = config.CB_PAUSE_SECS
 _cb_failures = 0
 _cb_open_until = 0.0
 _cb_lock = __import__("threading").Lock()
@@ -83,7 +82,7 @@ def _cb_fail():
                            _CB_THRESHOLD, _CB_PAUSE_SECS)
 
 
-def _api_get(url, params=None, timeout=10, max_retries=3):
+def _api_get(url, params=None, timeout=config.API_TIMEOUT, max_retries=config.API_MAX_RETRIES):
     """GET mit exponential Backoff (1s, 2s, 4s) und Circuit Breaker."""
     global _cb_open_until
     if _time.time() < _cb_open_until:
@@ -136,12 +135,12 @@ def _calculate_position_size(entry_price: float, balance: float, trader_ratio: f
 
     # Preis-Signal Multiplikator
     edge = abs(entry_price - 0.50)
-    if edge >= 0.30:
-        price_mult = 1.50
-    elif edge >= 0.15:
-        price_mult = 1.00
+    if edge >= config.PRICE_EDGE_HIGH:
+        price_mult = config.PRICE_MULT_HIGH
+    elif edge >= config.PRICE_EDGE_MED:
+        price_mult = config.PRICE_MULT_MED
     else:
-        price_mult = 0.60
+        price_mult = config.PRICE_MULT_LOW
 
     # Proportionaler Trader-Multiplikator
     clamped_ratio = max(config.RATIO_MIN, min(config.RATIO_MAX, trader_ratio))
@@ -153,7 +152,7 @@ def _calculate_position_size(entry_price: float, balance: float, trader_ratio: f
 
 CASH_FLOOR = config.CASH_FLOOR
 CASH_RECOVERY = config.CASH_RECOVERY
-SAVE_POINT_STEP = 1.0 # Floor steigt pro Recovery-Zyklus um $1
+SAVE_POINT_STEP = config.SAVE_POINT_STEP
 
 import os as _os
 
@@ -348,7 +347,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
             cid = pos.get("condition_id", "")
             if not cid or cid in known:
                 continue
-            if pos.get("redeemable", False) or pos.get("size", 0) < 0.5:
+            if pos.get("redeemable", False) or pos.get("size", 0) < config.MIN_POSITION_SIZE_FILTER:
                 continue
 
             entry_price_raw = pos.get("current_price", 0)
@@ -368,7 +367,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
             if end_ts and (_time.time() - end_ts) > 0:
                 continue  # Markt bereits vorbei
 
-            entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, 0.97), 4)
+            entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, config.MAX_ENTRY_PRICE_CAP), 4)
             size = _calculate_position_size(entry_price, balance)
             cash_left = balance - total_invested - size
             if cash_left < _load_dynamic_floor():
@@ -415,7 +414,7 @@ def _run_baseline(address: str, username: str):
     if positions:
         logger.info("[BASELINE] %s — saving %d existing positions (not copying)", username, len(positions))
         for pos in positions:
-            if pos["size"] < 0.50 or pos.get("redeemable", False):
+            if pos["size"] < config.MIN_POSITION_SIZE_FILTER or pos.get("redeemable", False):
                 continue
             cid = pos.get("condition_id", "")
             if cid and not db.is_trade_duplicate(address, pos["market_question"], cid):
@@ -445,7 +444,7 @@ def _run_idle_check(followed: list):
     global _idle_replaced_at
     now = int(_time.time())
     idle_threshold = now - IDLE_TRIGGER_SECS
-    REPLACE_COOLDOWN = 30 * 60  # 30 Min Cooldown nach Replace — verhindert Loop
+    REPLACE_COOLDOWN = config.IDLE_REPLACE_COOLDOWN
     idle_addresses = set()
     for w in followed:
         # Noch nicht baselined → timestamp ist 0 → wäre fälschlicherweise "idle"
@@ -519,8 +518,9 @@ def copy_followed_wallets():
         if not db.is_wallet_baselined(address):
             _run_baseline(address, username)
 
-    # Idle-Check deaktiviert — nur manuell gefolgte Trader
-    # _run_idle_check(followed)
+    # Idle-Check (nur wenn via .env aktiviert)
+    if config.IDLE_REPLACE_ENABLED:
+        _run_idle_check(followed)
 
     if not _check_trade_limit():
         return 0
@@ -530,6 +530,24 @@ def copy_followed_wallets():
     if stats["open_trades"] >= MAX_OPEN_POSITIONS:
         logger.info("[SKIP] Max offene Positionen erreicht (%d/%d)", stats["open_trades"], MAX_OPEN_POSITIONS)
         return 0
+
+    # Max daily loss check
+    if config.MAX_DAILY_LOSS > 0:
+        daily_pnl = db.get_daily_copy_pnl()
+        if daily_pnl <= -config.MAX_DAILY_LOSS:
+            logger.info("[SKIP] Max daily loss reached ($%.2f <= -$%.0f)", daily_pnl, config.MAX_DAILY_LOSS)
+            return 0
+
+    # Max daily trades check
+    if config.MAX_DAILY_TRADES > 0:
+        from database.db import get_connection as _gc_daily
+        with _gc_daily() as _dc:
+            _today_ct = _dc.execute(
+                "SELECT COUNT(*) as c FROM copy_trades WHERE status != 'baseline' AND created_at >= date('now','localtime')"
+            ).fetchone()["c"]
+        if _today_ct >= config.MAX_DAILY_TRADES:
+            logger.info("[SKIP] Max daily trades reached (%d/%d)", _today_ct, config.MAX_DAILY_TRADES)
+            return 0
 
     logger.info("[SCAN] Checking %d wallets for new positions...", len(followed))
 
@@ -641,14 +659,14 @@ def copy_followed_wallets():
         scan_cfg = db.get_or_create_scan_config(address)
         last_ts = scan_cfg.get("last_trade_timestamp", 0) or 0
 
-        recent_trades = fetch_wallet_recent_trades(address, limit=50)
+        recent_trades = fetch_wallet_recent_trades(address, limit=config.RECENT_TRADES_LIMIT)
         if not recent_trades:
             logger.info("[SCAN] %s: keine Trades von API", username)
             continue
 
         # Durchschnittliche Trade-Größe des Traders (für proportionales Sizing)
         buy_sizes = [t.get("usdc_size", 0) for t in recent_trades if t["trade_type"] == "BUY" and t.get("usdc_size", 0) > 0]
-        avg_trader_size = (sum(buy_sizes) / len(buy_sizes)) if buy_sizes else 10.0
+        avg_trader_size = (sum(buy_sizes) / len(buy_sizes)) if buy_sizes else config.DEFAULT_AVG_TRADER_SIZE
 
         # Update timestamp to newest trade seen (for next scan)
         max_ts = max(t["timestamp"] for t in recent_trades)
@@ -668,7 +686,7 @@ def copy_followed_wallets():
                     username, len(all_buys), len(new_buy_trades), last_ts)
 
         # === FAST SELL DETECTION: RN1 SELLs sofort erkennen (alle 5s) ===
-        new_sells = [t for t in recent_trades if t["trade_type"] == "SELL" and t["timestamp"] > last_ts]
+        new_sells = [t for t in recent_trades if t["trade_type"] == "SELL" and t["timestamp"] > last_ts] if config.COPY_SELLS else []
         if new_sells:
             open_by_cid = {t["condition_id"]: t for t in _cached_open_trades if t["condition_id"] and t["wallet_address"] == address}
             for sell in new_sells:
@@ -704,7 +722,8 @@ def copy_followed_wallets():
                         pass
 
         # Position-Diff: Fallback für Trades die der Activity-Feed verpasst hat
-        new_trades += _position_diff_scan(address, username, balance, total_invested)
+        if config.POSITION_DIFF_ENABLED:
+            new_trades += _position_diff_scan(address, username, balance, total_invested)
 
         for t in new_buy_trades:
             cid = t.get("condition_id", "")
@@ -831,10 +850,10 @@ def copy_followed_wallets():
             if live_price is None:
                 event_slug_t = t.get("event_slug", "") or t.get("market_slug", "") or ""
                 live_price = _fetch_live_price(event_slug_t, question, t["side"], cid)
-            # Live-Preis nur nehmen wenn: >= 5 Cent UND max 50% Abweichung vom Trader-Preis
-            if live_price is not None and live_price >= 0.05 and 0 < live_price < 1:
+            # Live-Preis nur nehmen wenn: >= LIVE_PRICE_MIN UND max X% Abweichung vom Trader-Preis
+            if live_price is not None and live_price >= config.LIVE_PRICE_MIN and 0 < live_price < 1:
                 diff_pct = abs(live_price - trader_price) / trader_price
-                if diff_pct <= 0.50:
+                if diff_pct <= config.LIVE_PRICE_MAX_DEVIATION:
                     entry_price_raw = live_price
                     if abs(live_price - trader_price) > 0.005:
                         logger.info("[PRICE] Live=%.0fc vs Trader=%.0fc: %s",
@@ -922,7 +941,7 @@ def copy_followed_wallets():
                         continue
 
             # Apply realistic entry slippage (+1 tick) — simulates execution delay
-            entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, 0.97), 4)
+            entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, config.MAX_ENTRY_PRICE_CAP), 4)
 
             # Max exposure per trader (per-trader override or default)
             _trader_pct = _EXPOSURE_MAP.get(username.lower(), config.MAX_EXPOSURE_PER_TRADER)
@@ -995,10 +1014,10 @@ def copy_followed_wallets():
                 # Echten Fill-Betrag bestimmen: Differenz der Wallet-Balance
                 # Short delay to let wallet API reflect the full deduction
                 try:
-                    _time.sleep(2)
+                    _time.sleep(config.FILL_VERIFY_DELAY_SECS)
                     bal_after = get_wallet_balance()
                     real_fill = round(bal_before - bal_after, 2)
-                    if real_fill > 0.10:
+                    if real_fill > config.MIN_FILL_AMOUNT:
                         planned_size = size
                         trade["size"] = real_fill
                         size = real_fill
@@ -1047,7 +1066,7 @@ def copy_followed_wallets():
     return new_trades
 
 
-MISS_COUNT_TO_CLOSE = 180  # Position muss 180x hintereinander fehlen (= 30 Min bei 10s-Intervall)
+MISS_COUNT_TO_CLOSE = config.MISS_COUNT_TO_CLOSE
 
 
 def _fetch_live_price(event_slug: str, market_question: str, side: str, condition_id: str = "") -> float | None:
@@ -1212,9 +1231,34 @@ def update_copy_positions():
                             shares = trade["size"] / trade["entry_price"] if trade["entry_price"] > 0 else 0
                             pnl = (effective_price - trade["entry_price"]) * shares
 
-                            # Kein Stop-Loss, kein Profit-Cap — nur schliessen wenn Markt resolved oder Trader verkauft
                             db.update_copy_trade_price(trade["id"], effective_price, round(pnl, 2))
                             logger.debug("Trade #%d: %.0f%c | P&L=$%.2f", trade["id"], effective_price * 100, 0xa2, pnl)
+
+                            # Stop-Loss: auto-sell if loss exceeds threshold
+                            if config.STOP_LOSS_PCT > 0 and trade["entry_price"] > 0:
+                                loss_pct = (trade["entry_price"] - effective_price) / trade["entry_price"]
+                                if loss_pct >= config.STOP_LOSS_PCT:
+                                    if LIVE_MODE and trade_cid:
+                                        sell_shares(trade_cid, trade["side"], effective_price)
+                                    db.close_copy_trade(trade["id"], round(pnl, 2))
+                                    logger.info("[STOP-LOSS] #%d closed at %.0f%% loss: $%.2f | %s",
+                                                trade["id"], loss_pct * 100, pnl, trade["market_question"][:40])
+                                    db.log_activity("sell", "LOSS", "Stop-loss triggered",
+                                                    "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:35], pnl), round(pnl, 2))
+                                    continue
+
+                            # Take-Profit: auto-sell if gain exceeds threshold
+                            if config.TAKE_PROFIT_PCT > 0 and trade["entry_price"] > 0:
+                                gain_pct = (effective_price - trade["entry_price"]) / trade["entry_price"]
+                                if gain_pct >= config.TAKE_PROFIT_PCT:
+                                    if LIVE_MODE and trade_cid:
+                                        sell_shares(trade_cid, trade["side"], effective_price)
+                                    db.close_copy_trade(trade["id"], round(pnl, 2))
+                                    logger.info("[TAKE-PROFIT] #%d closed at %.0f%% gain: $%.2f | %s",
+                                                trade["id"], gain_pct * 100, pnl, trade["market_question"][:40])
+                                    db.log_activity("sell", "WIN", "Take-profit triggered",
+                                                    "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:35], pnl), round(pnl, 2))
+                                    continue
 
 
 

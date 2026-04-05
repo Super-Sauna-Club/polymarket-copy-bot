@@ -43,6 +43,67 @@ MAX_HOURS_BEFORE_EVENT = float(os.getenv("MAX_HOURS_BEFORE_EVENT", "0"))  # Only
 NO_REBUY_MINUTES = int(os.getenv("NO_REBUY_MINUTES", "0"))  # Don't re-enter closed markets for X min (0=disabled)
 MAX_PER_EVENT = float(os.getenv("MAX_PER_EVENT", "15"))  # Max $ invested per event/game (0=disabled)
 
+# --- Position Sizing: Price Signal ---
+PRICE_EDGE_HIGH = float(os.getenv("PRICE_EDGE_HIGH", "0.30"))
+PRICE_MULT_HIGH = float(os.getenv("PRICE_MULT_HIGH", "1.50"))
+PRICE_EDGE_MED = float(os.getenv("PRICE_EDGE_MED", "0.15"))
+PRICE_MULT_MED = float(os.getenv("PRICE_MULT_MED", "1.00"))
+PRICE_MULT_LOW = float(os.getenv("PRICE_MULT_LOW", "0.60"))
+DEFAULT_AVG_TRADER_SIZE = float(os.getenv("DEFAULT_AVG_TRADER_SIZE", "10.0"))
+
+# --- Entry Mechanics ---
+CASH_RESERVE = float(os.getenv("CASH_RESERVE", "0"))
+ENTRY_SLIPPAGE = float(os.getenv("ENTRY_SLIPPAGE", "0.0"))
+MAX_ENTRY_PRICE_CAP = float(os.getenv("MAX_ENTRY_PRICE_CAP", "0.97"))
+TRADE_SEC_FROM_RESOLVE = int(os.getenv("TRADE_SEC_FROM_RESOLVE", "120"))
+
+# --- Pending Buy Queue ---
+BUY_THRESHOLD = float(os.getenv("BUY_THRESHOLD", "0.0"))
+PENDING_BUY_MIN_SECS = int(os.getenv("PENDING_BUY_MIN_SECS", "210"))
+PENDING_BUY_MAX_SECS = int(os.getenv("PENDING_BUY_MAX_SECS", "900"))
+
+# --- Scan Throttling ---
+MAX_TRADES_PER_SCAN = int(os.getenv("MAX_TRADES_PER_SCAN", "3"))
+RECENT_TRADES_LIMIT = int(os.getenv("RECENT_TRADES_LIMIT", "50"))
+
+# --- Cash Floor Recovery ---
+SAVE_POINT_STEP = float(os.getenv("SAVE_POINT_STEP", "1.0"))
+
+# --- Circuit Breaker ---
+CB_THRESHOLD = int(os.getenv("CB_THRESHOLD", "8"))
+CB_PAUSE_SECS = int(os.getenv("CB_PAUSE_SECS", "60"))
+
+# --- API Tuning ---
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", "10"))
+API_MAX_RETRIES = int(os.getenv("API_MAX_RETRIES", "3"))
+
+# --- Live Price Validation ---
+LIVE_PRICE_MIN = float(os.getenv("LIVE_PRICE_MIN", "0.05"))
+LIVE_PRICE_MAX_DEVIATION = float(os.getenv("LIVE_PRICE_MAX_DEVIATION", "0.50"))
+
+# --- Fill Verification ---
+FILL_VERIFY_DELAY_SECS = int(os.getenv("FILL_VERIFY_DELAY_SECS", "2"))
+MIN_FILL_AMOUNT = float(os.getenv("MIN_FILL_AMOUNT", "0.10"))
+
+# --- Position Tracking ---
+MIN_POSITION_SIZE_FILTER = float(os.getenv("MIN_POSITION_SIZE_FILTER", "0.50"))
+MISS_COUNT_TO_CLOSE = int(os.getenv("MISS_COUNT_TO_CLOSE", "180"))
+
+# --- Idle Trader Replacement ---
+IDLE_REPLACE_ENABLED = os.getenv("IDLE_REPLACE_ENABLED", "false").lower() in ("true", "1", "yes")
+IDLE_TRIGGER_SECS = int(os.getenv("IDLE_TRIGGER_SECS", "1200"))
+IDLE_REPLACE_COOLDOWN = int(os.getenv("IDLE_REPLACE_COOLDOWN", "1800"))
+
+# --- Risk Management ---
+MAX_DAILY_LOSS = float(os.getenv("MAX_DAILY_LOSS", "0"))
+MAX_DAILY_TRADES = int(os.getenv("MAX_DAILY_TRADES", "0"))
+STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", "0"))
+TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "0"))
+
+# --- Feature Toggles ---
+COPY_SELLS = os.getenv("COPY_SELLS", "true").lower() in ("true", "1", "yes")
+POSITION_DIFF_ENABLED = os.getenv("POSITION_DIFF_ENABLED", "true").lower() in ("true", "1", "yes")
+
 # --- Hedge Detection ---
 HEDGE_WAIT_SECS = int(os.getenv("HEDGE_WAIT_SECS", "60"))
 HEDGE_WAIT_TRADERS = os.getenv("HEDGE_WAIT_TRADERS", "")
