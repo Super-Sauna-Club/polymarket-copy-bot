@@ -1216,11 +1216,11 @@ def update_copy_positions():
                             db.update_copy_trade_price(trade["id"], effective_price, round(pnl, 2))
                             logger.debug("Trade #%d: %.0f%c | P&L=$%.2f", trade["id"], effective_price * 100, 0xa2, pnl)
 
-                            # Log significant unrealized losses (once per position)
-                            if pnl <= -3.0 and trade["id"] not in _loss_warned:
+                            # Log when position is essentially dead (price <=5c, entry was >=15c)
+                            if effective_price <= 0.05 and trade["entry_price"] >= 0.15 and trade["id"] not in _loss_warned:
                                 _loss_warned.add(trade["id"])
                                 db.log_activity("warning", "DROP",
-                                                "Position dropping — %s" % trade["wallet_username"],
+                                                "Position near zero — %s" % trade["wallet_username"],
                                                 "#%d %s — now %dc (entry %dc), P&L $%.2f" % (
                                                     trade["id"], (trade["market_question"] or "")[:35],
                                                     round(effective_price * 100), round(trade["entry_price"] * 100), round(pnl, 2)),
