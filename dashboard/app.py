@@ -96,14 +96,37 @@ def api_live_data():
                   "atp": "\U0001F3BE ATP", "wta": "\U0001F3BE WTA",
                   "soccer": "\u26BD", "epl": "\u26BD EPL", "ucl": "\u26BD UCL",
                   "efa-": "\u26BD EPL", "lal-": "\u26BD LAL",
-                  "copa": "\U0001F3BE", "charleston": "\U0001F3BE",
-                  "lol": "\U0001F3AE LOL", "csgo": "\U0001F3AE CS", "ncaa": "\U0001F3C0 NCAA",
+                  "copa": "\U0001F3BE", "charleston": "\U0001F3BE", "monte carlo": "\U0001F3BE",
+                  "lol": "\U0001F3AE LOL", "csgo": "\U0001F3AE CS", "cs2": "\U0001F3AE CS",
+                  "counter-strike": "\U0001F3AE CS", "dota": "\U0001F9D9 DOTA", "valorant": "\U0001F52B VAL",
+                  "ncaa": "\U0001F3C0 NCAA",
                   "bundesliga": "\u26BD BL", "freiburg": "\u26BD BL", "bayern": "\u26BD BL",
                   "mex-": "\u26BD MX", "liga mx": "\u26BD MX",
                   "puebla": "\u26BD MX", "juarez": "\u26BD MX", "cruz": "\u26BD MX",
                   "necaxa": "\u26BD MX", "tigre": "\u26BD MX", "tijuana": "\u26BD MX", "mazatl": "\u26BD MX",
                   "southampton": "\u26BD EPL", "barcelona": "\u26BD LAL", "madrid": "\u26BD LAL",
-                  "serie a": "\u26BD SA", "premier": "\u26BD EPL"}
+                  "serie a": "\u26BD SA", "premier": "\u26BD EPL",
+                  # NHL teams
+                  "avalanche": "\U0001F3D2 NHL", "blackhawks": "\U0001F3D2 NHL", "bruins": "\U0001F3D2 NHL",
+                  "canadiens": "\U0001F3D2 NHL", "canucks": "\U0001F3D2 NHL", "capitals": "\U0001F3D2 NHL",
+                  "coyotes": "\U0001F3D2 NHL", "devils": "\U0001F3D2 NHL", "ducks": "\U0001F3D2 NHL",
+                  "flames": "\U0001F3D2 NHL", "flyers": "\U0001F3D2 NHL", "hurricanes": "\U0001F3D2 NHL",
+                  "islanders": "\U0001F3D2 NHL", "jets": "\U0001F3D2 NHL", "kings": "\U0001F3D2 NHL",
+                  "kraken": "\U0001F3D2 NHL", "lightning": "\U0001F3D2 NHL", "maple leafs": "\U0001F3D2 NHL",
+                  "oilers": "\U0001F3D2 NHL", "panthers": "\U0001F3D2 NHL", "penguins": "\U0001F3D2 NHL",
+                  "predators": "\U0001F3D2 NHL", "rangers": "\U0001F3D2 NHL", "red wings": "\U0001F3D2 NHL",
+                  "sabres": "\U0001F3D2 NHL", "senators": "\U0001F3D2 NHL", "sharks": "\U0001F3D2 NHL",
+                  "blues": "\U0001F3D2 NHL", "stars": "\U0001F3D2 NHL", "wild": "\U0001F3D2 NHL",
+                  # MLB teams
+                  "astros": "\u26BE MLB", "athletics": "\u26BE MLB", "blue jays": "\u26BE MLB",
+                  "braves": "\u26BE MLB", "brewers": "\u26BE MLB", "cardinals": "\u26BE MLB",
+                  "cubs": "\u26BE MLB", "diamondbacks": "\u26BE MLB", "dodgers": "\u26BE MLB",
+                  "guardians": "\u26BE MLB", "mariners": "\u26BE MLB", "marlins": "\u26BE MLB",
+                  "mets": "\u26BE MLB", "nationals": "\u26BE MLB", "orioles": "\u26BE MLB",
+                  "padres": "\u26BE MLB", "phillies": "\u26BE MLB", "pirates": "\u26BE MLB",
+                  "rays": "\u26BE MLB", "red sox": "\u26BE MLB", "reds": "\u26BE MLB",
+                  "rockies": "\u26BE MLB", "royals": "\u26BE MLB", "tigers": "\u26BE MLB",
+                  "twins": "\u26BE MLB", "white sox": "\u26BE MLB", "yankees": "\u26BE MLB"}
 
     def _detect_sport(slug, title):
         s = (slug or "").lower() + " " + (title or "").lower()
