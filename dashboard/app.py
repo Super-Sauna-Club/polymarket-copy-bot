@@ -152,7 +152,7 @@ def api_live_data():
         from database.db import get_connection
         with get_connection() as _conn:
             for _row in _conn.execute(
-                "SELECT condition_id, wallet_username, created_at, closed_at, "
+                "SELECT id, condition_id, wallet_username, created_at, closed_at, "
                 "size, entry_price, status FROM copy_trades "
                 "WHERE condition_id != '' AND status != 'baseline' "
                 "ORDER BY created_at DESC"
@@ -228,7 +228,7 @@ def api_live_data():
             _show_pnl = round(_shares * (cp - _show_entry), 2) if _shares > 0 else round(cv - iv, 2)
 
             open_positions.append({
-                "id": hash(_cid) % 10000,
+                "id": _open_match.get("id", hash(_cid) % 10000) if _open_match else hash(_cid) % 10000,
                 "wallet_username": _trader_by_cid.get(_cid, "—"),
                 "wallet_address": funder,
                 "market_question": rp.get("title") or rp.get("question", ""),
