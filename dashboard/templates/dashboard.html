@@ -411,7 +411,7 @@ function alertClose(t){const o=$('alOv');o.style.display='flex';
     <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl" style="color:${w?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}$${(t.pnl||0).toFixed(2)}</span> @ ${t.price||0}\u00A2 \u00B7 via <span class="hl">${t.trader||'?'}</span></div>
     </div>${gifHtml}</div>`;
-  if(bigWin){try{const a=new Audio('/static/money-button.mp3');a.volume=0.05;a.play()}catch(e){}}
+  if(bigWin){try{const a=new Audio('/static/money-button.mp3');a.volume=0.02;a.play()}catch(e){}}
   setTimeout(()=>{o.style.display='none'},6000)}
 
 function initSSE(){try{const es=new EventSource('/api/stream');
