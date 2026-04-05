@@ -706,7 +706,6 @@ function fmtReport(t){
     .replace(/(  )(\$[+-][\d.]+\s+)([^<\d][^<]*?)(\s+\d+c>)/g,'$1$2<span style="color:var(--text-dim)">$3</span>$4');
 }
 function buildPreview(raw){
-  // Parse all lines first, then render as one table
   const lines=raw.split('\n').filter(l=>l.trim());
   const parsed=[];
   for(const line of lines){
@@ -724,29 +723,34 @@ function buildPreview(raw){
     }
     parsed.push({name,pnlStr,pnl:parseFloat(pnlStr),record,verdict,best,worst,lastPnl});
   }
-  return'<table style="width:100%;border-collapse:collapse">'+parsed.filter(Boolean).map(p=>{
+  return parsed.filter(Boolean).map(p=>{
     const{name,pnlStr,pnl,record,verdict,best,worst,lastPnl}=p;
     const pnlCol=pnl>=0?'var(--green)':'var(--red)';
-    const recHtml=record.replace(/(\d+)W/g,'<span style="color:var(--green);font-weight:600">$1W</span>')
-                        .replace(/(\d+)L/g,'<span style="color:var(--red);font-weight:600">$1L</span>')
+    const recHtml=record.replace(/(\d+)W/g,'<span style="color:var(--green);font-weight:700">$1W</span>')
+                        .replace(/(\d+)L/g,'<span style="color:var(--red);font-weight:700">$1L</span>')
                         .replace(/(\d+ open)/g,'<span style="color:var(--text-dim)">$1</span>');
     const vc=verdict.includes('profitable')||verdict.includes('winning')?'var(--green)':
              verdict.includes('losing')?'var(--red)':verdict==='mixed'?'var(--gold)':'var(--text-dim)';
-    const vBg=verdict.includes('profitable')||verdict.includes('winning')?'rgba(52,211,153,.12)':
-              verdict.includes('losing')?'rgba(248,113,113,.12)':verdict==='mixed'?'rgba(201,168,76,.1)':'rgba(92,90,106,.1)';
-    const bH=best?'<span style="color:var(--green)">▲ '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>').replace(/ W$/,' <span style="background:var(--green);color:#0a0a0a;font-size:.8em;padding:0 3px;border-radius:2px;font-weight:700">WIN</span>')+'</span>':'';
-    const wH=worst?'<span style="color:var(--red)">▼ '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>').replace(/ L$/,' <span style="background:var(--red);color:#0a0a0a;font-size:.8em;padding:0 3px;border-radius:2px;font-weight:700">LOSS</span>')+'</span>':'';
-    const lH=lastPnl?lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:600">$'+v+'</span>'):'';
-    return`<tr style="border-bottom:1px solid var(--border)">
-      <td style="color:var(--gold);font-weight:700;font-size:1.05em;padding:8px 4px">${name}</td>
-      <td style="color:${pnlCol};font-weight:700;font-size:1.1em;font-family:var(--mono);padding:8px 4px">\$${pnlStr}</td>
-      <td style="font-size:.88em;padding:8px 4px">${recHtml}</td>
-      <td style="padding:8px 4px"><span style="color:${vc};font-weight:700;font-size:.7em;letter-spacing:.06em;background:${vBg};padding:2px 7px;border-radius:3px;text-transform:uppercase">${verdict}</span></td>
-      <td style="font-size:.88em;color:var(--text-dim);padding:8px 4px">${lH}</td>
-      <td style="font-size:.88em;padding:8px 4px">${bH}</td>
-      <td style="font-size:.88em;padding:8px 4px">${wH}</td>
-    </tr>`;
-  }).join('')+'</table>';
+    const vBg=verdict.includes('profitable')||verdict.includes('winning')?'rgba(52,211,153,.1)':
+              verdict.includes('losing')?'rgba(248,113,113,.1)':verdict==='mixed'?'rgba(201,168,76,.08)':'rgba(92,90,106,.08)';
+    const bH=best?'<div style="color:var(--green);font-size:.78em;margin-top:3px">\u25B2 '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>').replace(/ W$/,' <span style="background:var(--green);color:#0a0a0a;font-size:.85em;padding:0 4px;border-radius:2px;font-weight:700">WIN</span>')+'</div>':'';
+    const wH=worst?'<div style="color:var(--red);font-size:.78em;margin-top:2px">\u25BC '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>').replace(/ L$/,' <span style="background:var(--red);color:#0a0a0a;font-size:.85em;padding:0 4px;border-radius:2px;font-weight:700">LOSS</span>')+'</div>':'';
+    const lH=lastPnl?lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:700">$'+v+'</span>'):'';
+    return`<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <span style="color:var(--gold);font-weight:700;font-size:1.05em">${name}</span>
+          <span style="margin-left:10px;font-size:.78em">${recHtml}</span>
+          <span style="margin-left:8px;color:${vc};font-weight:700;font-size:.68em;letter-spacing:.06em;background:${vBg};padding:2px 8px;border-radius:3px;text-transform:uppercase">${verdict}</span>
+        </div>
+        <div style="text-align:right">
+          <span style="color:${pnlCol};font-weight:700;font-size:1.15em;font-family:var(--mono)">\$${pnlStr}</span>
+          ${lH?'<span style="margin-left:10px;font-size:.82em">'+lH+'</span>':''}
+        </div>
+      </div>
+      ${(bH||wH)?'<div style="margin-top:4px;padding-left:2px">'+bH+wH+'</div>':''}
+    </div>`;
+  }).join('');
 }
 function loadReport(){
   fetch('/api/report/latest').then(r=>r.json()).then(d=>{
