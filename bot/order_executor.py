@@ -102,15 +102,16 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
         except Exception:
             logger.debug("Fee rate lookup failed, using default 200bps")
 
-        # Get balance BEFORE order for delta verification
-        bal_before = 0
+        # Get USDC balance BEFORE order for delayed-order verification
+        bal_before_usdc = 0
         try:
-            _params_pre = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
-            bal_before = float(client.get_balance_allowance(_params_pre).get("balance", 0)) / 1_000_000
+            bal_before_usdc = get_wallet_balance()
         except Exception:
             pass
 
         # Market Order: try with increasing slippage until filled
+        # IMPORTANT: never retry after "delayed" — the queued order might still fill,
+        # and a retry would create a SECOND order that also fills (double spend).
         for slippage in [0.05, 0.08, 0.12]:
             limit_price = round(min(price + slippage, 0.99), 2)
 
@@ -132,20 +133,27 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
                 if status in ("matched", "filled", "live"):
                     success = True
                 elif status == "delayed":
-                    # "delayed" = queued, may or may not fill. Verify via balance delta.
-                    time.sleep(3)
+                    # "delayed" = queued, may or may not fill.
+                    # Wait longer and check USDC balance (more reliable than token balance).
+                    # Do NOT retry — a second order would cause double spending.
+                    time.sleep(8)
                     try:
-                        _params_post = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
-                        bal_after = float(client.get_balance_allowance(_params_post).get("balance", 0)) / 1_000_000
-                        delta = bal_after - bal_before
-                        success = delta > 0.1
-                        logger.info("ORDER VERIFY: delayed → %s (before=%.2f after=%.2f delta=%.2f)",
-                                    "FILLED" if success else "NOT FILLED", bal_before, bal_after, delta)
-                        if success:
-                            bal_before = bal_after  # update for next retry iteration
+                        _usdc_after = get_wallet_balance()
+                        _usdc_delta = bal_before_usdc - _usdc_after
+                        success = _usdc_delta > 0.5
+                        logger.info("ORDER VERIFY: delayed → %s (USDC before=%.2f after=%.2f spent=%.2f)",
+                                    "FILLED" if success else "NOT FILLED", bal_before_usdc, _usdc_after, _usdc_delta)
                     except Exception:
                         success = False
-                        logger.warning("ORDER VERIFY: could not check balance, treating as failed")
+                        logger.warning("ORDER VERIFY: could not check USDC balance, treating as failed")
+                    # Whether filled or not, do NOT retry after delayed — return result
+                    if success:
+                        logger.info("ORDER BUY: $%.2f @ %.0fc (limit %.0fc +%.0fc slip) | %s | FILLED (delayed)",
+                                    amount_usd, price * 100, limit_price * 100, slippage * 100, side)
+                        return response
+                    else:
+                        logger.warning("ORDER BUY: delayed order did not fill after 8s — giving up (no retry to prevent double spend)")
+                        return None
             elif response:
                 success = True
 
