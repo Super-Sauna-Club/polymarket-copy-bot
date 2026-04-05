@@ -130,52 +130,37 @@ def main():
     from bot.order_executor import get_wallet_balance
     bal_before = get_wallet_balance()
 
-    logger.info("Redeeming all resolved positions...")
+    logger.info("Redeeming %d resolved positions ($%.2f)...", len(resolved), total)
     condition_ids = [p.get("condition_id") for p in resolved if p.get("condition_id")]
     redeemed_total = 0
     failed_total = 0
+    import time as _rt
 
-    # Process in batches of 10, then retry failed ones individually
-    batch_size = 10
-    for i in range(0, len(condition_ids), batch_size):
-        batch = condition_ids[i:i + batch_size]
-        try:
-            r = service.redeem(batch, batch_size=len(batch))
-            success = len(r.success_list) if hasattr(r, 'success_list') else 0
-            errors = len(r.error_condition_ids) if hasattr(r, 'error_condition_ids') else 0
+    # Try redeem_all first (sometimes works for all at once)
+    try:
+        result = service.redeem_all(batch_size=10)
+        success = len(result.success_list) if hasattr(result, 'success_list') else 0
+        if success > 0:
             redeemed_total += success
-            logger.info("Batch %d-%d: %d redeemed, %d errors", i, i + len(batch), success, errors)
+            logger.info("redeem_all: %d redeemed", success)
+    except Exception as e:
+        logger.info("redeem_all failed: %s — trying individually", e)
 
-            # Retry failed ones individually
-            if hasattr(r, 'error_condition_ids') and r.error_condition_ids:
-                import time as _rt
-                for failed_cid in r.error_condition_ids:
-                    _rt.sleep(2)
-                    try:
-                        r2 = service.redeem([failed_cid], batch_size=1)
-                        if hasattr(r2, 'success_list') and r2.success_list:
-                            redeemed_total += 1
-                            logger.info("Retry OK: %s", failed_cid[:16])
-                        else:
-                            failed_total += 1
-                    except Exception:
-                        failed_total += 1
-        except Exception as e:
-            logger.error("Batch %d-%d failed: %s — trying individually", i, i + len(batch), e)
-            import time as _rt
-            for cid in batch:
-                try:
-                    _rt.sleep(2)
-                    r = service.redeem([cid], batch_size=1)
+    # Process remaining one by one (Relayer only handles 1 per transaction)
+    if redeemed_total < len(condition_ids):
+        for i, cid in enumerate(condition_ids):
+            try:
+                r = service.redeem([cid], batch_size=1)
+                if hasattr(r, 'success_list') and r.success_list:
                     redeemed_total += 1
-                    logger.info("Individual OK: %s", cid[:16])
-                except Exception as ex:
+                    vol = r.success_list[0].get('derivedMetadata', {}).get('operationCount', 1) if r.success_list else 0
+                    logger.info("[%d/%d] Redeemed: %s", i + 1, len(condition_ids), cid[:20])
+                else:
                     failed_total += 1
-                    logger.error("Individual failed: %s: %s", cid[:16], ex)
-
-        # Short pause between batches to avoid rate limiting
-        import time as _rt
-        _rt.sleep(3)
+            except Exception as ex:
+                failed_total += 1
+                logger.debug("[%d/%d] Failed: %s: %s", i + 1, len(condition_ids), cid[:16], ex)
+            _rt.sleep(2)  # pause between calls to avoid rate limiting
 
     logger.info("Redeem complete: %d redeemed, %d failed out of %d total",
                 redeemed_total, failed_total, len(condition_ids))

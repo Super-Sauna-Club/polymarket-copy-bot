@@ -467,6 +467,10 @@ def api_settings():
         {"key": "MAX_DAILY_TRADES", "value": str(config.MAX_DAILY_TRADES) if config.MAX_DAILY_TRADES > 0 else "OFF", "desc": "Max trades per day"},
         {"key": "STOP_LOSS_PCT", "value": _pct(config.STOP_LOSS_PCT) if config.STOP_LOSS_PCT > 0 else "OFF", "desc": "Auto-sell at X% loss"},
         {"key": "TAKE_PROFIT_PCT", "value": _pct(config.TAKE_PROFIT_PCT) if config.TAKE_PROFIT_PCT > 0 else "OFF", "desc": "Auto-sell at X% gain"},
+        # --- Auto-Sell / Auto-Close ---
+        {"key": "AUTO_SELL_PRICE", "value": str(int(config.AUTO_SELL_PRICE * 100)) + "c", "desc": "Sell winning positions above this price"},
+        {"key": "AUTO_CLOSE_WON_PRICE", "value": str(int(config.AUTO_CLOSE_WON_PRICE * 100)) + "c", "desc": "Mark as won above this price"},
+        {"key": "AUTO_CLOSE_LOST_PRICE", "value": str(int(config.AUTO_CLOSE_LOST_PRICE * 100)) + "c", "desc": "Mark as lost below this price"},
         # --- Feature Toggles ---
         {"key": "COPY_SELLS", "value": _onoff(config.COPY_SELLS), "desc": "Copy sell signals from traders"},
         {"key": "POSITION_DIFF_ENABLED", "value": _onoff(config.POSITION_DIFF_ENABLED), "desc": "Position-diff fallback scan"},
