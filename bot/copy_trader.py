@@ -57,6 +57,10 @@ _idle_replaced_at: dict = {}
 # Key: event_slug or market group → {sides: {side: trade_data}, queued_at: timestamp}
 _hedge_queue: dict = {}  # event_slug → {sides: {side: trade_data}, queued_at: ts, address: addr}
 
+# Event-Wait Queue: trades queued because event starts too far in the future
+# Key: condition_id → {trade_data, event_start_ts, queued_at}
+_event_wait_queue: dict = {}
+
 # Circuit Breaker: nach N aufeinanderfolgenden API-Fehlern → X Sekunden Pause
 _CB_THRESHOLD = config.CB_THRESHOLD
 _CB_PAUSE_SECS = config.CB_PAUSE_SECS
@@ -624,6 +628,47 @@ def copy_followed_wallets():
     portfolio_value = cash + _open_value
     logger.info("PORTFOLIO: Wallet=$%.2f | Positions=$%.2f | Total=$%.2f", cash, _open_value, portfolio_value)
 
+    # Event-Wait-Queue: fire trades whose events are now within the time window
+    if _event_wait_queue and config.MAX_HOURS_BEFORE_EVENT > 0:
+        _ew_now = _time.time()
+        _ew_expired = []
+        for _ew_cid, _ew in list(_event_wait_queue.items()):
+            hours_until = (_ew["event_start_ts"] - _ew_now) / 3600
+            # Event within window → execute
+            if 0 < hours_until <= config.MAX_HOURS_BEFORE_EVENT:
+                td = _ew["trade_data"]
+                _ew_size = _calculate_position_size(td["entry_price"], balance,
+                                                    portfolio_value=portfolio_value, trader_name=td["wallet_username"])
+                if _ew_size >= MIN_TRADE_SIZE and balance > _ew_size:
+                    if LIVE_MODE and _ew_cid:
+                        from bot.order_executor import get_wallet_balance as _gwb_ew
+                        if _gwb_ew() < _ew_size:
+                            continue
+                        order_resp = buy_shares(_ew_cid, td["side"], _ew_size, td["entry_price"])
+                        if not order_resp:
+                            continue
+                    td["size"] = _ew_size
+                    trade_id = db.create_copy_trade(td)
+                    if trade_id:
+                        new_trades += 1
+                        balance -= _ew_size
+                        _cached_open_trades.append(td)
+                        logger.info("[EVENT-WAIT] Trade #%d fired (event in %.1fh): %s @ %dc | $%.2f",
+                                    trade_id, hours_until, td["market_question"][:40],
+                                    round(td["entry_price"] * 100), _ew_size)
+                        db.log_activity("buy", "BUY", "Copied position from %s (event wait)" % td["wallet_username"],
+                                        "#%d %s @ %dc — $%.2f" % (trade_id, td["market_question"][:40],
+                                        round(td["entry_price"] * 100), _ew_size))
+                _ew_expired.append(_ew_cid)
+            # Event already started or passed → discard
+            elif hours_until <= 0:
+                _ew_expired.append(_ew_cid)
+            # Queued too long (>24h) → discard
+            elif _ew_now - _ew["queued_at"] > 86400:
+                _ew_expired.append(_ew_cid)
+        for _ek in _ew_expired:
+            _event_wait_queue.pop(_ek, None)
+
     # Pending-Buy-Queue abarbeiten
     new_trades += _process_pending_buys(balance, total_invested)
 
@@ -967,8 +1012,27 @@ def copy_followed_wallets():
                                 _now_utc = _dt.now(_tz.utc)
                                 _hours_until = (_start - _now_utc).total_seconds() / 3600
                                 if _hours_until > config.MAX_HOURS_BEFORE_EVENT:
-                                    logger.info("[SKIP] Event in %.1fh (max %.1fh): %s",
-                                                _hours_until, config.MAX_HOURS_BEFORE_EVENT, question[:40])
+                                    # Queue for later instead of skipping entirely
+                                    if cid and cid not in _event_wait_queue:
+                                        _event_wait_queue[cid] = {
+                                            "trade_data": {
+                                                "wallet_address": address,
+                                                "wallet_username": username,
+                                                "market_question": question,
+                                                "market_slug": t.get("market_slug", ""),
+                                                "event_slug": t.get("event_slug", ""),
+                                                "side": t["side"],
+                                                "entry_price": trader_price,
+                                                "size": 0,
+                                                "end_date": t.get("end_date", ""),
+                                                "outcome_label": t.get("outcome_label", ""),
+                                                "condition_id": cid,
+                                            },
+                                            "event_start_ts": _start.timestamp(),
+                                            "queued_at": _time.time(),
+                                        }
+                                        logger.info("[EVENT-WAIT] Queued (event in %.1fh, max %.1fh): %s",
+                                                    _hours_until, config.MAX_HOURS_BEFORE_EVENT, question[:40])
                                     continue
                     except Exception:
                         pass  # API fail → don't block, just skip check
