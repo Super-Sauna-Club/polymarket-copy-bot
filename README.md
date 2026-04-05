@@ -173,7 +173,8 @@ Price 45c → edge 0.05 → weak signal  → bet × 0.6
 | `MAX_ENTRY_PRICE` | 0.92 | Skip near-certain bets above 92c |
 | `MAX_COPIES_PER_MARKET` | 1 | One copy per market (prevents doubling up) |
 | `ENTRY_TRADE_SEC` | 300 | Ignore trades older than 5 minutes |
-| `MAX_HOURS_BEFORE_EVENT` | 0 | Only buy X hours before event (0=disabled) |
+| `MAX_HOURS_BEFORE_EVENT` | 0 | Queue trades if event > X hours away (0=disabled) |
+| `EVENT_WAIT_MIN_CASH` | 0 | Only queue distant events when cash < $X (0=always queue) |
 | `MAX_PER_EVENT` | 15 | Max $ per event/game (0=disabled) |
 | `NO_REBUY_MINUTES` | 0 | Block re-entry after close (0=disabled) |
 | `MAX_SPREAD` | 0.05 | Max bid/ask spread tolerance (5%) |
@@ -362,15 +363,25 @@ NO_REBUY_MINUTES=0    # Disabled (default) — allow re-entry
 ```
 
 ### Event Timing Filter (optional)
-When enabled, the bot only copies trades if the event starts within X hours. This prevents capital being locked in positions hours before games start. Uses the Polymarket Gamma API to fetch event start times.
+When enabled, trades on events starting more than X hours from now are **queued** instead of bought immediately. When the event enters the time window, the trade is executed with fresh pricing. This prevents capital being locked in positions hours before games start.
 
 ```env
 # Disabled (default) — copies immediately when trader buys
 MAX_HOURS_BEFORE_EVENT=0
 
-# Only copy if game starts within 3 hours
+# Always wait: queue if event > 3 hours away, buy when < 3 hours
 MAX_HOURS_BEFORE_EVENT=3
+EVENT_WAIT_MIN_CASH=0
+
+# Wait only when low on cash: queue if event > 3h AND cash < $100
+MAX_HOURS_BEFORE_EVENT=3
+EVENT_WAIT_MIN_CASH=100
 ```
+
+| Scenario | Cash $200, Event in 5h | Cash $50, Event in 5h | Event in 2h |
+|----------|----------------------|---------------------|-------------|
+| `MIN_CASH=0` | Queue | Queue | Buy now |
+| `MIN_CASH=100` | Buy now | Queue | Buy now |
 
 Works for all sports (NBA, MLB, NHL, NCAA). For esports where the Gamma API doesn't have start times, the check is skipped and trades copy normally.
 
