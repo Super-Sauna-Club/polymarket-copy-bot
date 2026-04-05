@@ -131,7 +131,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
 .side.yes{background:rgba(52,211,153,0.08);color:var(--green);border:1px solid rgba(52,211,153,0.2)}
 .side.no{background:rgba(248,113,113,0.08);color:var(--red);border:1px solid rgba(248,113,113,0.2)}
 .side.oth{background:var(--gold-dim);color:var(--gold);border:1px solid rgba(201,168,76,0.25)}
-.c-mkt a{color:var(--gold);text-decoration:none;transition:opacity .2s}
+.c-mkt a,.c-mkt2 a{color:var(--gold);text-decoration:none;transition:opacity .2s}
 .c-mkt a:hover{opacity:.7}
 .c-tr a{color:var(--text);text-decoration:none;font-weight:500}.c-tr a:hover{color:var(--gold)}
 .c-id{color:var(--text-dim);font-family:var(--mono);font-size:.82rem}
@@ -517,7 +517,7 @@ function evtTime(iso){
     if(diff>86400000){const d=Math.floor(diff/86400000);return'<span style="color:#f59e0b;font-weight:500">in '+d+'d</span>'}
     if(diff>3600000)return'<span style="color:#f59e0b;font-weight:500">in '+tf+'</span>';
     if(diff>0)return'<span style="color:#f59e0b;font-weight:600">\u23F3 '+tf+'</span>';
-    if(mins<=180)return'<span style="color:#60a5fa;font-weight:600">\u25CF LIVE '+tf+'</span>';
+    if(mins<=180)return'<span style="color:var(--green);font-weight:600">\u25CF LIVE '+tf+'</span>';
     if(mins<=360)return'<span style="color:var(--text-mid)">~ended</span>';
     return'<span style="color:var(--text-dim)">ended</span>';
   }catch(e){return'<span style="color:var(--text-dim)">—</span>'}}
