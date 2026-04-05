@@ -402,7 +402,7 @@ function beepClose(){if(!sfx)return;try{const o=AC.createOscillator(),g=AC.creat
 function alertClose(t){const o=$('alOv');o.style.display='flex';
   const w=t.pnl>=0;
   const bigWin=t.pnl>0&&t.size>0&&(t.pnl/t.size)>=0.5;
-  const gifHtml=bigWin?'<img src="https://media.tenor.com/mMk0ePGBsUAAAAd/ref-with-yellow-cards-fifa18-leonardo-di-caprio.gif" style="width:120px;border-radius:8px;margin-left:14px;flex-shrink:0" alt="Money GIF">':'';
+  const gifHtml=bigWin?'<img src="https://media1.tenor.com/m/sIBXbAf_oEcAAAAC/ref-with-yellow-cards-fifa18.gif" style="width:120px;border-radius:8px;margin-left:14px;flex-shrink:0" alt="Money GIF">':'';
   o.innerHTML=`<div class="al-ban" style="border-color:${w?'var(--green)':'var(--red)'}; display:flex;align-items:center">
     <div style="flex:1">
     <div class="al-lbl" style="color:${w?'var(--green)':'var(--red)'}">${w?'\u2705 POSITION CLOSED — WIN':'\u274C POSITION CLOSED — LOSS'}${bigWin?' \uD83D\uDCB0':''}</div>
