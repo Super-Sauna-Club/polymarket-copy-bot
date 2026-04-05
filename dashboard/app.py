@@ -250,7 +250,7 @@ def api_live_data():
     redeemable_value = sum(float(rp.get("currentValue", 0) or 0) for rp in all_raw if float(rp.get("curPrice", 0) or 0) >= 0.99)
     total_value = wallet + open_value
     total_pnl = total_value - DEPOSIT
-    wr = round(wins / max(wins + losses, 1) * 100, 1)
+    wr = round(wins / max(total_closed, 1) * 100, 1)
 
     followed = db.get_followed_wallets()
 
