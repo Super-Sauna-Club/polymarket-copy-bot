@@ -579,7 +579,7 @@ function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
     const mktLink=t.event_slug||t.market_slug?`<a href="https://polymarket.com/event/${t.event_slug||t.market_slug}" target="_blank" title="${mktFull}">${mktFull}</a>`:mktFull;
     const trName=t.wallet_username||'';
     return`<tr>
-      <td class="c-mkt2" style="white-space:normal;line-height:1.4;color:var(--gold)"><div style="font-weight:500"><span style="font-size:.72rem;margin-right:4px">${spH}</span>${mktLink}</div><div style="font-size:.7rem;color:var(--text-dim);margin-top:2px">${trName!=='\u2014'?trName:''} #${t.id}</div></td>
+      <td class="c-mkt2" style="white-space:normal;line-height:1.4;color:var(--gold)"><div style="font-weight:500"><span style="font-size:.72rem;margin-right:4px;color:var(--text)">${spH}</span>${mktLink}</div><div style="font-size:.7rem;color:var(--text-dim);margin-top:2px">${trName!=='\u2014'?trName:''} #${t.id}</div></td>
       <td class="c-side2">${sH(t.side,t.outcome_label)}</td>
       <td class="c-num">${Math.round((t.entry_price||0)*100)}\u00A2</td>
       <td class="c-num">${Math.round(((t.current_price||t.entry_price)||0)*100)}\u00A2</td>
