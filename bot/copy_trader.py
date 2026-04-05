@@ -557,7 +557,6 @@ def copy_followed_wallets():
         cash = get_wallet_balance()
     except Exception:
         cash = 0
-    balance = cash
     total_invested = 0
     # Cache open trades for this scan (convert Row→dict so .get() works everywhere)
     _cached_open_trades = [dict(t) for t in db.get_open_copy_trades()]
@@ -573,7 +572,9 @@ def copy_followed_wallets():
     except Exception:
         _open_value = sum(t["size"] for t in _cached_open_trades)  # fallback to DB
     portfolio_value = cash + _open_value
-    logger.info("PORTFOLIO: Wallet=$%.2f | Positions=$%.2f | Total=$%.2f", cash, _open_value, portfolio_value)
+    # Use portfolio value for bet sizing, cash for actual spending limit
+    balance = portfolio_value
+    logger.info("PORTFOLIO: Wallet=$%.2f | Positions=$%.2f | Total=$%.2f (sizing base=$%.2f)", cash, _open_value, portfolio_value, balance)
 
     # Pending-Buy-Queue abarbeiten
     new_trades += _process_pending_buys(balance, total_invested)
@@ -958,6 +959,22 @@ def copy_followed_wallets():
             # Proportionaler Trader-Multiplikator: dieser Trade vs. Trader-Durchschnitt
             trader_ratio = (dollar_value / avg_trader_size) if avg_trader_size > 0 else 1.0
             size = _calculate_position_size(entry_price, balance, trader_ratio=trader_ratio)
+
+            # Enforce MAX_POSITION_SIZE across ALL trades on same condition_id
+            _existing_on_market = sum(
+                ot["size"] for ot in _cached_open_trades
+                if ot.get("condition_id", "") == cid
+            )
+            if _existing_on_market >= MAX_POSITION_SIZE:
+                logger.info("[SKIP] Position cap reached $%.2f >= max $%.0f: %s",
+                            _existing_on_market, MAX_POSITION_SIZE, question[:40])
+                continue
+            _remaining_cap = MAX_POSITION_SIZE - _existing_on_market
+            if size > _remaining_cap:
+                size = round(_remaining_cap, 2)
+                logger.info("[SIZE] Capped to position limit: $%.2f (existing $%.2f, max $%.0f) | %s",
+                            size, _existing_on_market, MAX_POSITION_SIZE, question[:35])
+
             # Cap to event remaining budget
             if _evt_remaining is not None and size > _evt_remaining:
                 size = round(_evt_remaining, 2)
@@ -967,7 +984,7 @@ def copy_followed_wallets():
                 logger.info("[SIZE] %s: trader=$%.0f avg=$%.0f ratio=%.2f → our=$%.2f | %s",
                             username, dollar_value, avg_trader_size, trader_ratio, size, question[:35])
 
-            cash_left = balance - total_invested - size
+            cash_left = cash - total_invested - size
             if cash_left < _load_dynamic_floor():
                 logger.info("[SKIP] Cash-Floor erreicht (Cash $%.2f < Floor) — ueberspringe: %s",
                             cash_left, question[:40])
@@ -1136,20 +1153,29 @@ def update_copy_positions():
     """
     from collections import defaultdict
 
-    open_trades = db.get_open_copy_trades()
-    if not open_trades:
+    _all_open = db.get_open_copy_trades()
+    if not _all_open:
         return
 
+    # Filter out manually imported/wallet positions — they are managed via startup cleanup only
+    _skip_users = {"(manual)", "(wallet)"}
+    open_trades = [t for t in _all_open if t["wallet_username"] not in _skip_users]
+
     # Subscribe all open trades to WebSocket price feed (no-op if already subscribed)
-    for t in open_trades:
+    for t in _all_open:
         if t["condition_id"]:
             price_tracker.subscribe_condition(t["condition_id"])
 
     logger.debug("Updating %d open copy trades...", len(open_trades))
 
     # Group trades by wallet to fetch positions once per wallet
+    # Skip manually imported positions — they are tracked via our own wallet, not trader wallets
     trades_by_wallet = defaultdict(list)
+    _our_funder = config.POLYMARKET_FUNDER.lower() if config.POLYMARKET_FUNDER else ""
     for trade in open_trades:
+        _addr = (trade["wallet_address"] or "").lower()
+        if _addr == _our_funder or (trade["wallet_username"] or "") == "(manual)":
+            continue  # managed by startup cleanup, not trader position tracking
         trades_by_wallet[trade["wallet_address"]].append(trade)
 
     for wallet_address, wallet_trades in trades_by_wallet.items():

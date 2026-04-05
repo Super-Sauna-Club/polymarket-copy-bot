@@ -110,16 +110,22 @@ def update_prices():
                     if _cid_pos in _recently_closed and (_t.time() - _recently_closed[_cid_pos]) < 300:
                         continue
                     # Only auto-sell/close positions that are tracked in copy_trades
+                    # Skip wallet-imported positions (they are display-only)
+                    _skip_this = False
                     try:
                         from database.db import get_connection as _gc_check
                         with _gc_check() as _cc:
                             _is_ours = _cc.execute(
-                                "SELECT id FROM copy_trades WHERE condition_id=? AND status='open'", (_cid_pos,)
+                                "SELECT id, wallet_username FROM copy_trades WHERE condition_id=? AND status='open'", (_cid_pos,)
                             ).fetchone()
                         if not _is_ours:
-                            continue  # not our bot's position, skip
+                            _skip_this = True
+                        elif _is_ours["wallet_username"] in ("(manual)", "(wallet)"):
+                            _skip_this = True
                     except Exception:
-                        pass
+                        _skip_this = True  # on error, don't close
+                    if _skip_this:
+                        continue
                     # Close lost positions in DB (price went to 0)
                     if _cp <= 0.01 and _iv > 0.01:
                         _close_pnl = round(-_iv, 2)
@@ -391,13 +397,25 @@ def main():
             "user": config.POLYMARKET_FUNDER, "limit": 500, "sizeThreshold": 0
         }, timeout=15)
         if _r_startup.ok:
-            _api_prices = {p.get("conditionId", ""): float(p.get("curPrice", 0) or 0) for p in _r_startup.json()}
+            _all_positions = _r_startup.json()
+            # Build lookup: positions still active on OUR wallet (skip these!)
+            _our_active_cids = set(
+                p.get("conditionId", "") for p in _all_positions
+                if float(p.get("currentValue", 0) or 0) > 0.01
+            )
+            _api_prices = {p.get("conditionId", ""): float(p.get("curPrice", 0) or 0) for p in _all_positions}
             with get_connection() as _conn:
                 _open_trades = _conn.execute(
-                    "SELECT id, condition_id, size, market_question FROM copy_trades WHERE status='open'"
+                    "SELECT id, condition_id, size, market_question, wallet_username FROM copy_trades WHERE status='open'"
                 ).fetchall()
                 _cleaned = 0
                 for _ot in _open_trades:
+                    # Skip wallet-imported positions entirely
+                    if _ot["wallet_username"] in ("(manual)", "(wallet)"):
+                        continue
+                    # Skip if position is still active on our wallet
+                    if _ot["condition_id"] in _our_active_cids:
+                        continue
                     _cp = _api_prices.get(_ot["condition_id"], -1)
                     if _cp <= 0.01 and _cp >= 0:
                         _pnl = round(-(_ot["size"] or 0), 2)
