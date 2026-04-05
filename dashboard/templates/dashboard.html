@@ -403,7 +403,8 @@ function beepClose(){if(!sfx)return;try{const o=AC.createOscillator(),g=AC.creat
 function alertClose(t){const o=$('alOv');o.style.display='flex';
   const w=t.pnl>=0;
   const bigWin=t.pnl>0&&t.size>0&&(t.pnl/t.size)>=0.5;
-  const gifHtml=bigWin?'<img src="https://media1.tenor.com/m/sIBXbAf_oEcAAAAC/ref-with-yellow-cards-fifa18.gif" style="width:120px;border-radius:8px;margin-left:14px;flex-shrink:0" alt="Money GIF">':'';
+  const gifUrl=bigWin?'https://media1.tenor.com/m/sIBXbAf_oEcAAAAC/ref-with-yellow-cards-fifa18.gif':w?'https://media1.tenor.com/m/WYdYdbMfNBgAAAAC/money.gif':'';
+  const gifHtml=gifUrl?'<img src="'+gifUrl+'" style="width:120px;border-radius:8px;margin-left:14px;flex-shrink:0" alt="GIF">':'';
   o.innerHTML=`<div class="al-ban${bigWin?' big-win':''}" style="border-color:${w?'var(--green)':'var(--red)'}; display:flex;align-items:center;text-align:left">
     <div style="flex:1">
     <div class="al-lbl" style="color:${w?'var(--green)':'var(--red)'}">${w?'\u2705 POSITION CLOSED \u2014 WIN':'\u274C POSITION CLOSED \u2014 LOSS'}${bigWin?' \uD83D\uDCB0':''}</div>
