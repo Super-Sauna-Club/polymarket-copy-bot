@@ -600,6 +600,92 @@ def api_trader_stats():
     return jsonify(stats)
 
 
+@app.route("/api/copy/close/<int:trade_id>", methods=["POST"])
+def api_close_trade(trade_id):
+    """Manually close an open position — sells shares and marks as closed."""
+    secret = request.args.get("key", "") or ((request.json or {}).get("key", "") if request.is_json else "")
+    if secret != os.getenv("DASHBOARD_SECRET", "changeme"):
+        return jsonify({"error": "unauthorized"}), 403
+
+    from database.db import get_connection
+    from bot.order_executor import sell_shares, get_wallet_balance
+    from bot.ws_price_tracker import price_tracker
+
+    # Get the trade from DB
+    with get_connection() as conn:
+        trade = conn.execute(
+            "SELECT id, condition_id, side, entry_price, size, market_question, wallet_username "
+            "FROM copy_trades WHERE id=? AND status='open'", (trade_id,)
+        ).fetchone()
+
+    if not trade:
+        return jsonify({"error": "Trade not found or already closed"}), 404
+
+    cid = trade["condition_id"]
+    side = trade["side"]
+    entry_price = trade["entry_price"] or 0
+
+    # Get current price (WebSocket → API fallback)
+    current_price = None
+    if cid and price_tracker.is_connected:
+        current_price = price_tracker.get_price(cid, side)
+    if current_price is None:
+        # Fallback: fetch from API
+        try:
+            import requests as _req
+            r = _req.get("https://data-api.polymarket.com/positions", params={
+                "user": config.POLYMARKET_FUNDER, "limit": 500, "sizeThreshold": 0
+            }, timeout=10)
+            if r.ok:
+                for p in r.json():
+                    if p.get("conditionId") == cid:
+                        current_price = float(p.get("curPrice", 0) or 0)
+                        break
+        except Exception:
+            pass
+    if current_price is None:
+        current_price = entry_price  # last resort
+
+    # LIVE: sell shares on Polymarket
+    sell_ok = False
+    if config.LIVE_MODE and cid:
+        resp = sell_shares(cid, side, current_price)
+        sell_ok = resp is not None
+        if not sell_ok:
+            return jsonify({"error": "Sell order failed", "trade_id": trade_id}), 500
+    else:
+        sell_ok = True  # paper mode
+
+    # Calculate PnL and close in DB
+    shares = trade["size"] / entry_price if entry_price > 0 else 0
+    pnl = round((current_price - entry_price) * shares, 2)
+
+    db.close_copy_trade(trade_id, pnl, close_price=current_price)
+    db.log_activity("sell", "WIN" if pnl >= 0 else "LOSS",
+                     "Manual close — %s" % trade["wallet_username"],
+                     "#%d %s — P&L $%+.2f" % (trade_id, (trade["market_question"] or "")[:35], pnl), pnl)
+
+    logger.info("[MANUAL-CLOSE] #%d sold @ %.0fc | PnL $%+.2f | %s",
+                trade_id, current_price * 100, pnl, (trade["market_question"] or "")[:40])
+
+    try:
+        broadcast_event("trade_closed", {
+            "id": trade_id, "trader": trade["wallet_username"],
+            "market": (trade["market_question"] or "")[:60],
+            "pnl": pnl, "price": round(current_price * 100),
+        })
+    except Exception:
+        pass
+
+    return jsonify({
+        "status": "closed",
+        "trade_id": trade_id,
+        "pnl": pnl,
+        "sell_price": current_price,
+        "market": trade["market_question"],
+    })
+
+
 @app.route("/api/copy/scan", methods=["POST"])
 def api_copy_scan():
     """Manually trigger copy-trade scan of followed wallets."""
