@@ -175,8 +175,8 @@ def main():
 
     redeemed_amount = new_bal - bal_before
     if redeemed_amount > 0.10:
-        log_activity("redeem", "CASH", "Shares redeemed — $%.2f returned to wallet" % redeemed_amount,
-                     "Balance: $%.2f → $%.2f (+$%.2f)" % (bal_before, new_bal, redeemed_amount), redeemed_amount)
+        log_activity("redeem", "CASH", "Payout — $%.2f cashed to wallet" % redeemed_amount,
+                     "Won shares converted to USDC. Wallet: $%.2f → $%.2f" % (bal_before, new_bal), redeemed_amount)
     logger.info("=== AFTER REDEEM ===")
     logger.info("Wallet USDC:    $%.2f", new_bal)
     logger.info("Remaining shares: $%.2f (%d positions)", remaining_value, len(remaining))

@@ -1211,8 +1211,9 @@ def copy_followed_wallets():
                 )
                 # Activity Log + Dashboard Notification
                 try:
+                    _cash_after = cash - total_invested
                     db.log_activity("buy", "BUY", "Copied position from %s" % username,
-                                    "#%d %s @ %dc — $%.2f" % (trade_id, question[:45], round(entry_price*100), size))
+                                    "#%d %s @ %dc — $%.2f (Cash: $%.0f)" % (trade_id, question[:40], round(entry_price*100), size, _cash_after))
                     from dashboard.app import broadcast_event
                     broadcast_event("new_trade", {
                         "id": trade_id, "trader": username,
