@@ -63,6 +63,8 @@ def sse_stream():
                              "Connection": "keep-alive"})
 
 
+_event_start_cache = {}  # slug -> {"start": iso, "end": iso}
+
 @app.route("/api/live-data")
 def api_live_data():
     """Dashboard data — reads directly from Polymarket API for accuracy."""
@@ -201,6 +203,32 @@ def api_live_data():
                 "condition_id": _cid,
                 "created_at": _time_by_cid.get(_cid, ""),
             })
+    except Exception:
+        pass
+
+    # Fetch event start times from Gamma API (cached, batch per unique event_slug)
+    try:
+        _unique_slugs = set(p.get("event_slug", "") for p in open_positions if p.get("event_slug"))
+        for _slug in _unique_slugs:
+            if _slug in _event_start_cache:
+                continue
+            try:
+                _ev_r = _req.get("https://gamma-api.polymarket.com/events",
+                                 params={"slug": _slug.split("/")[-1]}, timeout=3)
+                _ev_data = _ev_r.json() if _ev_r.ok else None
+                if _ev_data:
+                    _ev = _ev_data[0] if isinstance(_ev_data, list) else _ev_data
+                    _st = _ev.get("startTime", "") or _ev.get("startDate", "")
+                    _et = _ev.get("endTime", "") or _ev.get("endDate", "")
+                    if _st:
+                        _event_start_cache[_slug] = {"start": _st, "end": _et}
+            except Exception:
+                pass
+        for _pos in open_positions:
+            _es = _pos.get("event_slug", "")
+            if _es in _event_start_cache:
+                _pos["event_start"] = _event_start_cache[_es].get("start", "")
+                _pos["event_end"] = _event_start_cache[_es].get("end", "")
     except Exception:
         pass
 
