@@ -214,6 +214,7 @@ All disabled by default (0 = off). Enable by setting a value > 0.
 | `MAX_DAILY_TRADES` | 0 | Maximum new trades per calendar day |
 | `STOP_LOSS_PCT` | 0 | Auto-sell if position drops by X% (e.g. 0.50 = 50%) |
 | `TAKE_PROFIT_PCT` | 0 | Auto-sell if position gains X% (e.g. 1.00 = 100%) |
+| `TAKE_PROFIT_MAP` | | Per-trader TP override (e.g. `xsaghav:0,sovereign2013:2.0`). 0=disabled for that trader |
 
 ```env
 # Example: conservative risk settings
@@ -221,6 +222,7 @@ MAX_DAILY_LOSS=50           # Stop after $50 daily loss
 MAX_DAILY_TRADES=20         # Max 20 trades per day
 STOP_LOSS_PCT=0.60          # Sell if position drops 60%
 TAKE_PROFIT_PCT=2.00        # Sell if position gains 200%
+TAKE_PROFIT_MAP=xsaghav:9.0  # xsaghav: 900% TP (8c→80c), higher entries use global TP
 ```
 
 ### Pending Buy Queue

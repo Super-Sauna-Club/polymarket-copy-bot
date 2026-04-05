@@ -133,6 +133,14 @@ for _bsm_entry in config.BET_SIZE_MAP.split(","):
         _bsm_parts = _bsm_entry.split(":", 1)
         _BET_SIZE_MAP[_bsm_parts[0].strip().lower()] = float(_bsm_parts[1].strip())
 
+# Per-trader take-profit map (0=disabled for that trader)
+_TAKE_PROFIT_MAP: dict[str, float] = {}
+for _tpm_entry in config.TAKE_PROFIT_MAP.split(","):
+    _tpm_entry = _tpm_entry.strip()
+    if ":" in _tpm_entry:
+        _tpm_parts = _tpm_entry.split(":", 1)
+        _TAKE_PROFIT_MAP[_tpm_parts[0].strip().lower()] = float(_tpm_parts[1].strip())
+
 
 def _calculate_position_size(entry_price: float, cash: float, trader_ratio: float = 1.0,
                              portfolio_value: float = 0, trader_name: str = "") -> float:
@@ -1421,9 +1429,12 @@ def update_copy_positions():
                                     continue
 
                             # Take-Profit: auto-sell if gain exceeds threshold
-                            if config.TAKE_PROFIT_PCT > 0 and trade["entry_price"] > 0:
+                            # Per-trader override via TAKE_PROFIT_MAP (0=disabled for that trader)
+                            _tp_trader = (trade.get("wallet_username") or "").lower()
+                            _tp_pct = _TAKE_PROFIT_MAP.get(_tp_trader, config.TAKE_PROFIT_PCT)
+                            if _tp_pct > 0 and trade["entry_price"] > 0:
                                 gain_pct = (effective_price - trade["entry_price"]) / trade["entry_price"]
-                                if gain_pct >= config.TAKE_PROFIT_PCT:
+                                if gain_pct >= _tp_pct:
                                     if LIVE_MODE and trade_cid:
                                         sell_shares(trade_cid, trade["side"], effective_price)
                                     db.close_copy_trade(trade["id"], round(pnl, 2))

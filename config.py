@@ -106,6 +106,7 @@ MAX_DAILY_LOSS = float(os.getenv("MAX_DAILY_LOSS", "0"))
 MAX_DAILY_TRADES = int(os.getenv("MAX_DAILY_TRADES", "0"))
 STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", "0"))
 TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "0"))
+TAKE_PROFIT_MAP = os.getenv("TAKE_PROFIT_MAP", "")
 
 # --- Auto-Sell / Auto-Close Thresholds ---
 AUTO_SELL_PRICE = float(os.getenv("AUTO_SELL_PRICE", "0.96"))  # Sell won positions above this price
