@@ -347,6 +347,8 @@ def _position_diff_scan(address: str, username: str, balance: float,
     Holt aktuelle Positionen des Traders und vergleicht mit unseren copy_trades.
     Jede Condition-ID die weder als 'open' noch als 'baseline' in unserer DB ist
     → neuer Trade der kopiert werden soll.
+
+    Applies the SAME filters as the activity scan to prevent bypass.
     """
     try:
         positions = fetch_wallet_positions(address)
@@ -355,6 +357,8 @@ def _position_diff_scan(address: str, username: str, balance: float,
 
         # Alle bekannten condition_ids für diese Wallet (open + baseline)
         known = {t["condition_id"] for t in db.get_all_copy_trades_for_wallet(address) if t["condition_id"]}
+        # Cache open trades once for this scan
+        _diff_open = [dict(t) for t in db.get_open_copy_trades()]
 
         new_trades = 0
         for pos in positions:
@@ -368,9 +372,40 @@ def _position_diff_scan(address: str, username: str, balance: float,
             if entry_price_raw <= 0 or entry_price_raw >= 1:
                 continue
 
-            # Max exposure per trader (per-trader or default)
-            _max_exp = (balance + sum(t["size"] for t in db.get_open_copy_trades())) * _EXPOSURE_MAP.get(username.lower(), config.MAX_EXPOSURE_PER_TRADER)
-            _t_exp = sum(t["size"] for t in db.get_open_copy_trades() if t["wallet_address"] == address)
+            # === SAME FILTERS AS ACTIVITY SCAN ===
+            # Price range filter
+            if entry_price_raw < config.MIN_ENTRY_PRICE or entry_price_raw > config.MAX_ENTRY_PRICE:
+                continue
+
+            # Max copies per market
+            if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+                continue
+
+            # Duplicate market check (another trader already has this market)
+            if cid and db.is_market_already_open(cid, from_wallet=address):
+                continue
+
+            # Hedge check: don't buy opposite side of an existing position
+            if cid:
+                _existing = [x for x in _diff_open if x.get("condition_id") == cid and x.get("wallet_address") == address]
+                if _existing:
+                    _existing_sides = {x.get("side", "") for x in _existing}
+                    if pos["side"] not in _existing_sides:
+                        logger.info("[DIFF] Hedge blocked (%s open, skipping %s): %s",
+                                    "/".join(_existing_sides), pos["side"], pos["market_question"][:40])
+                        continue
+
+            # Max per event
+            if config.MAX_PER_EVENT > 0:
+                _evt = pos.get("event_slug", "") or ""
+                if _evt:
+                    _evt_inv = sum(x["size"] for x in _diff_open if x.get("event_slug", "") == _evt)
+                    if _evt_inv >= config.MAX_PER_EVENT:
+                        continue
+
+            # Max exposure per trader
+            _max_exp = (balance + sum(t["size"] for t in _diff_open)) * _EXPOSURE_MAP.get(username.lower(), config.MAX_EXPOSURE_PER_TRADER)
+            _t_exp = sum(t["size"] for t in _diff_open if t.get("wallet_address") == address)
             if _t_exp >= _max_exp:
                 logger.info("[DIFF] Trader exposure $%.0f >= max $%.0f, skipping: %s",
                             _t_exp, _max_exp, pos["market_question"][:40])
@@ -379,7 +414,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
             # Market-close guard
             end_ts = _parse_end_ts(pos.get("end_date", ""))
             if end_ts and (_time.time() - end_ts) > 0:
-                continue  # Markt bereits vorbei
+                continue
 
             entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, config.MAX_ENTRY_PRICE_CAP), 4)
             size = _calculate_position_size(entry_price, balance, trader_name=username)
