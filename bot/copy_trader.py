@@ -47,6 +47,14 @@ for _entry in config.TRADER_EXPOSURE_MAP.split(","):
         _parts = _entry.split(":", 1)
         _EXPOSURE_MAP[_parts[0].strip().lower()] = float(_parts[1].strip())
 
+# Per-trader minimum trade size (parsed once at module load)
+_MIN_TRADER_USD_MAP: dict[str, float] = {}
+for _mtu_entry in config.MIN_TRADER_USD_MAP.split(","):
+    _mtu_entry = _mtu_entry.strip()
+    if ":" in _mtu_entry:
+        _mtu_parts = _mtu_entry.split(":", 1)
+        _MIN_TRADER_USD_MAP[_mtu_parts[0].strip().lower()] = float(_mtu_parts[1].strip())
+
 # Pending Buy Queue (in-memory: condition_id → {trade_data, queued_at})
 _pending_buys: dict = {}
 
@@ -846,11 +854,12 @@ def copy_followed_wallets():
                     pass
 
             # === RN1 SMART-FILTER ===
-            # 1) Min Trader USD: Nur echte Conviction-Trades kopieren, Noise ignorieren
+            # 1) Min Trader USD: per-trader override or global default
             dollar_value = t.get("usdc_size", 0)
-            if dollar_value < config.MIN_TRADER_USD:
+            _min_usd = _MIN_TRADER_USD_MAP.get(username.lower(), config.MIN_TRADER_USD)
+            if dollar_value < _min_usd:
                 logger.info("[FILTER] Size $%.1f < $%.0f: %s",
-                            dollar_value, config.MIN_TRADER_USD, question[:40])
+                            dollar_value, _min_usd, question[:40])
                 continue
 
             # 2) Preis-Range-Filter: Trash-Farming (1-3c) und Hedges (95-99c) ausfiltern

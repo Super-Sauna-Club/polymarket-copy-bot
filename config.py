@@ -38,6 +38,8 @@ TRADER_EXPOSURE_MAP = os.getenv("TRADER_EXPOSURE_MAP", "")
 
 # --- Trade Filters ---
 MIN_TRADER_USD = float(os.getenv("MIN_TRADER_USD", "3"))
+# Per-trader override: "name:amount,name:amount" (overrides MIN_TRADER_USD per trader)
+MIN_TRADER_USD_MAP = os.getenv("MIN_TRADER_USD_MAP", "")
 MIN_ENTRY_PRICE = float(os.getenv("MIN_ENTRY_PRICE", "0.15"))
 MAX_ENTRY_PRICE = float(os.getenv("MAX_ENTRY_PRICE", "0.92"))
 MAX_SPREAD = float(os.getenv("MAX_SPREAD", "0.05"))
