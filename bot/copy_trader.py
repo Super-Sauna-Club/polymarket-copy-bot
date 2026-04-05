@@ -1007,6 +1007,22 @@ def copy_followed_wallets():
             trader_ratio = (dollar_value / avg_trader_size) if avg_trader_size > 0 else 1.0
             size = _calculate_position_size(entry_price, balance, trader_ratio=trader_ratio,
                                                 portfolio_value=portfolio_value, trader_name=username)
+            # Cap to MAX_POSITION_SIZE across all trades on same condition_id
+            if cid:
+                _existing_on_market = sum(
+                    ot["size"] for ot in _cached_open_trades
+                    if ot.get("condition_id", "") == cid
+                )
+                if _existing_on_market >= MAX_POSITION_SIZE:
+                    logger.info("[SKIP] Position cap $%.0f >= max $%.0f: %s",
+                                _existing_on_market, MAX_POSITION_SIZE, question[:40])
+                    continue
+                _remaining_cap = MAX_POSITION_SIZE - _existing_on_market
+                if size > _remaining_cap:
+                    size = round(_remaining_cap, 2)
+                    logger.info("[SIZE] Capped to position limit: $%.2f (existing $%.2f, max $%.0f) | %s",
+                                size, _existing_on_market, MAX_POSITION_SIZE, question[:35])
+
             # Cap to event remaining budget
             if _evt_remaining is not None and size > _evt_remaining:
                 size = round(_evt_remaining, 2)
