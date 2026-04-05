@@ -171,8 +171,9 @@ tr:hover{background:rgba(201,168,76,0.03)}
   align-items:flex-start;justify-content:center;padding-top:80px}
 .al-ban{pointer-events:auto;background:var(--bg);border:1px solid var(--gold);padding:32px 52px;
   text-align:center;box-shadow:0 0 80px rgba(201,168,76,0.18),0 20px 60px rgba(0,0,0,0.7);
-  animation:alIn .35s cubic-bezier(.17,.67,.35,1.2),alOut .5s 3.5s ease-in forwards;
+  animation:alIn .35s cubic-bezier(.17,.67,.35,1.2),alOut .5s 5.2s ease-in forwards;
   max-width:620px;width:92%;position:relative}
+.al-ban.big-win{animation:alIn .35s cubic-bezier(.17,.67,.35,1.2),alOut .5s 5.5s ease-in forwards}
 .al-ban::before{content:'';position:absolute;inset:-1px;
   background:linear-gradient(45deg,var(--gold),transparent,var(--gold));opacity:.15;z-index:-1;
   animation:borderShift 3s linear infinite}
@@ -403,13 +404,13 @@ function alertClose(t){const o=$('alOv');o.style.display='flex';
   const w=t.pnl>=0;
   const bigWin=t.pnl>0&&t.size>0&&(t.pnl/t.size)>=0.5;
   const gifHtml=bigWin?'<img src="https://media1.tenor.com/m/sIBXbAf_oEcAAAAC/ref-with-yellow-cards-fifa18.gif" style="width:120px;border-radius:8px;margin-left:14px;flex-shrink:0" alt="Money GIF">':'';
-  o.innerHTML=`<div class="al-ban" style="border-color:${w?'var(--green)':'var(--red)'}; display:flex;align-items:center">
+  o.innerHTML=`<div class="al-ban${bigWin?' big-win':''}" style="border-color:${w?'var(--green)':'var(--red)'}; display:flex;align-items:center;text-align:left">
     <div style="flex:1">
-    <div class="al-lbl" style="color:${w?'var(--green)':'var(--red)'}">${w?'\u2705 POSITION CLOSED — WIN':'\u274C POSITION CLOSED — LOSS'}${bigWin?' \uD83D\uDCB0':''}</div>
+    <div class="al-lbl" style="color:${w?'var(--green)':'var(--red)'}">${w?'\u2705 POSITION CLOSED \u2014 WIN':'\u274C POSITION CLOSED \u2014 LOSS'}${bigWin?' \uD83D\uDCB0':''}</div>
     <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl" style="color:${w?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}$${(t.pnl||0).toFixed(2)}</span> @ ${t.price||0}\u00A2 \u00B7 via <span class="hl">${t.trader||'?'}</span></div>
     </div>${gifHtml}</div>`;
-  setTimeout(()=>{o.style.display='none'},bigWin?6000:4200)}
+  setTimeout(()=>{o.style.display='none'},6000)}
 
 function initSSE(){try{const es=new EventSource('/api/stream');
   es.onopen=()=>{sseOk=true;dot()};
