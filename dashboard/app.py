@@ -347,27 +347,65 @@ def wallets_page():
 def api_settings():
     """Current bot settings (read-only)."""
     followed = db.get_followed_wallets()
+    def _pct(v): return str(int(v * 100)) + "%"
+    def _dlr(v): return "$" + str(v)
+    def _sec(v): return str(v) + "s"
+    def _x(v): return str(v) + "x"
+    def _onoff(v): return "ON" if v else "OFF"
     settings = [
-        {"key": "LIVE_MODE", "value": str(config.LIVE_MODE), "desc": "Real money trading enabled"},
-        {"key": "STARTING_BALANCE", "value": "$" + str(config.STARTING_BALANCE), "desc": "Deposit amount for P&L calculation"},
-        {"key": "COPY_SCAN_INTERVAL", "value": str(config.COPY_SCAN_INTERVAL) + "s", "desc": "Seconds between trader scans"},
-        {"key": "BET_SIZE_PCT", "value": str(int(config.BET_SIZE_PCT * 100)) + "%", "desc": "Base bet size as % of portfolio"},
-        {"key": "MAX_POSITION_SIZE", "value": "$" + str(config.MAX_POSITION_SIZE), "desc": "Hard cap per single position"},
-        {"key": "RATIO_MIN", "value": str(config.RATIO_MIN) + "x", "desc": "Min conviction multiplier (small trader bet)"},
-        {"key": "RATIO_MAX", "value": str(config.RATIO_MAX) + "x", "desc": "Max conviction multiplier (large trader bet)"},
-        {"key": "MIN_TRADER_USD", "value": "$" + str(config.MIN_TRADER_USD), "desc": "Ignore trader buys below this amount"},
-        {"key": "MIN_ENTRY_PRICE", "value": str(int(config.MIN_ENTRY_PRICE * 100)) + "¢", "desc": "Skip trash farming below this"},
-        {"key": "MAX_ENTRY_PRICE", "value": str(int(config.MAX_ENTRY_PRICE * 100)) + "¢", "desc": "Skip near-certain bets above this"},
-        {"key": "MAX_COPIES_PER_MARKET", "value": str(config.MAX_COPIES_PER_MARKET), "desc": "One copy per market, no doubling up"},
-        {"key": "MAX_PER_EVENT", "value": "$" + str(config.MAX_PER_EVENT), "desc": "Max $ per event/game (caps multiple bets on same game)"},
-        {"key": "MAX_EXPOSURE_PER_TRADER", "value": str(int(config.MAX_EXPOSURE_PER_TRADER * 100)) + "%", "desc": "Default max % of portfolio per trader"},
+        # --- Core ---
+        {"key": "LIVE_MODE", "value": _onoff(config.LIVE_MODE), "desc": "Real money trading"},
+        {"key": "STARTING_BALANCE", "value": _dlr(config.STARTING_BALANCE), "desc": "Deposit for P&L calculation"},
+        {"key": "COPY_SCAN_INTERVAL", "value": _sec(config.COPY_SCAN_INTERVAL), "desc": "Seconds between scans"},
+        # --- Position Sizing ---
+        {"key": "BET_SIZE_PCT", "value": _pct(config.BET_SIZE_PCT), "desc": "Base bet as % of portfolio"},
+        {"key": "MAX_POSITION_SIZE", "value": _dlr(config.MAX_POSITION_SIZE), "desc": "Max $ per position"},
+        {"key": "MIN_TRADE_SIZE", "value": _dlr(config.MIN_TRADE_SIZE), "desc": "Min $ per trade"},
+        {"key": "RATIO_MIN", "value": _x(config.RATIO_MIN), "desc": "Min conviction multiplier"},
+        {"key": "RATIO_MAX", "value": _x(config.RATIO_MAX), "desc": "Max conviction multiplier"},
+        # --- Price Signal ---
+        {"key": "PRICE_MULT_HIGH", "value": _x(config.PRICE_MULT_HIGH), "desc": "Multiplier for strong signals (near 0c/100c)"},
+        {"key": "PRICE_MULT_MED", "value": _x(config.PRICE_MULT_MED), "desc": "Multiplier for normal signals"},
+        {"key": "PRICE_MULT_LOW", "value": _x(config.PRICE_MULT_LOW), "desc": "Multiplier for weak signals (near 50c)"},
+        # --- Trade Filters ---
+        {"key": "MIN_TRADER_USD", "value": _dlr(config.MIN_TRADER_USD), "desc": "Ignore trader buys below this"},
+        {"key": "MIN_ENTRY_PRICE", "value": str(int(config.MIN_ENTRY_PRICE * 100)) + "c", "desc": "Skip bets below this price"},
+        {"key": "MAX_ENTRY_PRICE", "value": str(int(config.MAX_ENTRY_PRICE * 100)) + "c", "desc": "Skip bets above this price"},
+        {"key": "MAX_COPIES_PER_MARKET", "value": str(config.MAX_COPIES_PER_MARKET), "desc": "Max copies per market"},
+        {"key": "MAX_PER_EVENT", "value": _dlr(config.MAX_PER_EVENT), "desc": "Max $ per event/game (0=off)"},
+        {"key": "MAX_SPREAD", "value": _pct(config.MAX_SPREAD), "desc": "Max bid/ask spread"},
+        {"key": "ENTRY_TRADE_SEC", "value": _sec(config.ENTRY_TRADE_SEC), "desc": "Max trade age to copy"},
+        {"key": "NO_REBUY_MINUTES", "value": str(config.NO_REBUY_MINUTES) + " min", "desc": "Block re-entry after close (0=off)"},
+        {"key": "MAX_HOURS_BEFORE_EVENT", "value": str(config.MAX_HOURS_BEFORE_EVENT) + "h", "desc": "Only buy X hours before event (0=off)"},
+        # --- Entry Mechanics ---
+        {"key": "ENTRY_SLIPPAGE", "value": str(config.ENTRY_SLIPPAGE), "desc": "Added to entry price"},
+        {"key": "MAX_ENTRY_PRICE_CAP", "value": str(int(config.MAX_ENTRY_PRICE_CAP * 100)) + "c", "desc": "Hard ceiling after slippage"},
+        {"key": "TRADE_SEC_FROM_RESOLVE", "value": _sec(config.TRADE_SEC_FROM_RESOLVE), "desc": "Stop buying before market close"},
+        # --- Hedge Detection ---
+        {"key": "HEDGE_WAIT_SECS", "value": _sec(config.HEDGE_WAIT_SECS), "desc": "Default hedge wait time"},
+        {"key": "HEDGE_WAIT_TRADERS", "value": config.HEDGE_WAIT_TRADERS or "none", "desc": "Per-trader hedge config"},
+        # --- Cash Management ---
+        {"key": "CASH_FLOOR", "value": _dlr(config.CASH_FLOOR), "desc": "Stop buying below this"},
+        {"key": "CASH_RECOVERY", "value": _dlr(config.CASH_RECOVERY), "desc": "Recovery threshold above floor"},
+        {"key": "SAVE_POINT_STEP", "value": _dlr(config.SAVE_POINT_STEP), "desc": "Floor increment per recovery"},
+        {"key": "CASH_RESERVE", "value": _dlr(config.CASH_RESERVE), "desc": "Permanently reserved cash"},
+        {"key": "MAX_OPEN_POSITIONS", "value": str(config.MAX_OPEN_POSITIONS), "desc": "Max simultaneous positions"},
+        {"key": "MAX_EXPOSURE_PER_TRADER", "value": _pct(config.MAX_EXPOSURE_PER_TRADER), "desc": "Default max % per trader"},
         {"key": "TRADER_EXPOSURE_MAP", "value": config.TRADER_EXPOSURE_MAP or "default", "desc": "Per-trader exposure overrides"},
-        {"key": "HEDGE_WAIT_SECS", "value": str(config.HEDGE_WAIT_SECS) + "s", "desc": "Default hedge detection wait time"},
-        {"key": "HEDGE_WAIT_TRADERS", "value": config.HEDGE_WAIT_TRADERS or "none", "desc": "Traders with hedge detection enabled"},
-        {"key": "NO_REBUY_MINUTES", "value": str(config.NO_REBUY_MINUTES) + " min", "desc": "Block re-entry after close (0=disabled)"},
-        {"key": "MAX_OPEN_POSITIONS", "value": str(config.MAX_OPEN_POSITIONS), "desc": "Max simultaneous open positions"},
-        {"key": "CASH_FLOOR", "value": "$" + str(config.CASH_FLOOR), "desc": "Stop buying below this cash level"},
-        {"key": "MAX_SPREAD", "value": str(int(config.MAX_SPREAD * 100)) + "%", "desc": "Max bid/ask spread tolerance"},
+        # --- Risk Management ---
+        {"key": "MAX_DAILY_LOSS", "value": _dlr(config.MAX_DAILY_LOSS) if config.MAX_DAILY_LOSS > 0 else "OFF", "desc": "Stop after daily loss exceeds $X"},
+        {"key": "MAX_DAILY_TRADES", "value": str(config.MAX_DAILY_TRADES) if config.MAX_DAILY_TRADES > 0 else "OFF", "desc": "Max trades per day"},
+        {"key": "STOP_LOSS_PCT", "value": _pct(config.STOP_LOSS_PCT) if config.STOP_LOSS_PCT > 0 else "OFF", "desc": "Auto-sell at X% loss"},
+        {"key": "TAKE_PROFIT_PCT", "value": _pct(config.TAKE_PROFIT_PCT) if config.TAKE_PROFIT_PCT > 0 else "OFF", "desc": "Auto-sell at X% gain"},
+        # --- Feature Toggles ---
+        {"key": "COPY_SELLS", "value": _onoff(config.COPY_SELLS), "desc": "Copy sell signals from traders"},
+        {"key": "POSITION_DIFF_ENABLED", "value": _onoff(config.POSITION_DIFF_ENABLED), "desc": "Position-diff fallback scan"},
+        {"key": "IDLE_REPLACE_ENABLED", "value": _onoff(config.IDLE_REPLACE_ENABLED), "desc": "Auto-replace inactive traders"},
+        # --- Circuit Breaker ---
+        {"key": "CB_THRESHOLD", "value": str(config.CB_THRESHOLD) + " failures", "desc": "API failures before pause"},
+        {"key": "CB_PAUSE_SECS", "value": _sec(config.CB_PAUSE_SECS), "desc": "Pause duration after breaker trips"},
+        # --- Fill Verification ---
+        {"key": "FILL_VERIFY_DELAY_SECS", "value": _sec(config.FILL_VERIFY_DELAY_SECS), "desc": "Delay before checking fill amount"},
     ]
     traders = []
     for w in followed:
