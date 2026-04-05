@@ -274,19 +274,19 @@ tr:hover{background:rgba(201,168,76,0.03)}
   <!-- PERFORMANCE REPORT (auto-generated) -->
   <div class="sec fi d4">
     <div class="sec-hd">
-      <span class="sec-t">Performance Report</span>
+      <span class="sec-t">Trader Performance</span>
       <span id="reportTime" style="font-size:.65rem;color:var(--text-dim);letter-spacing:.06em"></span>
     </div>
-    <div id="reportBox" style="background:var(--bg2);border:1px solid var(--border);padding:16px 20px;font-size:.84rem;color:var(--text-mid);line-height:1.9;min-height:40px;cursor:pointer;overflow-x:auto;-webkit-overflow-scrolling:touch" onclick="showReportModal()">
-      <span id="reportText" style="color:var(--text-dim)">Waiting for report...</span>
+    <div id="reportBox" style="background:var(--bg2);border:1px solid var(--border);padding:16px;cursor:pointer" onclick="showReportModal()">
+      <div id="reportText" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"></div>
     </div>
   </div>
 
   <!-- REPORT MODAL -->
   <div id="reportModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)this.style.display='none'">
-    <div style="background:var(--bg2);border:1px solid var(--border);max-width:600px;width:100%;padding:24px;max-height:80vh;overflow-y:auto">
+    <div style="background:var(--bg2);border:1px solid var(--border);max-width:700px;width:100%;padding:24px;max-height:80vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <span style="font-size:.8rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--text-mid)">Performance Report</span>
+        <span style="font-size:.8rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--text-mid)">Trader Performance Detail</span>
         <span id="reportModalTime" style="font-size:.65rem;color:var(--text-dim);letter-spacing:.06em"></span>
       </div>
       <div id="reportModalText" style="font-size:.9rem;line-height:1.9;color:var(--text)"></div>
@@ -713,42 +713,60 @@ function buildPreview(raw){
     if(!m){parsed.push(null);continue}
     const[,name,pnlStr,rest]=m;
     const segs=rest.split(/\s*\|\s*/);
-    let record='',verdict='',best='',worst='',lastPnl='';
+    let record='',verdict='',best='',worst='',lastPnl='',wins=0,losses=0,openN=0;
     for(const s of segs){
-      if(s.match(/^\d+[WL]/))record=s;
+      if(s.match(/^\d+[WL]/)){record=s;const wm=s.match(/(\d+)W/);const lm=s.match(/(\d+)L/);const om=s.match(/(\d+) open/);
+        if(wm)wins=+wm[1];if(lm)losses=+lm[1];if(om)openN=+om[1]}
       else if(s.match(/^(all |mostly |mixed|no )/))verdict=s;
       else if(s.startsWith('best:'))best=s.replace('best: ','');
       else if(s.startsWith('worst:'))worst=s.replace('worst: ','');
       else if(s.startsWith('last '))lastPnl=s;
     }
-    parsed.push({name,pnlStr,pnl:parseFloat(pnlStr),record,verdict,best,worst,lastPnl});
+    parsed.push({name,pnlStr,pnl:parseFloat(pnlStr),record,verdict,best,worst,lastPnl,wins,losses,openN});
   }
-  return parsed.filter(Boolean).map(p=>{
-    const{name,pnlStr,pnl,record,verdict,best,worst,lastPnl}=p;
+  const traders=parsed.filter(Boolean);
+  if(!traders.length)return'<span style="color:var(--text-dim)">No data yet</span>';
+  const bestPnl=Math.max(...traders.map(t=>t.pnl));
+  return traders.map(p=>{
+    const{name,pnlStr,pnl,verdict,best,worst,lastPnl,wins,losses,openN}=p;
     const pnlCol=pnl>=0?'var(--green)':'var(--red)';
-    const recHtml=record.replace(/(\d+)W/g,'<span style="color:var(--green);font-weight:700">$1W</span>')
-                        .replace(/(\d+)L/g,'<span style="color:var(--red);font-weight:700">$1L</span>')
-                        .replace(/(\d+ open)/g,'<span style="color:var(--text-dim)">$1</span>');
+    const pnlBg=pnl>=0?'rgba(52,211,153,.08)':'rgba(248,113,113,.08)';
+    const total=wins+losses+openN;
+    const wr=total>0?Math.round(wins/Math.max(wins+losses,1)*100):0;
+    const wrCol=wr>=60?'var(--green)':wr>=40?'var(--gold)':'var(--red)';
     const vc=verdict.includes('profitable')||verdict.includes('winning')?'var(--green)':
              verdict.includes('losing')?'var(--red)':verdict==='mixed'?'var(--gold)':'var(--text-dim)';
     const vBg=verdict.includes('profitable')||verdict.includes('winning')?'rgba(52,211,153,.1)':
               verdict.includes('losing')?'rgba(248,113,113,.1)':verdict==='mixed'?'rgba(201,168,76,.08)':'rgba(92,90,106,.08)';
-    const bH=best?'<div style="color:var(--green);font-size:.78em;margin-top:3px">\u25B2 '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>').replace(/ W$/,' <span style="background:var(--green);color:#0a0a0a;font-size:.85em;padding:0 4px;border-radius:2px;font-weight:700">WIN</span>')+'</div>':'';
-    const wH=worst?'<div style="color:var(--red);font-size:.78em;margin-top:2px">\u25BC '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>').replace(/ L$/,' <span style="background:var(--red);color:#0a0a0a;font-size:.85em;padding:0 4px;border-radius:2px;font-weight:700">LOSS</span>')+'</div>':'';
-    const lH=lastPnl?lastPnl.replace(/\$([\+\-][\d.]+)/,(_,v)=>'<span style="color:'+(v.startsWith('+')?'var(--green)':'var(--red)')+';font-weight:700">$'+v+'</span>'):'';
-    return`<div style="padding:10px 0;border-bottom:1px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <span style="color:var(--gold);font-weight:700;font-size:1.05em">${name}</span>
-          <span style="margin-left:10px;font-size:.78em">${recHtml}</span>
-          <span style="margin-left:8px;color:${vc};font-weight:700;font-size:.68em;letter-spacing:.06em;background:${vBg};padding:2px 8px;border-radius:3px;text-transform:uppercase">${verdict}</span>
+    const isBest=traders.length>1&&pnl===bestPnl&&pnl>0;
+    const crown=isBest?'<span style="font-size:.7em;margin-left:4px" title="Best performer">\uD83D\uDC51</span>':'';
+    const bH=best?'<div style="color:var(--green);font-size:.72em;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">\u25B2 '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>').replace(/ W$/,' <span style="background:var(--green);color:#0a0a0a;padding:0 3px;border-radius:2px;font-weight:700;font-size:.9em">W</span>')+'</div>':'';
+    const wH=worst?'<div style="color:var(--red);font-size:.72em;margin-top:2px">\u25BC '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>').replace(/ L$/,' <span style="background:var(--red);color:#0a0a0a;padding:0 3px;border-radius:2px;font-weight:700;font-size:.9em">L</span>')+'</div>':'';
+    return`<div style="background:var(--bg3);border:1px solid var(--border);padding:14px 16px;border-radius:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="color:var(--gold);font-weight:700;font-size:1em">${name}${crown}</span>
+        <span style="color:${vc};font-weight:700;font-size:.62em;letter-spacing:.06em;background:${vBg};padding:2px 7px;border-radius:3px;text-transform:uppercase">${verdict}</span>
+      </div>
+      <div style="text-align:center;padding:8px 0;margin-bottom:10px;background:${pnlBg};border-radius:4px">
+        <div style="color:${pnlCol};font-weight:800;font-size:1.4em;font-family:var(--mono)">\$${pnlStr}</div>
+        <div style="color:var(--text-dim);font-size:.65em;margin-top:2px">TOTAL P&L</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;font-size:.75em">
+        <div style="background:var(--bg);padding:6px 4px;border-radius:4px">
+          <div style="color:var(--green);font-weight:700;font-size:1.2em">${wins}</div>
+          <div style="color:var(--text-dim);font-size:.85em">Wins</div>
         </div>
-        <div style="text-align:right">
-          <span style="color:${pnlCol};font-weight:700;font-size:1.15em;font-family:var(--mono)">\$${pnlStr}</span>
-          ${lH?'<span style="margin-left:10px;font-size:.82em">'+lH+'</span>':''}
+        <div style="background:var(--bg);padding:6px 4px;border-radius:4px">
+          <div style="color:var(--red);font-weight:700;font-size:1.2em">${losses}</div>
+          <div style="color:var(--text-dim);font-size:.85em">Losses</div>
+        </div>
+        <div style="background:var(--bg);padding:6px 4px;border-radius:4px">
+          <div style="color:${wrCol};font-weight:700;font-size:1.2em">${wr}%</div>
+          <div style="color:var(--text-dim);font-size:.85em">Win Rate</div>
         </div>
       </div>
-      ${(bH||wH)?'<div style="margin-top:4px;padding-left:2px">'+bH+wH+'</div>':''}
+      ${openN?'<div style="text-align:center;margin-top:6px;font-size:.72em;color:var(--text-dim)">'+openN+' open positions</div>':''}
+      ${(bH||wH)?bH+wH:''}
     </div>`;
   }).join('');
 }
