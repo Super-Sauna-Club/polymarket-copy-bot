@@ -692,8 +692,11 @@ def copy_followed_wallets():
                 for side, td in q["sides"].items():
                     logger.info("[HEDGE-WAIT] No hedge after %ds → executing: %s %s",
                                 wait, side, td["question"][:40])
-                    # Re-inject into the activity feed by creating the trade directly
                     entry_price = td["entry_price"]
+                    # MAX_COPIES check: activity scan may have already copied this market
+                    if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= config.MAX_COPIES_PER_MARKET:
+                        logger.info("[HEDGE-WAIT] Already copied (activity scan was faster), skipping: %s", td["question"][:40])
+                        continue
                     # Check trader exposure limit (per-trader or default)
                     _max_t = portfolio_value * _EXPOSURE_MAP.get(td["username"].lower(), config.MAX_EXPOSURE_PER_TRADER)
                     _t_inv = sum(x["size"] for x in _cached_open_trades if x["wallet_address"] == td["address"])
@@ -747,6 +750,16 @@ def copy_followed_wallets():
         for k in expired_keys:
             _hedge_queue.pop(k, None)
 
+    # Clean hedge queue: remove entries for markets already copied by activity scan
+    for _hk in list(_hedge_queue.keys()):
+        _hq_entry = _hedge_queue[_hk]
+        _hq_first = list(_hq_entry["sides"].values())[0]
+        _hq_addr = _hq_first.get("address", "")
+        _hq_cid = _hq_first.get("cid", _hk)
+        if _hq_cid and db.count_copies_for_market(_hq_addr, _hq_cid) >= config.MAX_COPIES_PER_MARKET:
+            logger.info("[HEDGE-WAIT] Removed from queue (already copied): %s", _hq_first.get("question", "")[:40])
+            del _hedge_queue[_hk]
+
     for wallet in followed:
         address = wallet["address"]
         username = wallet["username"] or address[:12]
@@ -785,18 +798,21 @@ def copy_followed_wallets():
                     username, len(all_buys), len(new_buy_trades), last_ts)
 
         # === FAST SELL DETECTION: RN1 SELLs sofort erkennen (alle 5s) ===
+        _already_sold_cids = set()  # prevent sell spam on same condition_id
         new_sells = [t for t in recent_trades if t["trade_type"] == "SELL" and t["timestamp"] > last_ts] if config.COPY_SELLS else []
         if new_sells:
             open_by_cid = {t["condition_id"]: t for t in _cached_open_trades if t["condition_id"] and t["wallet_address"] == address}
             for sell in new_sells:
                 _last_processed_ts = max(_last_processed_ts, sell.get("timestamp", 0))
                 sell_cid = sell.get("condition_id", "")
-                if sell_cid and sell_cid in open_by_cid:
+                if not sell_cid or sell_cid in _already_sold_cids:
+                    continue
+                if sell_cid in open_by_cid:
                     our_trade = open_by_cid[sell_cid]
                     sell_price = sell.get("price", 0)
                     if not sell_price:
                         sell_price = our_trade["current_price"] or our_trade["entry_price"]
-                    # LIVE: echte Sell Order
+                    # LIVE: echte Sell Order (once per condition_id)
                     if LIVE_MODE and sell_cid:
                         sell_resp = sell_shares(sell_cid, our_trade["side"], sell_price)
                         if sell_resp:
@@ -811,6 +827,14 @@ def copy_followed_wallets():
                     db.log_activity("sell", "WIN" if pnl > 0 else "LOSS",
                                     "Position closed — sold",
                                     "#%d %s — P&L $%+.2f" % (our_trade["id"], our_trade["market_question"][:40], pnl), pnl)
+                    _already_sold_cids.add(sell_cid)
+                    # Close ALL other open trades on same condition_id (prevents sell spam from duplicates)
+                    _other_on_cid = [t for t in _cached_open_trades if t.get("condition_id") == sell_cid and t.get("id") != our_trade["id"]]
+                    for _ot in _other_on_cid:
+                        _ot_shares = _ot["size"] / _ot["entry_price"] if _ot.get("entry_price", 0) > 0 else 0
+                        _ot_pnl = round((sell_price - _ot["entry_price"]) * _ot_shares, 2)
+                        db.close_copy_trade(_ot["id"], _ot_pnl, close_price=sell_price)
+                        logger.info("[FAST-SELL] #%d also closed (same market): PnL=$%.2f", _ot["id"], _ot_pnl)
                     try:
                         from dashboard.app import broadcast_event
                         broadcast_event("trade_closed", {
