@@ -1012,28 +1012,33 @@ def copy_followed_wallets():
                                 _now_utc = _dt.now(_tz.utc)
                                 _hours_until = (_start - _now_utc).total_seconds() / 3600
                                 if _hours_until > config.MAX_HOURS_BEFORE_EVENT:
-                                    # Queue for later instead of skipping entirely
-                                    if cid and cid not in _event_wait_queue:
-                                        _event_wait_queue[cid] = {
-                                            "trade_data": {
-                                                "wallet_address": address,
-                                                "wallet_username": username,
-                                                "market_question": question,
-                                                "market_slug": t.get("market_slug", ""),
-                                                "event_slug": t.get("event_slug", ""),
-                                                "side": t["side"],
-                                                "entry_price": trader_price,
-                                                "size": 0,
-                                                "end_date": t.get("end_date", ""),
-                                                "outcome_label": t.get("outcome_label", ""),
-                                                "condition_id": cid,
-                                            },
-                                            "event_start_ts": _start.timestamp(),
-                                            "queued_at": _time.time(),
-                                        }
-                                        logger.info("[EVENT-WAIT] Queued (event in %.1fh, max %.1fh): %s",
-                                                    _hours_until, config.MAX_HOURS_BEFORE_EVENT, question[:40])
-                                    continue
+                                    # Enough cash → buy now despite distant event
+                                    if config.EVENT_WAIT_MIN_CASH > 0 and cash > config.EVENT_WAIT_MIN_CASH:
+                                        logger.info("[EVENT-WAIT] Event in %.1fh but cash $%.0f > $%.0f — buying now: %s",
+                                                    _hours_until, cash, config.EVENT_WAIT_MIN_CASH, question[:40])
+                                    else:
+                                        # Low cash (or always-queue mode) → queue for later
+                                        if cid and cid not in _event_wait_queue:
+                                            _event_wait_queue[cid] = {
+                                                "trade_data": {
+                                                    "wallet_address": address,
+                                                    "wallet_username": username,
+                                                    "market_question": question,
+                                                    "market_slug": t.get("market_slug", ""),
+                                                    "event_slug": t.get("event_slug", ""),
+                                                    "side": t["side"],
+                                                    "entry_price": trader_price,
+                                                    "size": 0,
+                                                    "end_date": t.get("end_date", ""),
+                                                    "outcome_label": t.get("outcome_label", ""),
+                                                    "condition_id": cid,
+                                                },
+                                                "event_start_ts": _start.timestamp(),
+                                                "queued_at": _time.time(),
+                                            }
+                                            logger.info("[EVENT-WAIT] Queued (event in %.1fh, cash $%.0f < $%.0f): %s",
+                                                        _hours_until, cash, config.EVENT_WAIT_MIN_CASH, question[:40])
+                                        continue
                     except Exception:
                         pass  # API fail → don't block, just skip check
 
