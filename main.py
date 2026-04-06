@@ -146,7 +146,7 @@ def update_prices():
                                 _db.log_activity("resolved", "LOSS", "Position lost",
                                                  "%s — P&L $%.2f" % (_close_title[:35], _close_pnl), _close_pnl)
                                 from dashboard.app import broadcast_event
-                                broadcast_event("trade_closed", {"market": _close_title, "pnl": _close_pnl, "price": 0, "trader": "auto"})
+                                broadcast_event("trade_closed", {"market": _close_title, "pnl": _close_pnl, "price": 0, "trader": "auto", "size": _our_size})
                             except Exception:
                                 pass
                         continue  # Already handled — skip auto-sell
@@ -173,7 +173,7 @@ def update_prices():
                                 _db.log_activity("resolved", "WIN", "Position won",
                                                  "#%s — P&L $+%.2f" % (_close_title[:35], _pnl_won), _pnl_won)
                                 from dashboard.app import broadcast_event
-                                broadcast_event("trade_closed", {"market": _close_title, "pnl": _pnl_won, "price": 100, "trader": "auto"})
+                                broadcast_event("trade_closed", {"market": _close_title, "pnl": _pnl_won, "price": 100, "trader": "auto", "size": _our_size})
                             except Exception:
                                 pass
                         continue  # Already handled — skip auto-sell
@@ -194,7 +194,7 @@ def update_prices():
                                              "%s — sold $%.2f, P&L $%+.2f" % ((_p.get("title") or "")[:35], _cv, _pnl), _pnl)
                             try:
                                 from dashboard.app import broadcast_event
-                                broadcast_event("trade_closed", {"market": (_p.get("title") or "")[:50], "pnl": _pnl, "price": round(_cp * 100), "trader": "auto"})
+                                broadcast_event("trade_closed", {"market": (_p.get("title") or "")[:50], "pnl": _pnl, "price": round(_cp * 100), "trader": "auto", "size": _our_size})
                             except Exception:
                                 pass
                             # Close matching copy_trade in DB

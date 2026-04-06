@@ -718,6 +718,7 @@ def api_close_trade(trade_id):
             "id": trade_id, "trader": trade["wallet_username"],
             "market": (trade["market_question"] or "")[:60],
             "pnl": pnl, "price": round(current_price * 100),
+            "size": trade.get("size", 0),
         })
     except Exception:
         pass

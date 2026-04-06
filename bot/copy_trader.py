@@ -866,6 +866,7 @@ def copy_followed_wallets():
                             "id": our_trade["id"], "trader": username,
                             "market": our_trade["market_question"][:60],
                             "pnl": round(pnl, 2), "price": round(sell_price * 100),
+                            "size": our_trade.get("size", 0),
                         })
                     except Exception:
                         pass
@@ -1553,6 +1554,7 @@ def update_copy_positions():
                                                     "id": trade["id"], "trader": trade["wallet_username"],
                                                     "market": trade["market_question"][:60],
                                                     "pnl": round(pnl, 2), "price": round(final * 100),
+                                                    "size": trade.get("size", 0),
                                                 })
                                             except Exception:
                                                 pass
