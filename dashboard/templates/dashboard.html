@@ -58,7 +58,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .wide .wide-left::-webkit-scrollbar{width:3px}
 .wide .wide-left::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:2px}
 /* Top bar: cards left + chart right */
-.wide .wide-topbar{display:grid;grid-template-columns:55% 45%;gap:10px;margin-bottom:8px;align-items:stretch}
+.wide .wide-topbar{display:grid;grid-template-columns:55% 1fr;gap:10px;margin-bottom:8px;align-items:stretch;overflow:hidden}
 .wide .wide-topbar .cards{grid-template-columns:repeat(5,1fr);gap:4px;margin:0}
 .wide .wide-topbar .card{padding:8px 10px;text-align:center;display:flex;flex-direction:column;justify-content:center}
 .wide .wide-topbar .card-val{font-size:1.05rem}

@@ -286,12 +286,18 @@ Queue trades below a price threshold and wait for confirmation before executing.
 
 The dashboard shows real-time data directly from the Polymarket API:
 
-- **Metric Cards** — Total value, profit, wallet, open P&L, win rate
-- **Performance Report** — Auto-generated every 10 min, per-trader breakdown
-- **Activity Log** — Live feed of buys, sells, wins, losses with sport emojis
-- **Active Positions** — All open positions with entry/current price and P&L
+- **10 Metric Cards** — Total value, profit, wallet, open positions, open P&L, pending payout, return, active count, record, win rate
+- **Equity Curve** — Portfolio value over time (4H/1D/1W/1M/All)
+- **Performance Report** — Auto-generated per-trader breakdown with blockie avatars, donut charts, sport icons
+- **Activity Log** — Live feed of buys, sells, wins, losses with sport/geopolitics emojis
+- **Active Positions** — Open positions with P&L as clickable close buttons
 - **Closed Positions** — Trade history sorted by most recent
-- **Equity Curve** — Portfolio value over time
+- **Exposure Meter** — Per-trader exposure bars (green/gold/red) showing cap usage
+- **Alert Popups** — Win/loss notifications with GIFs and money sound on big wins (50%+)
+- **Sound Settings** — Trade alerts and popup sounds, persisted in localStorage
+- **Widescreen Mode** — Click "Wide" button for fullscreen 1080p layout (cards + curve top, positions + log + exposure below, trader perf sidebar)
+- **Sport Detection** — Auto-detects NBA, MLB, NHL, NFL, LoL, CS2, Dota 2, Valorant, Tennis, Soccer, Geopolitics, Politics with emoji badges
+- **Mobile Support** — Horizontally scrollable tables on small screens
 
 ## Architecture
 
@@ -400,11 +406,11 @@ NO_REBUY_MINUTES=0    # Disabled (default) — allow re-entry
 When enabled, trades on events starting more than X hours from now are **queued** instead of bought immediately. When the event enters the time window, the trade is executed with fresh pricing. This prevents capital being locked in positions hours before games start.
 
 ```env
-# Disabled (default) — copies immediately when trader buys
+# Disabled — copies immediately when trader buys
 MAX_HOURS_BEFORE_EVENT=0
 
-# Always wait: queue if event > 3 hours away, buy when < 3 hours
-MAX_HOURS_BEFORE_EVENT=3
+# Recommended: queue if event > 2 hours away, buy when < 2 hours
+MAX_HOURS_BEFORE_EVENT=2
 EVENT_WAIT_MIN_CASH=0
 
 # Wait only when low on cash: queue if event > 3h AND cash < $100
