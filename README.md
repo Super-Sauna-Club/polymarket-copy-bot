@@ -183,6 +183,7 @@ Price 45c → edge 0.05 → weak signal  → bet × 0.6
 | `MAX_HOURS_BEFORE_EVENT` | 0 | Queue trades if event > X hours away (0=disabled) |
 | `EVENT_WAIT_MIN_CASH` | 0 | Only queue distant events when cash < $X (0=always queue) |
 | `MAX_PER_EVENT` | 15 | Max $ per event/game (0=disabled) |
+| `MAX_PER_MATCH` | 15 | Max $ across related markets (Map 1 + Map 2 + BO3 = 1 match) |
 | `NO_REBUY_MINUTES` | 0 | Block re-entry after close (0=disabled) |
 | `MAX_SPREAD` | 0.05 | Max bid/ask spread tolerance (5%) |
 
@@ -389,6 +390,7 @@ Limits total $ invested per event/game. A trader might place 5 different bets on
 
 ```env
 MAX_PER_EVENT=15   # Max $15 per game — first bet copied, rest blocked
+MAX_PER_MATCH=15   # Groups Map 1 + Map 2 + BO3 as one match (prevents $73 on one Valorant match)
 MAX_PER_EVENT=0    # Disabled — copy all bets on same game
 ```
 
