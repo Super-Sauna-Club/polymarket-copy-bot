@@ -361,6 +361,22 @@ tr:hover{background:rgba(201,168,76,0.03)}
 
 <script>
 let D=null,CI=null,sfx=false,sfxPop=false,sseOk=false;
+// Blockie avatar generator (Ethereum-style pixel identicon)
+function mkBlockie(addr,sz=24){
+  const seed=addr.toLowerCase();let h=0;for(let i=0;i<seed.length;i++){h=((h<<5)-h)+seed.charCodeAt(i);h|=0}
+  const c=document.createElement('canvas');c.width=sz;c.height=sz;const ctx=c.getContext('2d');
+  const colors=['#c9a84c','#34d399','#f87171','#60a5fa','#a78bfa','#fb923c','#38bdf8','#e879f9'];
+  const bg=colors[Math.abs(h)%colors.length];const fg=colors[Math.abs(h>>4)%colors.length];
+  ctx.fillStyle='#1a1a28';ctx.fillRect(0,0,sz,sz);
+  const bs=Math.floor(sz/5);
+  for(let x=0;x<3;x++)for(let y=0;y<5;y++){
+    const v=((h>>(x*5+y))&1);if(!v)continue;
+    ctx.fillStyle=(x+y)%3===0?fg:bg;
+    ctx.fillRect(x*bs,y*bs,bs,bs);ctx.fillRect((4-x)*bs,y*bs,bs,bs);
+  }
+  return c.toDataURL();
+}
+function _traderAddr(name){if(!D||!D.followed)return'';const f=D.followed.find(w=>(w.username||'')==name);return f?f.address||'':''}
 let _sortOpen={col:'time',dir:'desc'};
 let _sortClosed={col:'closed_at',dir:'desc'};
 function sortTable(table,col){
@@ -795,9 +811,14 @@ function buildPreview(raw){
     const crown=isBest?'<span style="font-size:.7em;margin-left:4px" title="Best performer">\uD83D\uDC51</span>':'';
     const bH=best?'<div style="color:var(--green);font-size:.72em;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">\u25B2 '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>').replace(/ W$/,' <span style="background:var(--green);color:#0a0a0a;padding:0 3px;border-radius:2px;font-weight:700;font-size:.9em">W</span>')+'</div>':'';
     const wH=worst?'<div style="color:var(--red);font-size:.72em;margin-top:2px">\u25BC '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>').replace(/ L$/,' <span style="background:var(--red);color:#0a0a0a;padding:0 3px;border-radius:2px;font-weight:700;font-size:.9em">L</span>')+'</div>':'';
+    const addr=_traderAddr(name);
+    const avatar=addr?mkBlockie(addr,28):'';
     return`<div onclick="showTraderDetail('${name}')" style="background:var(--bg3);border:1px solid var(--border);padding:14px 16px;border-radius:6px;cursor:pointer;transition:border-color .2s" onmouseenter="this.style.borderColor='var(--gold)'" onmouseleave="this.style.borderColor='var(--border)'">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="color:var(--gold);font-weight:700;font-size:1em">${name}${crown}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${avatar?'<img src="'+avatar+'" style="width:28px;height:28px;border-radius:4px">':''}
+          <a href="https://polymarket.com/profile/${addr}" target="_blank" onclick="event.stopPropagation()" style="color:var(--gold);font-weight:700;font-size:1em;text-decoration:none" onmouseenter="this.style.textDecoration='underline'" onmouseleave="this.style.textDecoration='none'">${name}${crown}</a>
+        </div>
         <span style="color:${vc};font-weight:700;font-size:.62em;letter-spacing:.06em;background:${vBg};padding:2px 7px;border-radius:3px;text-transform:uppercase">${verdict}</span>
       </div>
       <div style="text-align:center;padding:8px 0;margin-bottom:10px;background:${pnlBg};border-radius:4px">
