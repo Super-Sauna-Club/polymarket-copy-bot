@@ -461,6 +461,7 @@ function _sortList(list,table){
     return s.dir==='asc'?cmp:-cmp});
 }
 const AC=new(window.AudioContext||window.webkitAudioContext)();
+document.addEventListener('click',()=>{if(AC.state==='suspended')AC.resume()},{once:true});
 const hist=[];
 const $=id=>document.getElementById(id);
 const pc=v=>v>=0?'up':'dn';
