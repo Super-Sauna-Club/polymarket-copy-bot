@@ -444,6 +444,7 @@ def api_settings():
         {"key": "PRICE_MULT_HIGH", "value": _x(config.PRICE_MULT_HIGH), "desc": "Multiplier for strong signals (near 0c/100c)"},
         {"key": "PRICE_MULT_MED", "value": _x(config.PRICE_MULT_MED), "desc": "Multiplier for normal signals"},
         {"key": "PRICE_MULT_LOW", "value": _x(config.PRICE_MULT_LOW), "desc": "Multiplier for weak signals (near 50c)"},
+        {"key": "AVG_TRADER_SIZE_MAP", "value": config.AVG_TRADER_SIZE_MAP or "default $%.0f" % config.DEFAULT_AVG_TRADER_SIZE, "desc": "Per-trader avg bet size (conviction baseline)"},
         # --- Trade Filters ---
         {"key": "MIN_TRADER_USD", "value": _dlr(config.MIN_TRADER_USD), "desc": "Default min trade size to copy"},
         {"key": "MIN_TRADER_USD_MAP", "value": config.MIN_TRADER_USD_MAP or "default", "desc": "Per-trader min trade size override"},

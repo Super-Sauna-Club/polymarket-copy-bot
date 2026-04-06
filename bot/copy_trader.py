@@ -156,6 +156,14 @@ for _xep_entry in config.MAX_ENTRY_PRICE_MAP.split(","):
         _xep_parts = _xep_entry.split(":", 1)
         _MAX_ENTRY_PRICE_MAP[_xep_parts[0].strip().lower()] = float(_xep_parts[1].strip())
 
+# Per-trader average trade size (for conviction ratio calculation)
+_AVG_TRADER_SIZE_MAP: dict[str, float] = {}
+for _ats_entry in config.AVG_TRADER_SIZE_MAP.split(","):
+    _ats_entry = _ats_entry.strip()
+    if ":" in _ats_entry:
+        _ats_parts = _ats_entry.split(":", 1)
+        _AVG_TRADER_SIZE_MAP[_ats_parts[0].strip().lower()] = float(_ats_parts[1].strip())
+
 
 def _calculate_position_size(entry_price: float, cash: float, trader_ratio: float = 1.0,
                              portfolio_value: float = 0, trader_name: str = "") -> float:
@@ -841,8 +849,13 @@ def copy_followed_wallets():
             continue
 
         # Durchschnittliche Trade-Größe des Traders (für proportionales Sizing)
-        buy_sizes = [t.get("usdc_size", 0) for t in recent_trades if t["trade_type"] == "BUY" and t.get("usdc_size", 0) > 0]
-        avg_trader_size = (sum(buy_sizes) / len(buy_sizes)) if buy_sizes else config.DEFAULT_AVG_TRADER_SIZE
+        # Per-trader override via AVG_TRADER_SIZE_MAP, else calculate from recent, else global default
+        _ats_override = _AVG_TRADER_SIZE_MAP.get(username.lower())
+        if _ats_override:
+            avg_trader_size = _ats_override
+        else:
+            buy_sizes = [t.get("usdc_size", 0) for t in recent_trades if t["trade_type"] == "BUY" and t.get("usdc_size", 0) > 0]
+            avg_trader_size = (sum(buy_sizes) / len(buy_sizes)) if buy_sizes else config.DEFAULT_AVG_TRADER_SIZE
 
         max_ts = max(t["timestamp"] for t in recent_trades)
         _last_processed_ts = last_ts  # tracks the last trade we actually processed

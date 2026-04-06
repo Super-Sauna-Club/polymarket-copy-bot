@@ -69,6 +69,7 @@ PRICE_EDGE_MED = float(os.getenv("PRICE_EDGE_MED", "0.15"))
 PRICE_MULT_MED = float(os.getenv("PRICE_MULT_MED", "1.00"))
 PRICE_MULT_LOW = float(os.getenv("PRICE_MULT_LOW", "0.60"))
 DEFAULT_AVG_TRADER_SIZE = float(os.getenv("DEFAULT_AVG_TRADER_SIZE", "10.0"))
+AVG_TRADER_SIZE_MAP = os.getenv("AVG_TRADER_SIZE_MAP", "")
 
 # --- Entry Mechanics ---
 CASH_RESERVE = float(os.getenv("CASH_RESERVE", "0"))
