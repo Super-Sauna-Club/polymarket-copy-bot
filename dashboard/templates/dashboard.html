@@ -334,8 +334,8 @@ tr:hover{background:rgba(201,168,76,0.03)}
     <div class="cli-panel" id="histPanel"></div>
   </div>
 
-  <!-- EXPOSURE METER -->
-  <div class="sec fi d3">
+  <!-- EXPOSURE METER (normal mode only, hidden in wide) -->
+  <div class="sec fi d3" id="expoSecNormal">
     <div class="sec-hd"><span class="sec-t">Exposure</span></div>
     <div class="expo-box" id="expoBoxNormal" style="background:var(--bg2);border:1px solid var(--border);padding:14px 16px"></div>
   </div>
@@ -848,7 +848,9 @@ function togWide(){
 if(new URLSearchParams(location.search).has('wide')){
   document.body.classList.add('wide');
   const app=document.querySelector('.app');
-  const secs=app.querySelectorAll('.sec');
+  // Hide normal exposure section in wide mode
+  const exNorm=$('expoSecNormal');if(exNorm)exNorm.style.display='none';
+  const secs=[...app.querySelectorAll('.sec')].filter(s=>s.id!=='expoSecNormal');
   // secs: 0=activity, 1=trader perf, 2=equity, 3=active pos, 4=closed pos
   // Cards + ticker stay in place. Build 2-column content below.
   const content=document.createElement('div');content.className='wide-content';
