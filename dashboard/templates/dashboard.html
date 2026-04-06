@@ -164,7 +164,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .tw{overflow-x:auto;max-height:460px;overflow-y:auto;border:1px solid var(--border);background:var(--bg2)}
 .tw table{width:100%;table-layout:fixed}
 .tw th,.tw td{padding:8px 8px;overflow:hidden;text-overflow:ellipsis}
-.c-mkt2{width:30%}.c-side2{width:8%;text-align:left}.c-num{width:5%;text-align:right;white-space:nowrap}.c-pnl{width:8%;text-align:right;white-space:nowrap}.c-evt2{width:8%;white-space:nowrap}.c-time{width:7%;white-space:nowrap;color:var(--text-dim);font-size:.78rem}
+.c-mkt2{width:34%}.c-side2{width:7%;text-align:left}.c-num{width:4%;text-align:right;white-space:nowrap}.c-pnl{width:6%;text-align:right;white-space:nowrap}.c-evt2{width:7%;white-space:nowrap}.c-time{width:5%;white-space:nowrap;color:var(--text-dim);font-size:.78rem}
 .c-close{width:9%;text-align:center;white-space:nowrap}
 .close-btn{display:inline-block;padding:4px 10px;border-radius:4px;font-size:.75rem;font-weight:700;cursor:pointer;border:none;min-width:70px;transition:opacity .2s}
 .close-btn:hover{opacity:.8}
@@ -414,6 +414,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <th class="c-num sort" data-sort="sell" data-table="closed">Sell</th>
       <th class="c-num sort" data-sort="size" data-table="closed">$</th>
       <th class="c-pnl sort" data-sort="pnl" data-table="closed">P&L</th>
+      <th class="c-evt2"></th>
       <th class="c-time sort" data-sort="closed_at" data-table="closed">Closed</th>
     </tr></thead><tbody id="tClosed"></tbody></table></div>
   </div>
@@ -754,9 +755,10 @@ function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
       <td class="c-num">${Math.round((t.current_price||0)*100)}\u00A2</td>
       <td class="c-num">$${fm(t.size)}</td>
       <td class="c-pnl p-${pc(p)}" style="font-weight:600">${sg(p)}$${fm(Math.abs(p))}</td>
+      <td class="c-evt2"></td>
       <td class="c-time">${t.closed_at?(()=>{try{const d=new Date(t.closed_at.replace(' ','T')+'Z');return'<div>'+d.toLocaleString('de-AT',{timeZone:'Europe/Vienna',hour:'2-digit',minute:'2-digit'})+'</div><div style="font-size:.65rem;color:var(--text-dim)">'+d.toLocaleString('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit'})+'</div>'}catch(e){return''}})():''}</td>
     </tr>`}).join('')
-    :'<tr><td colspan="7" class="empty" style="border:0">No closed trades yet</td></tr>';
+    :'<tr><td colspan="8" class="empty" style="border:0">No closed trades yet</td></tr>';
 
   ticker();
   renderLog();
