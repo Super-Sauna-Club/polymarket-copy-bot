@@ -75,13 +75,13 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .wide .wide-log-row{display:grid;grid-template-columns:1fr 280px;gap:10px;margin-bottom:8px;align-items:stretch}
 .wide .wide-log-row>.sec{margin:0;display:flex;flex-direction:column}
 .wide .wide-log-row .cli-panel{max-height:220px;flex:1}
-.wide .expo-box{background:var(--bg2);border:1px solid var(--border);padding:12px;flex:1;display:flex;flex-direction:column;justify-content:center}
-.wide .expo-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.wide .expo-row:last-child{margin-bottom:0}
-.wide .expo-name{font-size:.72rem;font-weight:600;color:var(--text);width:90px;text-align:right}
-.wide .expo-bar-bg{flex:1;height:14px;background:var(--bg3);border-radius:3px;overflow:hidden;position:relative}
-.wide .expo-bar-fill{height:100%;border-radius:3px;transition:width .5s}
-.wide .expo-pct{font-size:.65rem;color:var(--text-dim);width:65px;text-align:right;font-family:var(--mono)}
+.wide .expo-box{background:var(--bg2);border:1px solid var(--border);padding:14px 16px;flex:1;display:flex;flex-direction:column;justify-content:space-evenly}
+.wide .expo-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(30,30,48,0.4)}
+.wide .expo-row:last-child{border-bottom:none}
+.wide .expo-name{font-size:.78rem;font-weight:600;color:var(--gold);width:95px;text-align:right;letter-spacing:.02em}
+.wide .expo-bar-bg{flex:1;height:18px;background:var(--bg3);border-radius:4px;overflow:hidden;position:relative}
+.wide .expo-bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.wide .expo-pct{font-size:.7rem;color:var(--text-mid);width:75px;text-align:right;font-family:var(--mono)}
 /* Right: trader perf full height, sticky */
 .wide .wide-right{overflow-y:auto;padding-left:4px;border-left:1px solid var(--border)}
 .wide .wide-right::-webkit-scrollbar{width:3px}
