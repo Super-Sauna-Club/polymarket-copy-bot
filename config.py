@@ -61,6 +61,7 @@ QUEUE_DRIFT_COINFLIP = float(os.getenv("QUEUE_DRIFT_COINFLIP", "0.03")) # 40-60c
 QUEUE_DRIFT_FAVORITE = float(os.getenv("QUEUE_DRIFT_FAVORITE", "0.05")) # 60-85c: 5%
 NO_REBUY_MINUTES = int(os.getenv("NO_REBUY_MINUTES", "0"))  # Don't re-enter closed markets for X min (0=disabled)
 MAX_PER_EVENT = float(os.getenv("MAX_PER_EVENT", "15"))  # Max $ invested per event/game (0=disabled)
+MAX_PER_MATCH = float(os.getenv("MAX_PER_MATCH", "15"))  # Max $ across related markets (Map 1 + Map 2 + BO3 = 1 match)
 
 # --- Position Sizing: Price Signal ---
 PRICE_EDGE_HIGH = float(os.getenv("PRICE_EDGE_HIGH", "0.30"))

@@ -454,6 +454,7 @@ def api_settings():
         {"key": "MAX_ENTRY_PRICE_MAP", "value": config.MAX_ENTRY_PRICE_MAP or "default", "desc": "Per-trader max entry price override"},
         {"key": "MAX_COPIES_PER_MARKET", "value": str(config.MAX_COPIES_PER_MARKET), "desc": "Max copies per market"},
         {"key": "MAX_PER_EVENT", "value": _dlr(config.MAX_PER_EVENT), "desc": "Max $ per event/game (0=off)"},
+        {"key": "MAX_PER_MATCH", "value": _dlr(config.MAX_PER_MATCH), "desc": "Max $ per match (Map1+Map2+BO3 grouped)"},
         {"key": "MAX_SPREAD", "value": _pct(config.MAX_SPREAD), "desc": "Max bid/ask spread"},
         {"key": "ENTRY_TRADE_SEC", "value": _sec(config.ENTRY_TRADE_SEC), "desc": "Max trade age to copy"},
         {"key": "NO_REBUY_MINUTES", "value": str(config.NO_REBUY_MINUTES) + " min", "desc": "Block re-entry after close (0=off)"},

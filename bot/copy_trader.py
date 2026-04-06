@@ -119,6 +119,23 @@ def _api_get(url, params=None, timeout=config.API_TIMEOUT, max_retries=config.AP
     return None
 
 
+import re as _re
+
+def _match_key(question: str) -> str:
+    """Extract match key from market question for grouping related markets.
+
+    'Valorant: Nuxeria vs F9 EICAR - Map 1 Winner' -> 'nuxeria vs f9 eicar'
+    'Valorant: Nuxeria vs F9 EICAR (BO3)' -> 'nuxeria vs f9 eicar'
+    'LoL: Fnatic vs G2 - Game 2 Winner' -> 'fnatic vs g2'
+    """
+    q = question.lower()
+    # Remove prefix (game name + colon)
+    q = _re.sub(r'^(counter-strike|valorant|dota ?2?|lol|league of legends)\s*:\s*', '', q)
+    # Remove suffixes (Map X, Game X, BO3, spread, O/U etc)
+    q = _re.split(r'\s*[-–(]\s*(map|game|bo[0-9]|spread|o/u|qualification|group)', q)[0]
+    return q.strip()
+
+
 def _get_current_balance() -> float:
     """Aktueller Kontostand (Startkapital + realisierte Gewinne)."""
     stats = db.get_copy_trade_stats()
@@ -1165,6 +1182,24 @@ def copy_followed_wallets():
                         logger.info("[SKIP] Event full $%.0f/$%.0f: %s",
                                     _evt_invested, config.MAX_PER_EVENT, question[:40])
                         continue
+
+            # Max $ per match (groups Map 1 + Map 2 + BO3 as one match)
+            if config.MAX_PER_MATCH > 0:
+                _mkey = _match_key(question)
+                if _mkey and len(_mkey) > 3:
+                    _match_invested = sum(
+                        ot["size"] for ot in _cached_open_trades
+                        if _match_key(ot.get("market_question", "")) == _mkey
+                    )
+                    _match_remaining = config.MAX_PER_MATCH - _match_invested
+                    if _match_remaining < MIN_TRADE_SIZE:
+                        logger.info("[SKIP] Match full $%.0f/$%.0f: %s",
+                                    _match_invested, config.MAX_PER_MATCH, question[:40])
+                        continue
+                    if _evt_remaining is not None:
+                        _evt_remaining = min(_evt_remaining, _match_remaining)
+                    else:
+                        _evt_remaining = _match_remaining
 
             # Apply realistic entry slippage (+1 tick) — simulates execution delay
             entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, config.MAX_ENTRY_PRICE_CAP), 4)
