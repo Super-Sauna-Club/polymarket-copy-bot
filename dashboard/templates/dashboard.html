@@ -840,7 +840,7 @@ if(new URLSearchParams(location.search).has('wide')){
   // Log + Exposure side by side
   const logRow=document.createElement('div');logRow.className='wide-log-row';
   if(secs[0])logRow.appendChild(secs[0]); // activity log
-  const expoSec=document.createElement('div');
+  const expoSec=document.createElement('div');expoSec.className='sec';
   expoSec.innerHTML='<div class="sec-hd"><span class="sec-t">Exposure</span></div><div class="expo-box" id="expoBox"></div>';
   logRow.appendChild(expoSec);
   left.appendChild(logRow);
