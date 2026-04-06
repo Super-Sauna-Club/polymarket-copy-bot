@@ -413,7 +413,7 @@ function _updSfxUI(){
 }
 function togSfxPanel(){const p=$('sfxPanel');p.style.display=p.style.display==='none'?'block':'none'}
 function togSfxTrade(){sfx=!sfx;if(sfx)AC.resume();_updSfxUI()}
-function togSfxPop(){sfxPop=!sfxPop;_updSfxUI()}
+function togSfxPop(){sfxPop=!sfxPop;if(sfxPop)AC.resume();_updSfxUI()}
 function beep(){if(!sfx)return;try{const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);
   o.type='sine';o.frequency.setValueAtTime(660,AC.currentTime);o.frequency.exponentialRampToValueAtTime(1320,AC.currentTime+.1);
   o.frequency.exponentialRampToValueAtTime(330,AC.currentTime+.25);g.gain.setValueAtTime(.12,AC.currentTime);
@@ -433,7 +433,7 @@ function alertClose(t){const o=$('alOv');o.style.display='flex';
     <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl" style="color:${w?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}$${(t.pnl||0).toFixed(2)}</span> @ ${t.price||0}\u00A2 \u00B7 via <span class="hl">${t.trader||'?'}</span></div>
     </div>${gifHtml}</div>`;
-  if(bigWin&&sfxPop){try{const a=new Audio('/static/money-button.mp3');a.volume=0.02;a.play()}catch(e){}}
+  if(bigWin&&sfxPop){try{AC.resume();const a=new Audio('/static/money-button.mp3');a.volume=0.02;a.play().catch(()=>{})}catch(e){}}
   setTimeout(()=>{o.style.display='none'},6000)}
 
 function initSSE(){try{const es=new EventSource('/api/stream');
