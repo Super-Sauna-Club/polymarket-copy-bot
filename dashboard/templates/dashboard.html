@@ -360,9 +360,12 @@ tr:hover{background:rgba(201,168,76,0.03)}
         <span style="font-size:.85rem;color:var(--text)">Trade Alerts</span>
         <button id="sfxTogTrade" onclick="togSfxTrade()" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.75rem;padding:4px 14px;border-radius:4px;min-width:44px;font-weight:600">OFF</button>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:.85rem;color:var(--text)">Pop Out Sound</span>
         <button id="sfxTogPop" onclick="togSfxPop()" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.75rem;padding:4px 14px;border-radius:4px;min-width:44px;font-weight:600">OFF</button>
+      </div>
+      <div style="padding:10px 0;text-align:center">
+        <button onclick="AC.resume();sfxPop=true;_updSfxUI();alertClose({market:'Sound Test — Big Win',pnl:50,price:96,trader:'test',size:10})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.75rem;padding:6px 20px;border-radius:4px;font-weight:600;width:100%">Test Alert</button>
       </div>
     </div>
   </div>
@@ -464,7 +467,7 @@ const AC=new(window.AudioContext||window.webkitAudioContext)();
 let _moneyBuffer=null;
 fetch('/static/money-button.mp3').then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).then(buf=>{_moneyBuffer=buf}).catch(()=>{});
 function playMoney(){if(!_moneyBuffer)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=_moneyBuffer;g.gain.value=0.02;s.connect(g);g.connect(AC.destination);s.start()}catch(e){}}
-document.addEventListener('click',()=>{if(AC.state==='suspended')AC.resume()},{once:true});
+document.addEventListener('click',()=>{if(AC.state==='suspended')AC.resume()});
 const hist=[];
 const $=id=>document.getElementById(id);
 const pc=v=>v>=0?'up':'dn';
