@@ -57,12 +57,15 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .wide .wide-left{overflow-y:auto;padding-right:4px}
 .wide .wide-left::-webkit-scrollbar{width:3px}
 .wide .wide-left::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:2px}
-.wide .wide-left .cards{grid-template-columns:repeat(5,1fr);gap:5px;margin:0 0 8px}
-.wide .wide-left .card{padding:7px 10px}
-.wide .wide-left .card-val{font-size:1rem}
-.wide .wide-left .card-lbl{font-size:.52rem;margin-bottom:1px}
-.wide .wide-left .card-sub{font-size:.55rem}
-.wide .wide-left .chart-box{height:160px}
+/* Top bar: cards left + chart right */
+.wide .wide-topbar{display:grid;grid-template-columns:55% 45%;gap:10px;margin-bottom:8px;align-items:start}
+.wide .wide-topbar .cards{grid-template-columns:repeat(5,1fr);gap:4px;margin:0}
+.wide .wide-topbar .card{padding:6px 8px}
+.wide .wide-topbar .card-val{font-size:.95rem}
+.wide .wide-topbar .card-lbl{font-size:.5rem;margin-bottom:1px}
+.wide .wide-topbar .card-sub{font-size:.52rem}
+.wide .wide-topbar .sec{margin:0}
+.wide .wide-topbar .chart-box{height:100%}
 .wide .wide-left .sec{margin-bottom:8px}
 .wide .wide-left .tw{max-height:none}
 .wide .wide-left .cli-panel{max-height:240px}
@@ -781,10 +784,12 @@ if(new URLSearchParams(location.search).has('wide')){
   // Cards + ticker stay in place. Build 2-column content below.
   const content=document.createElement('div');content.className='wide-content';
   const cards=document.querySelector('.cards');
-  // Left: cards + curve + log + active + closed (scrollable)
+  // Left: topbar (cards+curve) + log + active + closed (scrollable)
   const left=document.createElement('div');left.className='wide-left';
-  left.appendChild(cards);
-  if(secs[2])left.appendChild(secs[2]); // equity curve
+  const topbar=document.createElement('div');topbar.className='wide-topbar';
+  topbar.appendChild(cards);
+  if(secs[2])topbar.appendChild(secs[2]); // equity curve
+  left.appendChild(topbar);
   if(secs[0])left.appendChild(secs[0]); // activity log
   if(secs[3])left.appendChild(secs[3]); // active positions
   if(secs[4])left.appendChild(secs[4]); // closed positions
