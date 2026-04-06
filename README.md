@@ -294,8 +294,15 @@ The dashboard shows real-time data directly from the Polymarket API:
 - **Active Positions** — Open positions with P&L as clickable close buttons
 - **Closed Positions** — Trade history sorted by most recent
 - **Exposure Meter** — Per-trader exposure bars (green/gold/red) showing cap usage
-- **Alert Popups** — Win/loss notifications with GIFs and money sound on big wins (50%+)
-- **Sound Settings** — Trade alerts and popup sounds, persisted in localStorage
+- **Meme Celebrations** — Full sports-betting meme system:
+  - Win popup: Hasbulla money GIF + Shane McMahon "Here Comes The Money"
+  - Big Win popup (50%+ ROI): Vince McMahon reaction GIF + Money sound
+  - Loss popup: GTA "WASTED" GIF + sound + screen shake + random self-deprecating labels
+  - New Trade: Fry "Shut Up And Take My Money" / Vince McMahon strut GIF + WWE bell sound (bottom-right)
+  - Win Streak (3x/5x/7x): John Cena championship belt GIF + escalating sounds (crowd → airhorn → money)
+  - Loss Streak (3x/5x/7x): "This is Fine" / Clown Makeup / Jim Ross GIF + Curb Your Enthusiasm theme
+  - Payout: Dave Chappelle money GIF + cash register sound when USDC hits wallet
+- **Sound Settings** — Popups and GIFs global toggles + per-sound ON/OFF with TEST buttons, persisted in localStorage
 - **Widescreen Mode** — Click "Wide" button for fullscreen 1080p layout (cards + curve top, positions + log + exposure below, trader perf sidebar)
 - **Sport Detection** — Auto-detects NBA, MLB, NHL, NFL, LoL, CS2, Dota 2, Valorant, Tennis, Soccer, Geopolitics, Politics with emoji badges
 - **Mobile Support** — Horizontally scrollable tables on small screens
