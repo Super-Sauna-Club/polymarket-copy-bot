@@ -42,6 +42,10 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 
 /* ═══ LAYOUT ═══ */
 .app{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:0 5% 40px}
+.wide .app{max-width:none;padding:0 30px 40px}
+.wide .cards{grid-template-columns:repeat(6,1fr)}
+.wide .tg{grid-template-columns:1fr 1fr}
+.wide .tw{max-height:600px}
 
 /* ═══ HEADER ═══ */
 .hd{display:flex;align-items:center;justify-content:space-between;padding:12px 0;
@@ -742,6 +746,7 @@ document.querySelectorAll('.cp-btn').forEach(b=>b.addEventListener('click',()=>{
 
 let _reportLoaded=false;
 async function load(){try{const r=await fetch('/api/live-data');D=await r.json();render();chart();dot();if(!_reportLoaded&&D.followed){_reportLoaded=true;loadReport()}}catch(e){console.error('fetch:',e);dot()}}
+if(new URLSearchParams(location.search).has('wide'))document.body.classList.add('wide');
 load();setInterval(load,10000);setTimeout(initSSE,2000);
 // Auto-refresh report every 60s
 setInterval(loadReport,60000);
