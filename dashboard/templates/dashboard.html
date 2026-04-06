@@ -705,7 +705,8 @@ document.querySelectorAll('.cp-btn').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.cp-btn').forEach(x=>x.classList.remove('act'));
   b.classList.add('act');if(CI){CI.destroy();CI=null}chart(b.dataset.p)}))
 
-async function load(){try{const r=await fetch('/api/live-data');D=await r.json();render();chart();dot()}catch(e){console.error('fetch:',e);dot()}}
+let _reportLoaded=false;
+async function load(){try{const r=await fetch('/api/live-data');D=await r.json();render();chart();dot();if(!_reportLoaded&&D.followed){_reportLoaded=true;loadReport()}}catch(e){console.error('fetch:',e);dot()}}
 load();setInterval(load,10000);setTimeout(initSSE,2000);
 // Auto-refresh report every 60s
 setInterval(loadReport,60000);
