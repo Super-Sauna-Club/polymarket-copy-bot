@@ -262,7 +262,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
     <div class="card hero fi d1"><div class="card-lbl">Total Value</div><div class="card-val gld" id="v-val">$---</div><div class="card-sub" id="v-val-detail"></div></div>
     <div class="card fi d2"><div class="card-lbl">Profit</div><div class="card-val neu" id="v-profit">$---</div><div class="card-sub" id="v-profit-detail"></div></div>
     <div class="card fi d3"><div class="card-lbl">Wallet</div><div class="card-val neu" id="v-cash">$---</div><div class="card-sub">available</div></div>
-    <div class="card fi d4"><div class="card-lbl">In Positions</div><div class="card-val neu" id="v-active">$---</div><div class="card-sub" id="v-open-detail"></div></div>
+    <div class="card fi d4"><div class="card-lbl">Open Positions</div><div class="card-val gld" id="v-active">$---</div><div class="card-sub" id="v-open-detail"></div></div>
     <div class="card fi d1"><div class="card-lbl">Open P&L</div><div class="card-val neu" id="v-pnl-main">---</div><div class="card-sub" id="v-pnl-sub"></div></div>
     <div class="card fi d2"><div class="card-lbl">Pending Payout</div><div class="card-val neu" id="v-pending">$---</div><div class="card-sub">won, auto-redeeming</div></div>
     <div class="card fi d3"><div class="card-lbl">Return</div><div class="card-val neu" id="v-roi">---</div><div class="card-sub" id="v-roi-detail"></div></div>
@@ -634,8 +634,8 @@ function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
   $('v-roi').textContent=(roi>=0?'+':'')+fm(roi,1)+'%';$('v-roi').className='card-val '+pc(roi);
   $('v-roi-detail').textContent='all time';
   $('v-cash').textContent='$'+fm(w);
-  $('v-active').textContent='$'+fm(av+pv);$('v-active').className='card-val gld';
-  $('v-open-detail').innerHTML='$'+fm(av)+' active'+(pv>0.5?' · $'+fm(pv)+' pending':'');
+  $('v-active').textContent='$'+fm(av);$('v-active').className='card-val gld';
+  $('v-open-detail').innerHTML='$'+fm(av+pv)+' total'+(pv>0.5?' · $'+fm(pv)+' pending':'');
   $('v-pending').textContent=pv>0.5?'$'+fm(pv):'$0.00';
   $('v-pending').className='card-val '+(pv>0.5?'up':'neu');
 
