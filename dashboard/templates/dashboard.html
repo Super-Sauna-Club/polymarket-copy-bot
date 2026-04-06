@@ -45,27 +45,22 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .wide .app{max-width:none;padding:0 20px 10px}
 .wide .sec{margin-bottom:0}
 .wide .sec-hd{padding:4px 0}
-.wide .tk-wrap{display:none}
+.wide .tk-wrap{padding:3px 0;margin-bottom:4px}
 .wide .hd{padding:4px 0;margin-bottom:4px}
-/* Full page grid */
-.wide .wide-main{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr;gap:8px;height:calc(100vh - 56px)}
-/* Row 1 left: cards as horizontal strip */
-.wide .wide-main .cards{grid-template-columns:repeat(10,1fr);gap:4px;margin:0}
-.wide .wide-main .card{padding:6px 8px}
-.wide .wide-main .card-val{font-size:.95rem}
-.wide .wide-main .card-lbl{font-size:.52rem;margin-bottom:0}
-.wide .wide-main .card-sub{font-size:.52rem}
-/* Row 1 right: equity curve */
-.wide .wide-chart{min-height:0}
-.wide .wide-chart .chart-box{height:100%}
-.wide .wide-chart .sec{height:100%;margin:0}
-/* Row 2: 2 columns, each split vertically */
+/* Cards: 5 columns, compact, fixed width */
+.wide .cards{grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:6px}
+.wide .card{padding:7px 10px}
+.wide .card-val{font-size:1rem}
+.wide .card-lbl{font-size:.52rem;margin-bottom:1px}
+.wide .card-sub{font-size:.55rem}
+/* Content: 2 columns below cards */
+.wide .wide-content{display:grid;grid-template-columns:1fr 1fr;gap:8px;height:calc(100vh - 220px)}
 .wide .wide-col{display:flex;flex-direction:column;gap:6px;min-height:0;overflow:hidden}
 .wide .wide-col>.sec{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
 .wide .wide-col .tw{max-height:none;flex:1;overflow-y:auto}
+.wide .wide-col .chart-box{height:140px}
 .wide .wide-col .cli-panel{max-height:none;flex:1;overflow-y:auto}
 .wide .wide-col #reportBox{overflow-y:auto;flex:1}
-.wide .wide-col #reportText{grid-template-columns:1fr!important}
 .wide .wide-col .sec-hd{padding:2px 0}
 
 /* ═══ HEADER ═══ */
@@ -770,27 +765,22 @@ async function load(){try{const r=await fetch('/api/live-data');D=await r.json()
 if(new URLSearchParams(location.search).has('wide')){
   document.body.classList.add('wide');
   const app=document.querySelector('.app');
-  const cards=app.querySelector('.cards');
   const secs=app.querySelectorAll('.sec');
   // secs: 0=activity, 1=trader perf, 2=equity, 3=active pos, 4=closed pos
-  const grid=document.createElement('div');grid.className='wide-main';
-  // Row 1 col 1: cards as 10-column strip
-  grid.appendChild(cards);
-  // Row 1 col 2: equity curve
-  const chartWrap=document.createElement('div');chartWrap.className='wide-chart';
-  if(secs[2])chartWrap.appendChild(secs[2]);
-  grid.appendChild(chartWrap);
-  // Row 2 col 1: active positions (top) + closed positions (bottom)
+  // Cards + ticker stay in place. Build 2-column content below.
+  const content=document.createElement('div');content.className='wide-content';
+  // Left: equity curve + active + closed positions
   const colL=document.createElement('div');colL.className='wide-col';
+  if(secs[2])colL.appendChild(secs[2]);
   if(secs[3])colL.appendChild(secs[3]);
   if(secs[4])colL.appendChild(secs[4]);
-  grid.appendChild(colL);
-  // Row 2 col 2: trader perf (top) + activity log (bottom)
+  content.appendChild(colL);
+  // Right: trader performance + activity log
   const colR=document.createElement('div');colR.className='wide-col';
   if(secs[1])colR.appendChild(secs[1]);
   if(secs[0])colR.appendChild(secs[0]);
-  grid.appendChild(colR);
-  app.appendChild(grid);
+  content.appendChild(colR);
+  app.appendChild(content);
 }
 load();setInterval(load,10000);setTimeout(initSSE,2000);
 // Auto-refresh report every 60s
