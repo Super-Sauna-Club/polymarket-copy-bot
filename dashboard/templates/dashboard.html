@@ -714,8 +714,8 @@ function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
   $('v-open-detail').innerHTML='$'+fm(av+pv)+' total';
   $('v-pending').textContent=pv>0.5?'$'+fm(pv):'$0.00';
   $('v-pending').className='card-val '+(pv>0.5?'up':'neu');
-  const _rc=s.resolved_count||0,_ac=s.awaiting_count||0;
-  $('v-pending-detail').innerHTML=_rc+_ac>0?(_rc>0?'<span style="color:var(--green)">'+_rc+' ready</span>':'')+((_rc&&_ac)?' · ':'')+(_ac>0?'<span style="color:var(--gold)">'+_ac+' awaiting</span>':''):'no pending';
+  const _rv=s.resolved_value||0,_av=s.awaiting_value||0;
+  $('v-pending-detail').innerHTML=_rv+_av>0?(_rv>0.5?'<span style="color:var(--green)">$'+fm(_rv)+' ready</span>':'')+((_rv>0.5&&_av>0.5)?' · ':'')+(_av>0.5?'<span style="color:var(--gold)">$'+fm(_av)+' awaiting</span>':''):'no pending';
 
   // Row 2: Your Trades
   const activeCount=D.open_trades?D.open_trades.filter(t=>t.current_price>0.01&&t.current_price<0.99).length:0;
