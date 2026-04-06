@@ -1,5 +1,7 @@
 # Environment & Secrets
 .env
+secrets.env
+settings.env
 PROJECT_INFO.md
 redeem_status.txt
 

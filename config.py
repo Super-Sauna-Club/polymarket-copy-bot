@@ -1,7 +1,12 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load secrets first, then settings
+_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_dir, "secrets.env"))
+load_dotenv(os.path.join(_dir, "settings.env"))
+# Fallback: legacy .env (for backward compatibility)
+load_dotenv(os.path.join(_dir, ".env"))
 
 # Polymarket CLOB API
 POLYMARKET_PRIVATE_KEY = os.getenv("POLYMARKET_PRIVATE_KEY", "")

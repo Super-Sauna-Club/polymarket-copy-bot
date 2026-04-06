@@ -57,8 +57,8 @@ Configurable per trader via `HEDGE_WAIT_TRADERS=tradername:60`.
 ### 1. Install
 
 ```bash
-git clone https://github.com/t0mii/polymarket-copy-bot-.git
-cd polymarket-copy-bot-
+git clone https://github.com/Super-Sauna-Club/polymarket-copy-bot.git
+cd polymarket-copy-bot
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -67,26 +67,30 @@ pip install -r requirements.txt
 ### 2. Configure
 
 ```bash
-cp .env.example .env
+cp secrets.example.env secrets.env    # API keys & passwords
+cp settings.example.env settings.env  # Bot settings
 ```
 
-Edit `.env` with your values:
+Edit `secrets.env` with your credentials:
 
 ```env
 # Required
 POLYMARKET_PRIVATE_KEY=your_private_key
 POLYMARKET_FUNDER=your_proxy_wallet_address
-FOLLOWED_TRADERS=TraderName:0xAddress,AnotherTrader:0xAddress
 
-# Optional but recommended
-LIVE_MODE=true
-STARTING_BALANCE=200          # How much you deposited (for P&L tracking)
-HEDGE_WAIT_TRADERS=TraderName:60  # Traders that hedge (wait 60s before copying)
-
-# For auto-redeem (get from polymarket.com/settings → Builder)
 BUILDER_KEY=your_key
 BUILDER_SECRET=your_secret
 BUILDER_PASSPHRASE=your_passphrase
+DASHBOARD_SECRET=your_dashboard_password
+```
+
+Edit `settings.env` with your bot configuration (see `settings.example.env` for all options):
+
+```env
+FOLLOWED_TRADERS=TraderName:0xAddress,AnotherTrader:0xAddress
+LIVE_MODE=true
+STARTING_BALANCE=200          # How much you deposited (for P&L tracking)
+HEDGE_WAIT_TRADERS=TraderName:60  # Traders that hedge (wait 60s before copying)
 ```
 
 ### 3. Find Traders to Follow
