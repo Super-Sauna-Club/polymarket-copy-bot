@@ -348,7 +348,6 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <th class="c-pnl sort" data-sort="pnl" data-table="open">P&L</th>
       <th class="c-evt2 sort" data-sort="event" data-table="open">Event</th>
       <th class="c-time sort" data-sort="time" data-table="open">Time</th>
-      <th class="c-close">Close</th>
     </tr></thead><tbody id="tOpen"></tbody></table></div>
   </div>
 
@@ -675,12 +674,11 @@ function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
       <td class="c-num">${Math.round((t.entry_price||0)*100)}\u00A2</td>
       <td class="c-num">${Math.round(((t.current_price||t.entry_price)||0)*100)}\u00A2</td>
       <td class="c-num">$${t.size>=10?fm(t.size,1):fm(t.size)}</td>
-      <td class="c-pnl p-${pc(p)}" style="font-weight:600">${sg(p)}$${Math.abs(p)>=10?fm(Math.abs(p),1):fm(Math.abs(p))}</td>
+      <td class="c-pnl"><button class="close-btn ${p>=0?'win':'loss'}" onclick="closeTrade(${t.id},this)" title="Close position #${t.id}" style="min-width:60px">${sg(p)}$${Math.abs(p)>=10?fm(Math.abs(p),1):fm(Math.abs(p))}</button></td>
       <td class="c-evt2" style="font-size:.78rem">${evtTime(t.event_start)}</td>
       <td class="c-time">${t.created_at?(()=>{try{const d=new Date(t.created_at+'Z');return d.toLocaleString('de-AT',{timeZone:'Europe/Vienna',hour:'2-digit',minute:'2-digit'})}catch(e){return''}})():''}</td>
-      <td class="c-close"><button class="close-btn ${p>=0?'win':'loss'}" onclick="closeTrade(${t.id},this)" title="Close position #${t.id}">${sg(p)}$${fm(Math.abs(p))}</button></td>
     </tr>`}).join('')
-    :'<tr><td colspan="9" class="empty" style="border:0">Waiting for signals...</td></tr>';
+    :'<tr><td colspan="8" class="empty" style="border:0">Waiting for signals...</td></tr>';
 
   $('nClosed').textContent=D.closed_trades.length;
   const sortedClosed=_sortList(D.closed_trades,'closed');
