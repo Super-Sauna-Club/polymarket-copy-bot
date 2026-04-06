@@ -819,8 +819,10 @@ function buildPreview(raw){
         </div>
       </div>
       ${openN?'<div style="text-align:center;margin-top:6px;font-size:.72em;color:var(--text-dim)">'+openN+' open</div>':''}
-      ${best?'<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:.72em"><div style="color:var(--green);margin-bottom:3px">\u25B2 Best: '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>')+'</div>':''}
-      ${worst?'<div style="color:var(--red);font-size:.72em">\u25BC Worst: '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>')+'</div></div>':''}
+      ${best||worst?'<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:.72em">':''}
+      ${best?'<div style="color:var(--green);margin-bottom:3px">\u25B2 Best: '+best.replace(/(\+\$[\d.]+)/,'<b>$1</b>')+'</div>':''}
+      ${worst?'<div style="color:var(--red)">\u25BC Worst: '+worst.replace(/(\$-[\d.]+)/,'<b>$1</b>')+'</div>':''}
+      ${best||worst?'</div>':''}
     </div>`;
   }).join('');
 }
