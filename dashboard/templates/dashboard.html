@@ -321,7 +321,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
     <div class="card fi d3"><div class="card-lbl">Wallet</div><div class="card-val neu" id="v-cash">$---</div><div class="card-sub">available</div></div>
     <div class="card fi d4"><div class="card-lbl">Open Positions</div><div class="card-val gld" id="v-active">$---</div><div class="card-sub" id="v-open-detail"></div></div>
     <div class="card fi d1"><div class="card-lbl">Open P&L</div><div class="card-val neu" id="v-pnl-main">---</div><div class="card-sub" id="v-pnl-sub"></div></div>
-    <div class="card fi d2"><div class="card-lbl">Pending Payout</div><div class="card-val neu" id="v-pending">$---</div><div class="card-sub">won, auto-redeeming</div></div>
+    <div class="card fi d2"><div class="card-lbl">Pending Payout</div><div class="card-val neu" id="v-pending">$---</div><div class="card-sub" id="v-pending-detail">won, auto-redeeming</div></div>
     <div class="card fi d3"><div class="card-lbl">Return</div><div class="card-val neu" id="v-roi">---</div><div class="card-sub" id="v-roi-detail"></div></div>
     <div class="card fi d4"><div class="card-lbl">Active Positions</div><div class="card-val neu" id="v-open">---</div><div class="card-sub" id="v-open-sub"></div></div>
     <div class="card fi d1"><div class="card-lbl">Record</div><div class="card-val-sm" id="v-record-line1">---</div><div class="card-val-sm" id="v-record-line2">---</div><div class="card-sub" id="v-record-detail"></div></div>
@@ -714,6 +714,8 @@ function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
   $('v-open-detail').innerHTML='$'+fm(av+pv)+' total';
   $('v-pending').textContent=pv>0.5?'$'+fm(pv):'$0.00';
   $('v-pending').className='card-val '+(pv>0.5?'up':'neu');
+  const _rc=s.resolved_count||0,_ac=s.awaiting_count||0;
+  $('v-pending-detail').innerHTML=_rc+_ac>0?(_rc>0?'<span style="color:var(--green)">'+_rc+' ready</span>':'')+((_rc&&_ac)?' · ':'')+(_ac>0?'<span style="color:var(--gold)">'+_ac+' awaiting</span>':''):'no pending';
 
   // Row 2: Your Trades
   const activeCount=D.open_trades?D.open_trades.filter(t=>t.current_price>0.01&&t.current_price<0.99).length:0;

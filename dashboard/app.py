@@ -313,7 +313,12 @@ def api_live_data():
     # Polymarket values (use ALL raw positions for accurate totals, not filtered open_positions)
     open_value = sum(float(rp.get("currentValue", 0) or 0) for rp in all_raw)
     active_value = sum(float(rp.get("currentValue", 0) or 0) for rp in all_raw if 0.01 < float(rp.get("curPrice", 0) or 0) < 0.99)
-    redeemable_value = sum(float(rp.get("currentValue", 0) or 0) for rp in all_raw if float(rp.get("curPrice", 0) or 0) >= 0.99)
+    _pending_won = [rp for rp in all_raw if float(rp.get("curPrice", 0) or 0) >= 0.99 and float(rp.get("currentValue", 0) or 0) > 0.05]
+    redeemable_value = sum(float(rp.get("currentValue", 0) or 0) for rp in _pending_won)
+    _resolved_count = sum(1 for rp in _pending_won if rp.get("redeemable"))
+    _awaiting_count = sum(1 for rp in _pending_won if not rp.get("redeemable"))
+    _resolved_value = sum(float(rp.get("currentValue", 0) or 0) for rp in _pending_won if rp.get("redeemable"))
+    _awaiting_value = sum(float(rp.get("currentValue", 0) or 0) for rp in _pending_won if not rp.get("redeemable"))
     total_value = wallet + open_value
     total_pnl = total_value - DEPOSIT
     wr = round(wins / max(total_closed, 1) * 100, 1)
@@ -338,6 +343,10 @@ def api_live_data():
         "total_invested": round(open_value, 2),
         "active_value": round(active_value, 2),
         "redeemable_value": round(redeemable_value, 2),
+        "resolved_count": _resolved_count,
+        "awaiting_count": _awaiting_count,
+        "resolved_value": round(_resolved_value, 2),
+        "awaiting_value": round(_awaiting_value, 2),
         "total_pnl": round(total_pnl, 2),
         "realized_pnl": 0,
         "unrealized_pnl": 0,
