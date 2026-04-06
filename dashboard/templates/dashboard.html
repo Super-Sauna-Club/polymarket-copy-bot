@@ -577,6 +577,15 @@ function dSp(t){const s=((t.market_slug||t.slug||'')+(t.market_question||'')+(t.
     ['rolex ','\uD83C\uDFBE','ATP'],['open:','\uD83C\uDFBE','ATP'],
     ['game 1','','BO'],['game 2','','BO'],['game 3','','BO'],
     ['(bo3)','','BO'],['(bo5)','','BO'],['map 1','\uD83C\uDFAE','CS'],['map 2','\uD83C\uDFAE','CS']];
+    // Geopolitics / Military
+    ['iran','\uD83D\uDE80','GEO'],['israel','\uD83D\uDE80','GEO'],['gaza','\uD83D\uDE80','GEO'],['hezbollah','\uD83D\uDE80','GEO'],['houthi','\uD83D\uDE80','GEO'],
+    ['yemen','\uD83D\uDE80','GEO'],['lebanon','\uD83D\uDE80','GEO'],['beirut','\uD83D\uDE80','GEO'],['isfahan','\uD83D\uDE80','GEO'],['tehran','\uD83D\uDE80','GEO'],
+    ['ceasefire','\uD83D\uDE80','GEO'],['airstrike','\uD83D\uDE80','GEO'],['military','\uD83D\uDE80','GEO'],['strike','\uD83D\uDE80','GEO'],['nuclear','\uD83D\uDE80','GEO'],
+    ['ukraine','\uD83D\uDE80','GEO'],['russia','\uD83D\uDE80','GEO'],['nato','\uD83D\uDE80','GEO'],['sanctions','\uD83D\uDE80','GEO'],['missile','\uD83D\uDE80','GEO'],
+    // Politics
+    ['trump','\uD83C\uDFDB\uFE0F','POL'],['biden','\uD83C\uDFDB\uFE0F','POL'],['congress','\uD83C\uDFDB\uFE0F','POL'],['senate','\uD83C\uDFDB\uFE0F','POL'],['election','\uD83C\uDFDB\uFE0F','POL'],
+    ['president','\uD83C\uDFDB\uFE0F','POL'],['tariff','\uD83C\uDFDB\uFE0F','POL'],['fed ','\uD83C\uDFDB\uFE0F','POL'],['dhs','\uD83C\uDFDB\uFE0F','POL'],['cabinet','\uD83C\uDFDB\uFE0F','POL'],
+  ];
   for(const[k,e,l]of m){if(s.includes(k))return{e:e||'\uD83C\uDFAE',l:l||'E-Sport'}}return{e:'',l:''}}
 function evtTime(iso){
   if(!iso)return'<span style="color:var(--text-dim)">—</span>';
