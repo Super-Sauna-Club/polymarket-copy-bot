@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Log — Poly CopyBot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&family=Fira+Code:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#06060a;--bg2:#0c0c12;--bg3:#12121c;--bg4:#1a1a28;
+  --border:#1e1e30;--border-h:#2e2e48;
+  --gold:#c9a84c;--gold-bright:#e4c868;--gold-dim:rgba(201,168,76,0.2);
+  --green:#34d399;--green-dim:rgba(52,211,153,0.15);
+  --red:#f87171;--red-dim:rgba(248,113,113,0.15);
+  --blue:#60a5fa;--yellow:#fbbf24;--purple:#a78bfa;--cyan:#22d3ee;
+  --text:#e8e4dc;--text-dim:#5c5a6a;--text-mid:#8a889a;
+  --font:'Manrope',system-ui,sans-serif;--mono:'Fira Code','Courier New',monospace;
+}
+html{font-size:15px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-weight:300;line-height:1.65;min-height:100vh;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(rgba(201,168,76,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,0.03) 1px,transparent 1px);
+  background-size:80px 80px;animation:gridDrift 60s linear infinite}
+@keyframes gridDrift{to{background-position:80px 80px}}
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse at 20% 0%,rgba(201,168,76,0.06),transparent 55%),
+             radial-gradient(ellipse at 80% 100%,rgba(201,168,76,0.03),transparent 50%)}
+.scan{position:fixed;top:0;left:0;right:0;height:1px;z-index:9998;pointer-events:none;
+  background:linear-gradient(90deg,transparent 10%,rgba(201,168,76,0.25) 50%,transparent 90%);
+  animation:scanMove 8s linear infinite}
+@keyframes scanMove{0%{top:-1px}100%{top:100vh}}
+.app{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:0 3% 40px}
+.hd{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap;gap:12px}
+.logo{font-size:1.25rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);text-shadow:0 0 30px rgba(201,168,76,0.2)}
+.logo-sub{font-size:.68rem;color:var(--text-dim);letter-spacing:.12em;font-weight:300}
+.nav a{font-size:.78rem;color:var(--text-mid);text-decoration:none;padding:8px 18px;border:1px solid transparent;letter-spacing:0.12em;text-transform:uppercase;font-weight:400;transition:all .25s}
+.nav a:hover,.nav a.act{color:var(--gold);border-color:rgba(201,168,76,0.35)}
+
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.btn{font-size:.72rem;font-family:var(--mono);padding:5px 12px;border:1px solid var(--border);background:var(--bg2);color:var(--text-mid);cursor:pointer;letter-spacing:.06em;transition:all .2s;border-radius:2px}
+.btn:hover{border-color:var(--gold-dim);color:var(--text)}
+.btn.act{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,0.08)}
+.btn-pause{border-color:var(--red);color:var(--red)}
+.btn-pause.act{background:rgba(248,113,113,0.1)}
+.search{font-size:.78rem;font-family:var(--mono);padding:5px 12px;border:1px solid var(--border);background:var(--bg2);color:var(--text);width:220px;outline:none}
+.search:focus{border-color:var(--gold)}
+.count{font-size:.68rem;color:var(--text-dim);font-family:var(--mono);margin-left:auto}
+
+.log-box{border:1px solid var(--border);background:var(--bg2);height:calc(100vh - 180px);overflow-y:auto;font-family:var(--mono);font-size:.75rem;line-height:1.7;padding:8px 0}
+.log-box::-webkit-scrollbar{width:6px}
+.log-box::-webkit-scrollbar-track{background:var(--bg2)}
+.log-box::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:3px}
+.ll{padding:1px 14px;white-space:pre-wrap;word-break:break-all;border-left:2px solid transparent}
+.ll:hover{background:rgba(201,168,76,0.03)}
+.ll .ts{color:var(--text-dim)}
+.ll .lv-INFO{color:var(--blue)}
+.ll .lv-WARNING{color:var(--yellow)}
+.ll .lv-ERROR{color:var(--red);font-weight:600}
+/* Highlight keywords */
+.ll.has-filter{border-left-color:var(--yellow)}
+.ll.has-skip{border-left-color:var(--text-dim)}
+.ll.has-buy{border-left-color:var(--green)}
+.ll.has-sell{border-left-color:var(--red)}
+.ll.has-hedge{border-left-color:var(--purple)}
+.ll.has-copy{border-left-color:var(--green)}
+.ll.has-close{border-left-color:var(--red)}
+.ll.has-error{border-left-color:var(--red);background:rgba(248,113,113,0.03)}
+.hl-filter{color:var(--yellow);font-weight:600}
+.hl-skip{color:var(--text-mid)}
+.hl-buy{color:var(--green);font-weight:600}
+.hl-sell{color:var(--red);font-weight:600}
+.hl-hedge{color:var(--purple);font-weight:600}
+.hl-copy{color:var(--green);font-weight:600}
+.hl-close{color:var(--red)}
+.hl-price{color:var(--cyan)}
+.hl-trader{color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="scan"></div>
+<div class="app">
+  <header class="hd">
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="/static/logo.png" alt="SSC" style="height:36px" onerror="this.style.display='none'">
+      <div><div class="logo">System Log</div><div class="logo-sub">Poly CopyBot by Super Sauna Club</div></div>
+    </div>
+    <nav class="nav">
+      <a href="/copy">Terminal</a>
+      <a href="/wallets">Settings</a>
+      <a href="/logs" class="act">Logs</a>
+    </nav>
+  </header>
+
+  <div class="toolbar">
+    <button class="btn act" data-f="" onclick="setFilter(this,'')">ALL</button>
+    <button class="btn" data-f="filter,skip" onclick="setFilter(this,'filter,skip')">FILTERED</button>
+    <button class="btn" data-f="copy trade,buy,order buy" onclick="setFilter(this,'copy trade,buy,order buy')">BUYS</button>
+    <button class="btn" data-f="sell,fast-sell,auto-sell" onclick="setFilter(this,'sell,fast-sell,auto-sell')">SELLS</button>
+    <button class="btn" data-f="hedge" onclick="setFilter(this,'hedge')">HEDGE</button>
+    <button class="btn" data-f="event-wait" onclick="setFilter(this,'event-wait')">EVENT-WAIT</button>
+    <button class="btn" data-f="closed,close,resolved" onclick="setFilter(this,'closed,close,resolved')">CLOSES</button>
+    <button class="btn" data-f="error,fehler,warning" onclick="setFilter(this,'error,fehler,warning')">ERRORS</button>
+    <button class="btn" data-f="portfolio,snapshot" onclick="setFilter(this,'portfolio,snapshot')">PORTFOLIO</button>
+    <input class="search" id="search" placeholder="Freitext-Suche..." oninput="applySearch()">
+    <button class="btn btn-pause" id="pauseBtn" onclick="togglePause()">PAUSE</button>
+    <span class="count" id="lineCount">0 lines</span>
+  </div>
+
+  <div class="log-box" id="logBox"></div>
+</div>
+<script>
+let lines=[], filter='', paused=false, autoScroll=true, searchTxt='';
+
+function setFilter(btn, f){
+  filter=f;
+  document.querySelectorAll('.toolbar .btn:not(.btn-pause)').forEach(b=>b.classList.remove('act'));
+  btn.classList.add('act');
+  render();
+}
+function togglePause(){
+  paused=!paused;
+  document.getElementById('pauseBtn').classList.toggle('act',paused);
+  document.getElementById('pauseBtn').textContent=paused?'PAUSED':'PAUSE';
+  if(!paused){autoScroll=true;fetchLogs()}
+}
+function applySearch(){
+  searchTxt=document.getElementById('search').value.toLowerCase();
+  render();
+}
+
+function colorize(line){
+  // Extract timestamp and level
+  let m=line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) \[(\w+)\] (.+)/);
+  if(!m) return `<span>${esc(line)}</span>`;
+  let ts=m[1], lv=m[2], rest=m[3];
+  let e=esc(rest);
+  // Highlight keywords
+  e=e.replace(/\[FILTER\]/g,'<span class="hl-filter">[FILTER]</span>');
+  e=e.replace(/\[SKIP\]/g,'<span class="hl-skip">[SKIP]</span>');
+  e=e.replace(/\[NEW\]/g,'<span class="hl-buy">[NEW]</span>');
+  e=e.replace(/COPY TRADE/g,'<span class="hl-copy">COPY TRADE</span>');
+  e=e.replace(/ORDER BUY:/g,'<span class="hl-buy">ORDER BUY:</span>');
+  e=e.replace(/ORDER SELL:/g,'<span class="hl-sell">ORDER SELL:</span>');
+  e=e.replace(/\[FAST-SELL\]/g,'<span class="hl-sell">[FAST-SELL]</span>');
+  e=e.replace(/\[AUTO-SELL\]/g,'<span class="hl-sell">[AUTO-SELL]</span>');
+  e=e.replace(/\[AUTO-CLOSE\]/g,'<span class="hl-close">[AUTO-CLOSE]</span>');
+  e=e.replace(/\[HEDGE-WAIT\]/g,'<span class="hl-hedge">[HEDGE-WAIT]</span>');
+  e=e.replace(/\[EVENT-WAIT\]/g,'<span class="hl-hedge">[EVENT-WAIT]</span>');
+  e=e.replace(/\[DIFF\]/g,'<span class="hl-filter">[DIFF]</span>');
+  e=e.replace(/\[MISS-CLOSE\]/g,'<span class="hl-close">[MISS-CLOSE]</span>');
+  e=e.replace(/\[STOP-LOSS\]/g,'<span class="hl-sell">[STOP-LOSS]</span>');
+  e=e.replace(/\[TAKE-PROFIT\]/g,'<span class="hl-buy">[TAKE-PROFIT]</span>');
+  e=e.replace(/FILLED/g,'<span class="hl-buy">FILLED</span>');
+  e=e.replace(/FAILED/g,'<span class="hl-sell">FAILED</span>');
+  e=e.replace(/(\$[\-+]?\d+\.?\d*)/g,'<span class="hl-price">$1</span>');
+  e=e.replace(/(\d+c\b)/g,'<span class="hl-price">$1</span>');
+  e=e.replace(/(xsaghav|sovereign2013|KING7777777|fsavhlc|Jargs)/g,'<span class="hl-trader">$1</span>');
+  return `<span class="ts">${esc(ts)}</span> <span class="lv-${lv}">[${lv}]</span> ${e}`;
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function classify(line){
+  let l=line.toLowerCase();
+  if(l.includes('[error]')||l.includes('fehler'))return 'has-error';
+  if(l.includes('[filter]'))return 'has-filter';
+  if(l.includes('[skip]'))return 'has-skip';
+  if(l.includes('hedge'))return 'has-hedge';
+  if(l.includes('copy trade')||l.includes('order buy'))return 'has-buy';
+  if(l.includes('sell')||l.includes('auto-sell'))return 'has-sell';
+  if(l.includes('closed')||l.includes('close')||l.includes('resolved'))return 'has-close';
+  return '';
+}
+
+function render(){
+  let box=document.getElementById('logBox');
+  let filtered=lines;
+  if(filter){
+    let fs=filter.split(',').map(f=>f.trim().toLowerCase());
+    filtered=lines.filter(l=>{let lo=l.toLowerCase();return fs.some(f=>lo.includes(f))});
+  }
+  if(searchTxt){
+    filtered=filtered.filter(l=>l.toLowerCase().includes(searchTxt));
+  }
+  document.getElementById('lineCount').textContent=filtered.length+' / '+lines.length+' lines';
+  box.innerHTML=filtered.map(l=>`<div class="ll ${classify(l)}">${colorize(l)}</div>`).join('');
+  if(autoScroll)box.scrollTop=box.scrollHeight;
+}
+
+// Detect manual scroll (user scrolled up = pause auto-scroll)
+document.addEventListener('DOMContentLoaded',()=>{
+  let box=document.getElementById('logBox');
+  box.addEventListener('scroll',()=>{
+    let atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<50;
+    autoScroll=atBottom;
+  });
+});
+
+async function fetchLogs(){
+  if(paused)return;
+  try{
+    let r=await fetch('/api/logs?lines=500');
+    let d=await r.json();
+    lines=d.lines||[];
+    render();
+  }catch(e){console.error('Log fetch error:',e)}
+}
+
+// Initial load + auto-refresh every 3 seconds
+fetchLogs();
+setInterval(()=>{if(!paused)fetchLogs()},3000);
+</script>
+</body>
+</html>

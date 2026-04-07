@@ -418,6 +418,28 @@ def wallets_page():
     return render_template("index.html")
 
 
+@app.route("/logs")
+def logs_page():
+    return render_template("logs.html")
+
+
+@app.route("/api/logs")
+def api_logs():
+    """Return last N lines of the bot log, optionally filtered."""
+    lines = int(request.args.get("lines", 200))
+    filt = request.args.get("filter", "").lower()
+    try:
+        with open(config.LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        tail = all_lines[-min(lines * 3, len(all_lines)):]  # read extra to compensate for filtering
+        if filt:
+            filters = filt.split(",")
+            tail = [l for l in tail if any(f in l.lower() for f in filters)]
+        return jsonify({"lines": [l.rstrip() for l in tail[-lines:]]})
+    except Exception as e:
+        return jsonify({"lines": [f"Error reading log: {e}"]})
+
+
 @app.route("/api/settings")
 def api_settings():
     """Current bot settings (read-only)."""
