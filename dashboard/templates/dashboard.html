@@ -314,6 +314,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <div style="margin-right:auto"><div class="logo">Poly Copybot</div><div style="font-size:.8rem;color:var(--text-dim);letter-spacing:.12em;font-weight:300">by Super Sauna Club</div></div>
     </div>
     <div class="hd-center">
+      <div id="digiclock" style="font-family:var(--mono);font-size:1.8rem;font-weight:700;letter-spacing:.12em;color:var(--green);text-shadow:0 0 20px rgba(52,211,153,0.4),0 0 40px rgba(52,211,153,0.15);display:none"></div>
       <div class="live-tag"><span class="live-dot"></span>LIVE</div>
       <div class="status-tags">
         <span class="st" id="st-bot"><span class="st-dot on"></span>Bot</span>
@@ -1032,8 +1033,22 @@ function togWide(){
   if(u.searchParams.has('wide')){u.searchParams.delete('wide')}else{u.searchParams.set('wide','1')}
   location.href=u.toString();
 }
+// Digital clock — visible in wide mode only
+function _tickClock(){
+  const el=document.getElementById('digiclock');
+  if(!el)return;
+  const now=new Date();
+  const h=String(now.getHours()).padStart(2,'0');
+  const m=String(now.getMinutes()).padStart(2,'0');
+  const s=String(now.getSeconds()).padStart(2,'0');
+  el.innerHTML=h+'<span style="opacity:'+(now.getSeconds()%2?'1':'0.3')+'">:</span>'+m+'<span style="opacity:'+(now.getSeconds()%2?'1':'0.3')+'">:</span>'+s;
+}
+setInterval(_tickClock,1000);
+_tickClock();
+
 if(new URLSearchParams(location.search).has('wide')){
   document.body.classList.add('wide');
+  document.getElementById('digiclock').style.display='block';
   const app=document.querySelector('.app');
   // Hide normal exposure section in wide mode
   const exNorm=$('expoSecNormal');if(exNorm)exNorm.style.display='none';
