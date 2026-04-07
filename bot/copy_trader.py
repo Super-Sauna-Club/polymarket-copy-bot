@@ -212,7 +212,16 @@ _CATEGORY_KEYWORDS = {
             "cardinals", "colts", "jaguars", "titans", "raiders", "jets", "patriots", "panthers", "giants"],
     "tennis": ["tennis", "atp", "wta", "roland garros", "wimbledon", "us open tennis",
                "australian open", "monte carlo", "madrid open", "rome open", "indian wells",
-               "miami open", "campinas", "sarasota", "monza", "challenger"],
+               "miami open", "campinas", "sarasota", "monza", "challenger",
+               # Known tennis tournament cities (Challengers/ITF often just show city name)
+               "mexico city:", "buenos aires:", "santiago:", "lima:", "bogota:",
+               "pune:", "bengaluru:", "chennai:", "taipei:",
+               # Known tennis player names (sovereign2013's frequent bets)
+               "duckworth", "norrie", "de minaur", "monfils", "bublik", "sinner",
+               "alcaraz", "djokovic", "medvedev", "rublev", "fritz", "ruud",
+               "tsitsipas", "zverev", "berrettini", "tiafoe", "paul", "shelton",
+               "volynets", "vekic", "badosa", "pliskova", "sasnovich", "grabher",
+               "swiatek", "sabalenka", "gauff", "pegula", "keys", "rybakina"],
     "soccer": ["soccer", "football", "premier league", "la liga", "bundesliga", "serie a",
                "ligue 1", "champions league", "ucl", "europa league", "mls",
                "bayern", "barcelona", "madrid", "arsenal", "liverpool", "manchester",
