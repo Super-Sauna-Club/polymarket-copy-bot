@@ -223,7 +223,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
   text-align:center;box-shadow:0 0 80px rgba(201,168,76,0.18),0 20px 60px rgba(0,0,0,0.7);
   animation:alIn .35s cubic-bezier(.17,.67,.35,1.2),alOut .5s 5.2s ease-in forwards;
   max-width:620px;width:92%;position:relative}
-.al-ban.big-win{animation:alIn .35s cubic-bezier(.17,.67,.35,1.2),alOut .5s 5.5s ease-in forwards}
+.al-ban.big-win{animation:alIn .35s cubic-bezier(.17,.67,.35,1.2),alOut .5s 15.5s ease-in forwards}
 .al-ban.big-loss{animation:alIn .35s cubic-bezier(.17,.67,.35,1.2),shakeX .4s .35s ease-in-out,alOut .5s 5.5s ease-in forwards}
 @keyframes shakeX{0%,100%{transform:translateX(0)}15%{transform:translateX(-8px)}30%{transform:translateX(8px)}45%{transform:translateX(-5px)}60%{transform:translateX(5px)}75%{transform:translateX(-2px)}90%{transform:translateX(2px)}}
 .al-ban::before{content:'';position:absolute;inset:-1px;
@@ -242,10 +242,10 @@ tr:hover{background:rgba(201,168,76,0.03)}
 /* ═══ MEME GIF OVERLAY (bottom-right) ═══ */
 .meme-ov{position:fixed;bottom:20px;right:20px;z-index:9997;pointer-events:none}
 .meme-card{pointer-events:auto;background:var(--bg);border:1px solid var(--border-h);
-  padding:10px 14px;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.7);
-  animation:memeIn .4s cubic-bezier(.17,.67,.35,1.2);max-width:280px;text-align:center}
+  padding:14px 18px;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.7);
+  animation:memeIn .4s cubic-bezier(.17,.67,.35,1.2);max-width:340px;text-align:center}
 .meme-card.out{animation:memeOut .4s ease-in forwards}
-.meme-card img{width:160px;border-radius:8px;margin-bottom:6px}
+.meme-card img{width:260px;border-radius:8px;margin-bottom:8px}
 .meme-lbl{font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;font-weight:700;
   color:var(--gold);margin-bottom:2px}
 .meme-sub{font-size:.68rem;color:var(--text-dim);font-weight:300;font-style:italic}
@@ -422,7 +422,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:.8rem;color:var(--text)">Win Streak</span>
         <div style="display:flex;gap:5px;align-items:center">
-          <button onclick="AC.resume();_showMeme({gif:_streakWinCfg[1].gif,lbl:_streakWinCfg[1].lbl,snd:_sndAirhorn,vol:0.22,dur:4500,color:'var(--green)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
+          <button onclick="AC.resume();_showMeme({gif:_streakWinCfg[1].gif,lbl:_streakWinCfg[1].lbl,snd:_sndJackpot,vol:0.22,dur:4500,color:'var(--green)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
           <button id="sfxTogsfxStreak" onclick="_togMeme('sfxStreak')" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.7rem;padding:3px 10px;border-radius:4px;min-width:38px;font-weight:600">OFF</button>
         </div>
       </div>
@@ -560,12 +560,12 @@ let _moneyBuffer=null;
 fetch('/static/money-button.mp3').then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).then(buf=>{_moneyBuffer=buf}).catch(()=>{});
 function playMoney(){if(!_moneyBuffer)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=_moneyBuffer;g.gain.value=0.18;s.connect(g);g.connect(AC.destination);s.start()}catch(e){}}
 /* ═══ MEME SOUND BUFFERS ═══ */
-let _sndWasted=null,_sndBell=null,_sndCrowd=null,_sndAirhorn=null,_sndCurb=null,_sndPayout=null;
+let _sndWasted=null,_sndBell=null,_sndJackpot=null,_sndPolice=null,_sndCurb=null,_sndPayout=null;
 function _loadSnd(url){return fetch(url).then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).catch(()=>null)}
 _loadSnd('/static/loss-wasted.mp3').then(b=>{_sndWasted=b});
 _loadSnd('/static/trade-bell.mp3').then(b=>{_sndBell=b});
-_loadSnd('/static/streak-crowd.mp3').then(b=>{_sndCrowd=b});
-_loadSnd('/static/streak-airhorn.mp3').then(b=>{_sndAirhorn=b});
+_loadSnd('/static/streak-jackpot.mp3?v=3').then(b=>{_sndJackpot=b});
+_loadSnd('/static/bigwin-police.mp3').then(b=>{_sndPolice=b});
 _loadSnd('/static/streak-curb.mp3').then(b=>{_sndCurb=b});
 _loadSnd('/static/payout-cashregister.mp3').then(b=>{_sndPayout=b});
 function _playBuf(buf,vol){if(!buf)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=buf;g.gain.value=vol||0.2;s.connect(g);g.connect(AC.destination);s.start()}catch(e){}}
@@ -573,12 +573,12 @@ const _rnd=a=>a[Math.floor(Math.random()*a.length)];
 /* ═══ MEME GIF ARRAYS ═══ */
 const _lossGif='https://media.giphy.com/media/AHMHuF12pW4b6/giphy.gif';
 const _lossLabels=["IT'S CALLED VARIANCE BRO","EMOTIONAL DAMAGE","WE'LL GET 'EM NEXT TIME","THAT ONE HURT NGL","THE MATH WILL MATH... EVENTUALLY"];
-const _tradeGifs=['https://media.giphy.com/media/yAYZnhvY3fflS/giphy.gif','https://media.giphy.com/media/vRf4Z1OZ21j9e/giphy.gif'];
+const _tradeGifs=['https://media.giphy.com/media/yAYZnhvY3fflS/giphy.gif'];
 const _tradeLabels=["BET LOCKED IN","WE RIDE AT DAWN","TRUST THE PROCESS","POSITION ENTERED \u2014 LFG"];
 const _streakWinCfg=[
-  {n:3,lbl:"ON FIRE \uD83D\uDD25",gif:'https://media.giphy.com/media/9Pcx5QV08YNHB3jRxa/giphy.gif',snd:()=>_sndCrowd},
-  {n:5,lbl:"LET HIM COOK \uD83E\uDDD1\u200D\uD83C\uDF73",gif:'https://media.giphy.com/media/9Pcx5QV08YNHB3jRxa/giphy.gif',snd:()=>_sndAirhorn},
-  {n:7,lbl:"GOD MODE \uD83D\uDC51",gif:'https://media.giphy.com/media/9Pcx5QV08YNHB3jRxa/giphy.gif',snd:()=>_moneyBuffer}
+  {n:3,lbl:"ON FIRE \uD83D\uDD25",gif:'https://media.giphy.com/media/LLWP1seiT4fC/giphy.gif',snd:()=>_sndJackpot},
+  {n:5,lbl:"LET HIM COOK \uD83E\uDDD1\u200D\uD83C\uDF73",gif:'https://media.giphy.com/media/LLWP1seiT4fC/giphy.gif',snd:()=>_sndJackpot},
+  {n:7,lbl:"GOD MODE \uD83D\uDC51",gif:'https://media.giphy.com/media/LLWP1seiT4fC/giphy.gif',snd:()=>_sndJackpot}
 ];
 const _streakLossCfg=[
   {n:3,lbl:"THIS IS FINE \uD83D\uDD25",gif:'https://media.giphy.com/media/NTur7XlVDUdqM/giphy.gif',snd:()=>_sndCurb},
@@ -588,7 +588,7 @@ const _streakLossCfg=[
 const _payoutGifs=['https://media.giphy.com/media/h0MTqLyvgG0Ss/giphy.gif'];
 const _payoutLabels=["PAYOUT RECEIVED","MONEY PRINTER GO BRRR","USDC SECURED"];
 /* Preload all GIFs */
-[_lossGif,'https://gifdb.com/images/high/internet-star-hasbulla-counting-money-money-money-zr98gdcan97a4hn8.gif','https://media.giphy.com/media/LLWP1seiT4fC/giphy.gif',..._tradeGifs,..._streakWinCfg.map(s=>s.gif),..._streakLossCfg.map(s=>s.gif),..._payoutGifs].forEach(u=>{const i=new Image();i.src=u});
+[_lossGif,'https://gifdb.com/images/high/internet-star-hasbulla-counting-money-money-money-zr98gdcan97a4hn8.gif','https://media.giphy.com/media/x0GeFXErpcRk4/giphy.gif','https://media.giphy.com/media/LLWP1seiT4fC/giphy.gif',..._tradeGifs,..._streakWinCfg.map(s=>s.gif),..._streakLossCfg.map(s=>s.gif),..._payoutGifs].forEach(u=>{const i=new Image();i.src=u});
 document.addEventListener('click',()=>{if(AC.state==='suspended')AC.resume()});
 const hist=[];
 const $=id=>document.getElementById(id);
@@ -671,7 +671,8 @@ function _checkPayouts(){
   if(_prevWallet!==null){
     const delta=wallet-_prevWallet;
     if(delta>1&&D.activity){
-      const recent=D.activity.find(a=>a.event_type==='redeem'&&a.icon==='CASH');
+      const now=Date.now()/1000;
+      const recent=D.activity.find(a=>a.event_type==='redeem'&&a.icon==='CASH'&&a.created_at&&(now-new Date(a.created_at).getTime()/1000)<120);
       if(recent&&sfxPayout){
         _showMeme({gif:_rnd(_payoutGifs),lbl:_rnd(_payoutLabels),
           sub:'+$'+delta.toFixed(2)+' USDC',snd:_sndPayout,vol:0.25,dur:5000,color:'var(--green)'});
@@ -686,9 +687,9 @@ function _showCloseAlert(t){
   const o=$('alOv');o.style.display='flex';
   const w=t.pnl>=0;
   const bigWin=w&&t.pnl>0&&t.size>0&&(t.pnl/t.size)>=0.5;
-  const winGif=bigWin?'https://media.giphy.com/media/LLWP1seiT4fC/giphy.gif':'https://gifdb.com/images/high/internet-star-hasbulla-counting-money-money-money-zr98gdcan97a4hn8.gif';
+  const winGif=bigWin?'https://media.giphy.com/media/x0GeFXErpcRk4/giphy.gif':'https://gifdb.com/images/high/internet-star-hasbulla-counting-money-money-money-zr98gdcan97a4hn8.gif';
   const gifUrl=w?winGif:_lossGif;
-  const gifHtml='<img src="'+gifUrl+'" style="width:120px;border-radius:8px;margin-left:14px;flex-shrink:0" alt="GIF">';
+  const gifHtml='<img src="'+gifUrl+'" style="width:150px;max-height:120px;object-fit:contain;border-radius:8px;margin-left:14px;flex-shrink:0" alt="GIF">';
   const lossLbl=_rnd(_lossLabels);
   o.innerHTML=`<div class="al-ban${bigWin?' big-win':(!w?' big-loss':'')}" style="border-color:${w?'var(--green)':'var(--red)'}; display:flex;align-items:center;text-align:left">
     <div style="flex:1">
@@ -696,12 +697,13 @@ function _showCloseAlert(t){
     <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl" style="color:${w?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}$${(t.pnl||0).toFixed(2)}</span> @ ${t.price||0}\u00A2 \u00B7 via <span class="hl">${t.trader||'?'}</span></div>
     </div>${gifHtml}</div>`;
-  if(w&&bigWin&&sfxBigWin){playMoney()}
+  if(w&&bigWin&&sfxBigWin){_playBuf(_sndPolice,0.22)}
   if(w&&!bigWin&&sfxWin){playMoney()}
   if(!w&&sfxLoss){_playBuf(_sndWasted,0.22)}
   _alertIsWin=w;_alertIsBigWin=bigWin;
   if(_alertTimer)clearTimeout(_alertTimer);
-  _alertTimer=setTimeout(()=>{o.style.display='none';_alertTimer=null;_alertIsWin=false;_alertIsBigWin=false;_processAlertQueue()},6000);
+  const dur=bigWin?16500:6000;
+  _alertTimer=setTimeout(()=>{o.style.display='none';_alertTimer=null;_alertIsWin=false;_alertIsBigWin=false;_processAlertQueue()},dur);
 }
 function _processAlertQueue(){
   if(!_alertQueue.length)return;
