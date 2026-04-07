@@ -202,6 +202,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 MASSIVE_API_KEY = os.getenv("MASSIVE_API_KEY", "")
 POLYMARKET_API_KEY = os.getenv("POLYMARKET_API_KEY", "")
+
+# PandaScore API (esports livestream links)
+PANDASCORE_API_KEY = os.getenv("PANDASCORE_API_KEY", "")
 POLYMARKET_SECRET = os.getenv("POLYMARKET_SECRET", "")
 POLYMARKET_PASSPHRASE = os.getenv("POLYMARKET_PASSPHRASE", "")
 

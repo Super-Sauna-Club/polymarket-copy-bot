@@ -170,6 +170,9 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .close-btn:hover{opacity:.8}
 .close-btn.win{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.3)}
 .close-btn.loss{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3)}
+.live-btn{display:inline-block;padding:3px 10px;border-radius:4px;font-size:.68rem;font-weight:700;cursor:pointer;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.1);color:var(--red);letter-spacing:.08em;transition:all .2s;animation:livePulse 2s infinite}
+.live-btn:hover{background:rgba(248,113,113,.25);border-color:var(--red)}
+@keyframes livePulse{0%,100%{opacity:1}50%{opacity:.6}}
 th.sort{cursor:pointer;user-select:none}th.sort:hover{color:var(--gold)}th.sort.asc::after{content:' ▲';font-size:.6em}th.sort.desc::after{content:' ▼';font-size:.6em}
 .tw::-webkit-scrollbar{width:3px;height:3px}
 .tw::-webkit-scrollbar-track{background:var(--bg)}
@@ -930,7 +933,7 @@ function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
       <td class="c-num">${Math.round(((t.current_price||t.entry_price)||0)*100)}\u00A2</td>
       <td class="c-num">$${t.size>=10?fm(t.size,1):fm(t.size)}</td>
       <td class="c-pnl"><button class="close-btn ${p>=0?'win':'loss'}" onclick="closeTrade(${t.id},this)" title="Close position #${t.id}" style="min-width:60px">${sg(p)}$${Math.abs(p)>=10?fm(Math.abs(p),1):fm(Math.abs(p))}</button></td>
-      <td class="c-evt2" style="font-size:.78rem">${evtTime(t.event_start)}</td>
+      <td class="c-evt2" style="font-size:.78rem">${_isEsport(t)?`<button class="live-btn" onclick="openStream('${(t.market_question||'').replace(/'/g,"\\'")}',this)" title="Find livestream">LIVE</button>`:evtTime(t.event_start)}</td>
       <td class="c-time">${t.created_at?(()=>{try{const d=new Date(t.created_at+'Z');return'<div>'+d.toLocaleString('de-AT',{timeZone:'Europe/Vienna',hour:'2-digit',minute:'2-digit'})+'</div><div style="font-size:.65rem;color:var(--text-dim)">'+d.toLocaleString('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit'})+'</div>'}catch(e){return''}})():''}</td>
     </tr>`}).join('')
     :'<tr><td colspan="8" class="empty" style="border:0">Waiting for signals...</td></tr>';
@@ -1283,6 +1286,29 @@ function togLock(){
   fetch('/api/auth/check',{method:'POST',headers:{'X-Dashboard-Key':input,'Content-Type':'application/json'}})
     .then(r=>{if(r.ok){localStorage.setItem('dashSecret',input);_updateLockIcon();alert('Unlocked!')}else{alert('Falscher Key')}})
     .catch(()=>alert('Verbindungsfehler'));
+}
+
+function _isEsport(t){
+  const s=((t.market_slug||'')+(t.market_question||'')).toLowerCase();
+  return /counter-strike|cs2|cs:|lol:|league of legends|dota|valorant|val:/.test(s);
+}
+function openStream(question,btn){
+  const orig=btn.textContent;
+  btn.textContent='...';btn.disabled=true;
+  fetch('/api/stream/find?q='+encodeURIComponent(question))
+    .then(r=>r.json())
+    .then(d=>{
+      btn.disabled=false;btn.textContent=orig;
+      if(d.url){
+        window.open(d.url,'_blank');
+        if(d.source==='pandascore'){
+          btn.textContent='LIVE';btn.style.background='var(--green)';btn.style.color='#000';
+        }
+      }else{
+        btn.textContent='N/A';setTimeout(()=>{btn.textContent=orig},2000);
+      }
+    })
+    .catch(()=>{btn.disabled=false;btn.textContent=orig});
 }
 
 function closeTrade(tradeId,btn){

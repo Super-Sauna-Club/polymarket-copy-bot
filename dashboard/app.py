@@ -842,6 +842,150 @@ def api_copy_chart():
 
 
 
+# --- PandaScore Stream Cache (avoid hammering API) ---
+_stream_cache = {}  # {cache_key: {"url": str, "ts": float}}
+_STREAM_CACHE_TTL = 120  # 2 minutes
+
+_PANDASCORE_GAMES = {
+    "cs": "csgo", "counter-strike": "csgo", "cs2": "csgo",
+    "lol": "lol", "league of legends": "lol",
+    "dota": "dota2", "dota 2": "dota2",
+    "valorant": "valorant",
+}
+
+
+def _find_stream(market_question: str) -> dict:
+    """Find livestream URL for an esports market via PandaScore API."""
+    import re
+    if not config.PANDASCORE_API_KEY:
+        return {"url": "", "source": "no_key"}
+
+    q = market_question.lower()
+
+    # Detect game
+    game_slug = ""
+    for kw, slug in _PANDASCORE_GAMES.items():
+        if kw in q:
+            game_slug = slug
+            break
+    if not game_slug:
+        # Fallback: Twitch search
+        return {"url": "https://www.twitch.tv/search?term=" + market_question.replace(" ", "+"),
+                "source": "twitch_search"}
+
+    # Extract team names from market question
+    # Patterns: "CS: TeamA vs TeamB - Map 1", "LoL: TeamA vs TeamB (BO3)"
+    m = re.search(r':\s*(.+?)\s+vs\s+(.+?)(?:\s*[-–(]|$)', q)
+    if not m:
+        m = re.search(r'(.+?)\s+vs\s+(.+?)(?:\s*[-–(]|$)', q)
+    if not m:
+        return {"url": "https://www.twitch.tv/search?term=" + market_question.replace(" ", "+"),
+                "source": "twitch_search"}
+
+    team1 = m.group(1).strip().lower()
+    team2 = m.group(2).strip().lower()
+
+    # Check cache
+    cache_key = f"{game_slug}:{team1}:{team2}"
+    cached = _stream_cache.get(cache_key)
+    if cached and (time.time() - cached["ts"]) < _STREAM_CACHE_TTL:
+        return cached["data"]
+
+    # Fetch running + upcoming matches from PandaScore
+    try:
+        import requests as _rq
+        matches = []
+        for status in ["running", "upcoming"]:
+            r = _rq.get(f"https://api.pandascore.co/{game_slug}/matches/{status}",
+                        params={"token": config.PANDASCORE_API_KEY, "per_page": 50},
+                        timeout=5)
+            if r.ok:
+                matches.extend(r.json())
+            if status == "running" and matches:
+                break  # running matches found, skip upcoming
+
+        # Match teams
+        best_match = None
+        best_score = 0
+        for match in matches:
+            opponents = match.get("opponents", [])
+            if len(opponents) < 2:
+                continue
+            names = []
+            for opp in opponents:
+                o = opp.get("opponent", {})
+                names.extend([o.get("name", "").lower(), o.get("acronym", "").lower(), o.get("slug", "").lower()])
+
+            # Score: how many of our team name words match
+            score = 0
+            for team in [team1, team2]:
+                team_words = team.split()
+                for name in names:
+                    if team in name or name in team:
+                        score += 10  # exact/substring match
+                    elif any(w in name for w in team_words if len(w) > 2):
+                        score += 3   # word match
+
+            if score > best_score:
+                best_score = score
+                best_match = match
+
+        if best_match and best_score >= 10:
+            streams = best_match.get("streams_list", [])
+            # Prefer: English official stream > any official > any stream
+            stream_url = ""
+            for pref in [
+                lambda s: s.get("official") and s.get("language") == "en",
+                lambda s: s.get("main"),
+                lambda s: s.get("official"),
+                lambda s: s.get("raw_url"),
+            ]:
+                for s in streams:
+                    if pref(s) and s.get("raw_url"):
+                        stream_url = s["raw_url"]
+                        break
+                if stream_url:
+                    break
+
+            if not stream_url and streams:
+                stream_url = streams[0].get("raw_url", "")
+
+            teams_found = " vs ".join(o["opponent"]["name"] for o in best_match.get("opponents", []))
+            result = {
+                "url": stream_url,
+                "source": "pandascore",
+                "match": teams_found,
+                "status": best_match.get("status", ""),
+                "league": best_match.get("league", {}).get("name", ""),
+            }
+            if not stream_url:
+                # Match found but no stream → Twitch search
+                result["url"] = "https://www.twitch.tv/search?term=" + teams_found.replace(" ", "+")
+                result["source"] = "twitch_search"
+
+            _stream_cache[cache_key] = {"data": result, "ts": time.time()}
+            return result
+
+    except Exception as e:
+        logger.debug("PandaScore error: %s", e)
+
+    # Fallback: Twitch search
+    fallback = {"url": "https://www.twitch.tv/search?term=" + market_question.replace(" ", "+"),
+                "source": "twitch_search"}
+    _stream_cache[cache_key] = {"data": fallback, "ts": time.time()}
+    return fallback
+
+
+@app.route("/api/stream/find")
+def api_stream_find():
+    """Find livestream URL for a market question."""
+    question = request.args.get("q", "")
+    if not question:
+        return jsonify({"error": "missing q parameter"}), 400
+    result = _find_stream(question)
+    return jsonify(result)
+
+
 @app.route("/api/copy/history")
 def api_copy_history():
     """Return positions, chart data, and stats filtered by period."""
