@@ -240,17 +240,18 @@ tr:hover{background:rgba(201,168,76,0.03)}
 .al-det .hl{color:var(--gold);font-weight:600}
 
 /* ═══ MEME GIF OVERLAY (bottom-right) ═══ */
-.meme-ov{position:fixed;bottom:20px;right:20px;z-index:9997;pointer-events:none}
+.meme-ov{position:fixed;inset:0;z-index:9997;pointer-events:none;display:flex;
+  align-items:flex-start;justify-content:center;padding-top:80px}
 .meme-card{pointer-events:auto;background:var(--bg);border:1px solid var(--border-h);
   padding:14px 18px;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.7);
-  animation:memeIn .4s cubic-bezier(.17,.67,.35,1.2);max-width:340px;text-align:center}
+  animation:memeIn .35s cubic-bezier(.17,.67,.35,1.2);max-width:340px;text-align:center}
 .meme-card.out{animation:memeOut .4s ease-in forwards}
 .meme-card img{width:260px;border-radius:8px;margin-bottom:8px}
 .meme-lbl{font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;font-weight:700;
   color:var(--gold);margin-bottom:2px}
 .meme-sub{font-size:.68rem;color:var(--text-dim);font-weight:300;font-style:italic}
-@keyframes memeIn{from{transform:translateX(60px) scale(.9);opacity:0}to{transform:none;opacity:1}}
-@keyframes memeOut{to{transform:translateX(40px);opacity:0}}
+@keyframes memeIn{from{transform:translateY(-30px) scale(.95);opacity:0}to{transform:none;opacity:1}}
+@keyframes memeOut{to{transform:translateY(-15px);opacity:0}}
 
 /* ═══ EMPTY ═══ */
 .empty{text-align:center;padding:52px;color:var(--text-dim);font-size:1.05rem;font-weight:300;
@@ -628,7 +629,7 @@ function beepClose(){if(!sfx)return;try{const o=AC.createOscillator(),g=AC.creat
 function _showMeme(cfg){
   if(!sfxPop&&!cfg.force)return;
   const now=Date.now();if(now-_lastMemeTime<5000)return;_lastMemeTime=now;
-  const o=$('memeOv');o.style.display='block';
+  const o=$('memeOv');o.style.display='flex';
   o.innerHTML=`<div class="meme-card">
     <img src="${cfg.gif}" alt="meme">
     <div class="meme-lbl" style="${cfg.color?'color:'+cfg.color:''}">${cfg.lbl}</div>
