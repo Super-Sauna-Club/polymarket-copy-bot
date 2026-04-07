@@ -478,6 +478,27 @@ def _position_diff_scan(address: str, username: str, balance: float,
             if end_ts and (_time.time() - end_ts) > 0:
                 continue
 
+            # Event timing: skip if event > MAX_HOURS_BEFORE_EVENT away
+            if config.MAX_HOURS_BEFORE_EVENT > 0:
+                _diff_evt_slug = pos.get("event_slug", "") or pos.get("market_slug", "")
+                if _diff_evt_slug:
+                    try:
+                        _diff_ev_r = requests.get("https://gamma-api.polymarket.com/events",
+                                                  params={"slug": _diff_evt_slug.split("/")[-1]}, timeout=5)
+                        if _diff_ev_r.ok and _diff_ev_r.json():
+                            _diff_ev = _diff_ev_r.json()[0] if isinstance(_diff_ev_r.json(), list) else _diff_ev_r.json()
+                            _diff_st = _diff_ev.get("startTime", "")
+                            if _diff_st:
+                                from datetime import datetime as _dt, timezone as _tz
+                                _diff_start = _dt.fromisoformat(_diff_st.replace("Z", "+00:00"))
+                                _diff_hours = (_diff_start - _dt.now(_tz.utc)).total_seconds() / 3600
+                                if _diff_hours > config.MAX_HOURS_BEFORE_EVENT:
+                                    logger.info("[DIFF] Event in %.1fh > %.1fh max, skipping: %s",
+                                                _diff_hours, config.MAX_HOURS_BEFORE_EVENT, pos["market_question"][:40])
+                                    continue
+                    except Exception:
+                        pass
+
             entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, config.MAX_ENTRY_PRICE_CAP), 4)
             size = _calculate_position_size(entry_price, balance, trader_name=username)
             cash_left = balance - total_invested - size
