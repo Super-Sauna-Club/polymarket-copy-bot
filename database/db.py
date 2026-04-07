@@ -18,6 +18,10 @@ def init_db():
             "ALTER TABLE copy_trades ADD COLUMN condition_id TEXT DEFAULT ''",
             "ALTER TABLE trader_scan_config ADD COLUMN last_closed_count INTEGER DEFAULT 0",
             "ALTER TABLE trader_scan_config ADD COLUMN last_trade_timestamp INTEGER DEFAULT 0",
+            "ALTER TABLE copy_trades ADD COLUMN actual_entry_price REAL",
+            "ALTER TABLE copy_trades ADD COLUMN actual_size REAL",
+            "ALTER TABLE copy_trades ADD COLUMN shares_held REAL",
+            "ALTER TABLE copy_trades ADD COLUMN usdc_received REAL",
         ]:
             try:
                 conn.execute(migration)
@@ -158,12 +162,21 @@ def get_wallet_history(address: str, limit=30):
 # --- Positions ---
 
 def create_copy_trade(trade: dict):
+    # Ensure new columns have defaults for callers that don't set them
+    trade.setdefault("actual_entry_price", None)
+    trade.setdefault("actual_size", None)
+    trade.setdefault("shares_held", None)
+    trade.setdefault("usdc_received", None)
     with get_connection() as conn:
         cursor = conn.execute("""
             INSERT INTO copy_trades (wallet_address, wallet_username, market_question,
-                                      market_slug, side, entry_price, size, end_date, outcome_label, event_slug, condition_id)
+                                      market_slug, side, entry_price, size, end_date,
+                                      outcome_label, event_slug, condition_id,
+                                      actual_entry_price, actual_size, shares_held, usdc_received)
             VALUES (:wallet_address, :wallet_username, :market_question,
-                    :market_slug, :side, :entry_price, :size, :end_date, :outcome_label, :event_slug, :condition_id)
+                    :market_slug, :side, :entry_price, :size, :end_date,
+                    :outcome_label, :event_slug, :condition_id,
+                    :actual_entry_price, :actual_size, :shares_held, :usdc_received)
         """, trade)
         return cursor.lastrowid
 
@@ -235,6 +248,15 @@ def update_copy_trade_end_date(trade_id: int, end_date: str):
         conn.execute(
             "UPDATE copy_trades SET end_date=? WHERE id=?",
             (end_date, trade_id)
+        )
+
+
+def update_closed_trade_pnl(trade_id: int, pnl: float, usdc_received: float):
+    """Correct P&L after actual sell fill is known (USDC delta)."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE copy_trades SET pnl_realized=?, usdc_received=? WHERE id=?",
+            (pnl, usdc_received, trade_id)
         )
 
 

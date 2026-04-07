@@ -221,8 +221,11 @@ def api_live_data():
                 if _db_side and _db_side.lower() != (outcome or "").lower() and _db_side.lower() != side.lower():
                     continue
                 side = _db_side or side
-            _show_size = round(_db_size, 2) if _db_size else round(iv, 2)
-            _show_entry = _db_entry if _db_entry else ap
+            # Prefer actual fill data over planned entry/size
+            _actual_entry = _open_match.get("actual_entry_price") if _open_match else None
+            _actual_size = _open_match.get("actual_size") if _open_match else None
+            _show_size = round(_actual_size, 2) if _actual_size else (round(_db_size, 2) if _db_size else round(iv, 2))
+            _show_entry = _actual_entry or _db_entry or ap
             # PnL: shares × (current_price - entry_price)
             _shares = _show_size / _show_entry if _show_entry > 0 else 0
             _show_pnl = round(_shares * (cp - _show_entry), 2) if _shares > 0 else round(cv - iv, 2)
@@ -738,19 +741,28 @@ def api_close_trade(trade_id):
 
     # LIVE: sell shares on Polymarket
     sell_ok = False
+    sell_resp = None
     if config.LIVE_MODE and cid:
-        resp = sell_shares(cid, side, current_price)
-        sell_ok = resp is not None
+        sell_resp = sell_shares(cid, side, current_price)
+        sell_ok = sell_resp is not None
         if not sell_ok:
             return jsonify({"error": "Sell order failed", "trade_id": trade_id}), 500
     else:
         sell_ok = True  # paper mode
 
-    # Calculate PnL and close in DB
-    shares = trade["size"] / entry_price if entry_price > 0 else 0
-    pnl = round((current_price - entry_price) * shares, 2)
+    # Calculate PnL using best available entry price
+    _ep = trade.get("actual_entry_price") or entry_price
+    _sz = trade.get("actual_size") or trade["size"]
+    shares = _sz / _ep if _ep > 0 else 0
+    pnl = round((current_price - _ep) * shares, 2)
 
     db.close_copy_trade(trade_id, pnl, close_price=current_price)
+
+    # Correct P&L with actual USDC received from sell
+    if sell_resp and sell_resp.get("usdc_received", 0) > 0:
+        real_pnl = round(sell_resp["usdc_received"] - _sz, 2)
+        db.update_closed_trade_pnl(trade_id, real_pnl, sell_resp["usdc_received"])
+        pnl = real_pnl
     db.log_activity("sell", "WIN" if pnl >= 0 else "LOSS",
                      "Manual close — %s" % trade["wallet_username"],
                      "#%d %s — P&L $%+.2f" % (trade_id, (trade["market_question"] or "")[:35], pnl), pnl)

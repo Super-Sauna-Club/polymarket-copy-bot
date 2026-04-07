@@ -116,19 +116,19 @@ def update_prices():
                         from database.db import get_connection as _gc_check
                         with _gc_check() as _cc:
                             _our_trade = _cc.execute(
-                                "SELECT id, size, entry_price, side FROM copy_trades WHERE condition_id=? AND side=? AND status='open'", (_cid_pos, _pos_side)
+                                "SELECT id, size, entry_price, side, actual_entry_price, actual_size FROM copy_trades WHERE condition_id=? AND side=? AND status='open'", (_cid_pos, _pos_side)
                             ).fetchone()
                             if not _our_trade:
                                 _our_trade = _cc.execute(
-                                    "SELECT id, size, entry_price, side FROM copy_trades WHERE condition_id=? AND status='open'", (_cid_pos,)
+                                    "SELECT id, size, entry_price, side, actual_entry_price, actual_size FROM copy_trades WHERE condition_id=? AND status='open'", (_cid_pos,)
                                 ).fetchone()
                         if not _our_trade:
                             continue  # not our bot's position, skip
                     except Exception:
                         continue  # DB error → skip, don't risk selling non-bot positions
-                    # Use bot's recorded size for PnL, not API initialValue
-                    _our_size = _our_trade["size"] or _iv
-                    _our_entry = _our_trade["entry_price"] or 0
+                    # Use best available entry price/size (actual > planned)
+                    _our_size = _our_trade["actual_size"] or _our_trade["size"] or _iv
+                    _our_entry = _our_trade["actual_entry_price"] or _our_trade["entry_price"] or 0
                     # Close lost positions in DB (price went to 0)
                     if _cp <= config.AUTO_CLOSE_LOST_PRICE and _iv > 0.01:
                         _close_pnl = round(-_our_size, 2)
@@ -163,7 +163,7 @@ def update_prices():
                     # Close won positions in DB (price at 100c, resolved)
                     elif _cp >= config.AUTO_CLOSE_WON_PRICE and _iv > 0.01:
                         _shares = _our_size / _our_entry if _our_entry > 0 else 0
-                        _pnl_won = round(_shares * 1.0 - _our_size, 2)
+                        _pnl_won = round((1.0 - _our_entry) * _shares, 2)
                         _close_title = (_p.get("title") or "")[:50]
                         _did_close = False
                         try:
@@ -204,6 +204,9 @@ def update_prices():
                         if _resp:
                             _sell_shares = _our_size / _our_entry if _our_entry > 0 else 0
                             _pnl = round((_cp - _our_entry) * _sell_shares, 2)
+                            # Correct with actual USDC received if available
+                            if _resp.get("usdc_received", 0) > 0:
+                                _pnl = round(_resp["usdc_received"] - _our_size, 2)
                             logger.info("[AUTO-SELL] Sold: P&L $%+.2f (entry %.0fc, sell %.0fc) | %s", _pnl, _our_entry * 100, _cp * 100, (_p.get("title") or "")[:40])
                             _recently_closed[_cid_pos] = _t.time()
                             _db.log_activity("sell", "WIN" if _pnl >= 0 else "LOSS",

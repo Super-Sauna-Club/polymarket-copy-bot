@@ -76,6 +76,56 @@ def get_token_id(condition_id: str, side: str) -> str | None:
         return None
 
 
+def _get_token_balance(client, token_id: str) -> float:
+    """Query conditional token balance (number of shares held)."""
+    try:
+        params = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
+        bal = client.get_balance_allowance(params)
+        raw = float(bal.get("balance", 0)) if isinstance(bal, dict) else 0
+        return raw / 1_000_000
+    except Exception:
+        return 0.0
+
+
+def _build_fill_result(bal_before_usdc: float, shares_before: float,
+                       token_id: str, fee_rate: int, price: float,
+                       amount_usd: float, response) -> dict:
+    """Measure actual fill by checking USDC + token balance deltas."""
+    client = _get_client()
+    usdc_spent = amount_usd  # fallback
+    shares_bought = 0.0
+    effective_price = price  # fallback
+
+    try:
+        time.sleep(config.FILL_VERIFY_DELAY_SECS)
+        bal_after_usdc = get_wallet_balance()
+        shares_after = _get_token_balance(client, token_id)
+
+        _usdc_delta = bal_before_usdc - bal_after_usdc
+        _shares_delta = shares_after - shares_before
+
+        if _usdc_delta > config.MIN_FILL_AMOUNT:
+            usdc_spent = round(_usdc_delta, 4)
+        if _shares_delta > 0:
+            shares_bought = round(_shares_delta, 6)
+            effective_price = round(usdc_spent / shares_bought, 6)
+
+        logger.info("FILL DETAILS: spent=$%.2f shares=%.4f eff_price=%.4f fee=%dbps",
+                    usdc_spent, shares_bought, effective_price, fee_rate)
+    except Exception as e:
+        logger.debug("Fill verification failed, using fallbacks: %s", e)
+
+    return {
+        "status": "filled",
+        "usdc_spent": usdc_spent,
+        "shares_bought": shares_bought,
+        "effective_price": effective_price,
+        "fee_rate_bps": fee_rate,
+        "token_id": token_id,
+        "_raw": response,
+    }
+
+
 def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) -> dict | None:
     """Market-Buy auf Polymarket ausfuehren.
 
@@ -86,7 +136,8 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
         price: Max-Preis pro Share (Limit)
 
     Returns:
-        Order-Response oder None bei Fehler
+        Fill-Details dict with usdc_spent, shares_bought, effective_price,
+        fee_rate_bps, token_id — or None on failure.
     """
     try:
         client = _get_client()
@@ -102,10 +153,12 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
         except Exception:
             logger.debug("Fee rate lookup failed, using default 200bps")
 
-        # Get USDC balance BEFORE order for delayed-order verification
+        # Get USDC + token balance BEFORE order for fill verification
         bal_before_usdc = 0
+        shares_before = 0.0
         try:
             bal_before_usdc = get_wallet_balance()
+            shares_before = _get_token_balance(client, token_id)
         except Exception:
             pass
 
@@ -151,7 +204,8 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
                     if success:
                         logger.info("ORDER BUY: $%.2f @ %.0fc (limit %.0fc +%.0fc slip) | %s | FILLED (delayed)",
                                     amount_usd, price * 100, limit_price * 100, slippage * 100, side)
-                        return response
+                        return _build_fill_result(bal_before_usdc, shares_before,
+                                                  token_id, fee_rate, limit_price, amount_usd, response)
                     else:
                         logger.warning("ORDER BUY: delayed order did not fill after %ds — giving up (no retry to prevent double spend)",
                                         config.DELAYED_BUY_VERIFY_SECS)
@@ -162,7 +216,8 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
             if success:
                 logger.info("ORDER BUY: $%.2f @ %.0fc (limit %.0fc +%.0fc slip) | %s | FILLED",
                             amount_usd, price * 100, limit_price * 100, slippage * 100, side)
-                return response
+                return _build_fill_result(bal_before_usdc, shares_before,
+                                          token_id, fee_rate, limit_price, amount_usd, response)
             else:
                 logger.info("ORDER BUY: attempt +%.0fc slip failed, %s",
                             slippage * 100, "retrying..." if slippage < _buy_slips[-1] else "giving up")
@@ -176,6 +231,30 @@ def buy_shares(condition_id: str, side: str, amount_usd: float, price: float) ->
         return None
 
 
+def _build_sell_result(bal_before_usdc: float, shares_sold: float,
+                       fee_rate: int, response) -> dict:
+    """Measure actual USDC received from sell."""
+    usdc_received = 0.0
+    try:
+        time.sleep(config.FILL_VERIFY_DELAY_SECS)
+        bal_after_usdc = get_wallet_balance()
+        _delta = bal_after_usdc - bal_before_usdc
+        if _delta > 0:
+            usdc_received = round(_delta, 4)
+        logger.info("SELL FILL: received=$%.2f shares_sold=%.4f fee=%dbps",
+                    usdc_received, shares_sold, fee_rate)
+    except Exception as e:
+        logger.debug("Sell fill verification failed: %s", e)
+
+    return {
+        "status": "filled",
+        "usdc_received": usdc_received,
+        "shares_sold": shares_sold,
+        "fee_rate_bps": fee_rate,
+        "_raw": response,
+    }
+
+
 def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
     """Alle Shares einer Position verkaufen.
 
@@ -185,7 +264,8 @@ def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
         price: Min-Preis pro Share (Limit)
 
     Returns:
-        Order-Response oder None bei Fehler
+        Fill-Details dict with usdc_received, shares_sold, fee_rate_bps
+        — or None on failure.
     """
     try:
         client = _get_client()
@@ -210,6 +290,13 @@ def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
             fee_rate = int(client.get_fee_rate_bps(token_id))
         except Exception:
             logger.debug("Fee rate lookup failed for sell, using default 200bps")
+
+        # Get USDC balance BEFORE sell for fill verification
+        bal_before_usdc = 0
+        try:
+            bal_before_usdc = get_wallet_balance()
+        except Exception:
+            pass
 
         # Market Sell with slippage retry (like buy) — try increasing slippage until filled
         # IMPORTANT: never retry after "delayed" to prevent double sell
@@ -250,7 +337,7 @@ def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
                     if success:
                         logger.info("ORDER SELL: %.2f shares @ %.0fc (limit %.0fc -%.0fc slip) | %s | FILLED (delayed)",
                                     shares, price * 100, sell_price * 100, slippage * 100, side)
-                        return response
+                        return _build_sell_result(bal_before_usdc, shares, fee_rate, response)
                     else:
                         logger.warning("ORDER SELL: delayed order did not fill after %ds — giving up (no retry to prevent double sell)",
                                         config.DELAYED_SELL_VERIFY_SECS)
@@ -261,7 +348,7 @@ def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
             if success:
                 logger.info("ORDER SELL: %.2f shares @ %.0fc (limit %.0fc -%.0fc slip) | %s | FILLED",
                             shares, price * 100, sell_price * 100, slippage * 100, side)
-                return response
+                return _build_sell_result(bal_before_usdc, shares, fee_rate, response)
             else:
                 logger.info("ORDER SELL: attempt -%.0fc slip failed, %s",
                             slippage * 100, "retrying..." if slippage < _sell_slips[-1] else "giving up")
