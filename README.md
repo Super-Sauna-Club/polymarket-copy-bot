@@ -499,6 +499,25 @@ Alle Einstellungen kommen in `settings.env`. Nur `POLYMARKET_PRIVATE_KEY`, `POLY
 | `ENTRY_TRADE_SEC` | 300 | Trades aelter als 5 Minuten ignorieren |
 | `MAX_SPREAD` | 0.05 | Max 5% Spread (Differenz zwischen Kauf- und Verkaufspreis) |
 | `NO_REBUY_MINUTES` | 0 | Nach Verkauf X Minuten Sperre fuer selben Markt (0=aus) |
+| `CATEGORY_BLACKLIST_MAP` | | Kategorien pro Trader blocken (z.B. `sovereign2013:tennis\|mlb`) |
+| `MIN_CONVICTION_RATIO` | 0 | Min Conviction-Ratio zum Kopieren (0=aus) |
+| `MIN_CONVICTION_RATIO_MAP` | | Pro Trader (z.B. `sovereign2013:1.5` = nur 1.5x+ Conviction) |
+
+### Conviction-Filter (Arb-Noise-Filter)
+
+Manche Trader (besonders Arb-Bots wie sovereign2013) machen hunderte kleine Trades die sich gegenseitig aufheben. Der Conviction-Filter laesst nur Trades durch wo der Trader **ueberdurchschnittlich viel** setzt — ein Zeichen fuer echte Ueberzeugung statt Routine-Arb.
+
+```
+Trader-Durchschnitt: $1400 (aus AVG_TRADER_SIZE_MAP)
+MIN_CONVICTION_RATIO_MAP=sovereign2013:1.5
+
+Trade A: $800 (0.57x Durchschnitt) → SKIP (unter 1.5x)
+Trade B: $1400 (1.0x Durchschnitt) → SKIP (unter 1.5x)
+Trade C: $2100 (1.5x Durchschnitt) → KOPIEREN (genau 1.5x)
+Trade D: $4200 (3.0x Durchschnitt) → KOPIEREN (ueber 1.5x)
+```
+
+So werden nur die staerksten Signale kopiert. Funktioniert pro Trader — andere Trader ohne Conviction-Filter kopieren weiterhin normal.
 
 ### Event-Timing
 

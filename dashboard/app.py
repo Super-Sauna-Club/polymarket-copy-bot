@@ -470,6 +470,8 @@ def api_settings():
         # --- Trade Filters ---
         {"key": "MIN_TRADER_USD", "value": _dlr(config.MIN_TRADER_USD), "desc": "Default min trade size to copy"},
         {"key": "MIN_TRADER_USD_MAP", "value": config.MIN_TRADER_USD_MAP or "default", "desc": "Per-trader min trade size override"},
+        {"key": "MIN_CONVICTION_RATIO", "value": _x(config.MIN_CONVICTION_RATIO) if config.MIN_CONVICTION_RATIO > 0 else "OFF", "desc": "Min trader bet / avg ratio to copy (arb noise filter)"},
+        {"key": "MIN_CONVICTION_RATIO_MAP", "value": config.MIN_CONVICTION_RATIO_MAP or "default", "desc": "Per-trader conviction filter (e.g. sovereign:1.5x)"},
         {"key": "MIN_ENTRY_PRICE", "value": str(int(config.MIN_ENTRY_PRICE * 100)) + "c", "desc": "Skip bets below this price"},
         {"key": "MIN_ENTRY_PRICE_MAP", "value": config.MIN_ENTRY_PRICE_MAP or "default", "desc": "Per-trader min entry price override"},
         {"key": "MAX_ENTRY_PRICE", "value": str(int(config.MAX_ENTRY_PRICE * 100)) + "c", "desc": "Skip bets above this price"},

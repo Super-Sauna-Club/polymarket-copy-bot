@@ -192,6 +192,14 @@ for _cbl_entry in config.CATEGORY_BLACKLIST_MAP.split(","):
         _cbl_cats = {c.strip().lower() for c in _cbl_parts[1].split("|") if c.strip()}
         _CATEGORY_BLACKLIST[_cbl_name] = _cbl_cats
 
+# Per-trader minimum conviction ratio
+_MIN_CONVICTION_MAP: dict[str, float] = {}
+for _mcr_entry in config.MIN_CONVICTION_RATIO_MAP.split(","):
+    _mcr_entry = _mcr_entry.strip()
+    if ":" in _mcr_entry:
+        _mcr_parts = _mcr_entry.split(":", 1)
+        _MIN_CONVICTION_MAP[_mcr_parts[0].strip().lower()] = float(_mcr_parts[1].strip())
+
 # Category keywords for market question detection
 _CATEGORY_KEYWORDS = {
     "nba": ["nba", "lakers", "celtics", "warriors", "bulls", "bucks", "heat", "knicks", "76ers",
@@ -852,6 +860,7 @@ def copy_followed_wallets():
                             continue
 
                 _ew_size = _calculate_position_size(_entry_price, balance,
+                                                    trader_ratio=_ew.get("trader_ratio", 1.0),
                                                     portfolio_value=portfolio_value, trader_name=td["wallet_username"])
                 if _ew_size >= MIN_TRADE_SIZE and balance > _ew_size:
                     if LIVE_MODE and _ew_cid:
@@ -960,7 +969,7 @@ def copy_followed_wallets():
                                             continue
                             except Exception:
                                 pass
-                    size = _calculate_position_size(entry_price, cash, 1.0,
+                    size = _calculate_position_size(entry_price, cash, td.get("trader_ratio", 1.0),
                                                     portfolio_value=portfolio_value, trader_name=td["username"])
                     if size < MIN_TRADE_SIZE or cash < size:
                         continue
@@ -1159,7 +1168,16 @@ def copy_followed_wallets():
                             dollar_value, _min_usd, question[:40])
                 continue
 
-            # 2) Preis-Range-Filter: per-trader override via MIN/MAX_ENTRY_PRICE_MAP
+            # 2) Conviction ratio: skip low-conviction trades (arb noise filter)
+            _min_conv = _MIN_CONVICTION_MAP.get(username.lower(), config.MIN_CONVICTION_RATIO)
+            if _min_conv > 0 and avg_trader_size > 0:
+                _conv = dollar_value / avg_trader_size
+                if _conv < _min_conv:
+                    logger.info("[FILTER] Conviction %.1fx < %.1fx min for %s: %s",
+                                _conv, _min_conv, username, question[:40])
+                    continue
+
+            # 3) Preis-Range-Filter: per-trader override via MIN/MAX_ENTRY_PRICE_MAP
             trader_price = t["price"]
             _min_price = _MIN_ENTRY_PRICE_MAP.get(username.lower(), config.MIN_ENTRY_PRICE)
             _max_price = _MAX_ENTRY_PRICE_MAP.get(username.lower(), config.MAX_ENTRY_PRICE)
@@ -1227,6 +1245,7 @@ def copy_followed_wallets():
                             "trade_data": t, "question": question, "cid": cid,
                             "entry_price": trader_price, "address": address, "username": username,
                             "wait_secs": hedge_wait_secs,
+                            "trader_ratio": (dollar_value / avg_trader_size) if avg_trader_size > 0 else 1.0,
                         }},
                         "queued_at": _time.time(),
                     }
@@ -1343,6 +1362,7 @@ def copy_followed_wallets():
                                                 },
                                                 "event_start_ts": _start.timestamp(),
                                                 "queued_at": _time.time(),
+                                                "trader_ratio": (dollar_value / avg_trader_size) if avg_trader_size > 0 else 1.0,
                                             }
                                             logger.info("[EVENT-WAIT] Queued (event in %.1fh, cash $%.0f < $%.0f): %s",
                                                         _hours_until, cash, config.EVENT_WAIT_MIN_CASH, question[:40])
