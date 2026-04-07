@@ -98,7 +98,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap;gap:12px}
 .hd-left{display:flex;align-items:center;gap:8px}
 .hd-center{display:flex;align-items:center;gap:16px;margin:0 auto}
-.digiclock{display:none;font-family:var(--mono);font-size:1.6rem;font-weight:300;letter-spacing:.18em;color:var(--gold);text-shadow:0 0 20px rgba(201,168,76,0.3),0 0 50px rgba(201,168,76,0.1)}
+.digiclock{display:none;font-family:var(--font);font-size:1.4rem;font-weight:300;letter-spacing:.12em;color:var(--text);text-shadow:0 0 20px rgba(201,168,76,0.15)}
 .wide .digiclock{display:block}
 .status-tags{display:flex;gap:10px}
 .st{font-size:.65rem;color:var(--text-dim);display:flex;align-items:center;gap:4px;letter-spacing:.06em}
@@ -1043,8 +1043,8 @@ function _tickClock(){
   const h=String(now.getHours()).padStart(2,'0');
   const m=String(now.getMinutes()).padStart(2,'0');
   const s=String(now.getSeconds()).padStart(2,'0');
-  const dim=now.getSeconds()%2?'1':'0.35';
-  el.innerHTML=h+'<span style="opacity:'+dim+';color:var(--gold-bright)">:</span>'+m+'<span style="opacity:'+dim+';color:var(--gold-bright)">:</span>'+s;
+  const dim=now.getSeconds()%2?'1':'0.3';
+  el.innerHTML=h+'<span style="opacity:'+dim+'">:</span>'+m+'<span style="opacity:'+dim+'">:</span>'+s;
 }
 setInterval(_tickClock,1000);
 _tickClock();
