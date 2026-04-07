@@ -164,7 +164,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .tw{overflow-x:auto;max-height:460px;overflow-y:auto;border:1px solid var(--border);background:var(--bg2)}
 .tw table{width:100%;table-layout:fixed}
 .tw th,.tw td{padding:8px 8px;overflow:hidden;text-overflow:ellipsis}
-.c-mkt2{width:34%}.c-side2{width:7%;text-align:left}.c-num{width:4%;text-align:right;white-space:nowrap}.c-pnl{width:6%;text-align:right;white-space:nowrap}.c-evt2{width:7%;white-space:nowrap;text-align:center}.c-time{width:4%;white-space:nowrap;color:var(--text-dim);font-size:.65rem;text-align:center}
+.c-mkt2{width:34%}.c-side2{width:7%;text-align:left}.c-num{width:4%;text-align:right;white-space:nowrap}.c-pnl{width:6%;text-align:right;white-space:nowrap}.c-evt2{width:10%;white-space:nowrap;text-align:center}.c-time{width:4%;white-space:nowrap;color:var(--text-dim);font-size:.65rem;text-align:center}
 .c-close{width:9%;text-align:center;white-space:nowrap}
 .close-btn{display:inline-block;padding:4px 10px;border-radius:4px;font-size:.75rem;font-weight:700;cursor:pointer;border:none;min-width:70px;transition:opacity .2s}
 .close-btn:hover{opacity:.8}
@@ -1299,25 +1299,12 @@ function _fetchLiveInfo(){
       .then(r=>r.json())
       .then(d=>{
         _liveInfoCache[q]=d;
-        if(d.source==='pandascore'){
-          let info='';
-          // Running time
-          if(d.begin_at){
-            const started=new Date(d.begin_at);
-            const mins=Math.round((Date.now()-started.getTime())/60000);
-            if(mins>0&&mins<600) info+=mins+'m';
+        if(d.source==='pandascore'&&d.begin_at&&d.status==='running'){
+          const mins=Math.round((Date.now()-new Date(d.begin_at).getTime())/60000);
+          if(mins>0&&mins<600){
+            const h=Math.floor(mins/60);const m=mins%60;
+            el.innerHTML='<span style="color:var(--green);font-size:.72rem">'+((h>0?h+'h\u00A0':'')+m+'m')+'</span>';
           }
-          // Score (e.g. "1-0")
-          if(d.score) info+=(info?' · ':'')+d.score;
-          // BO info
-          if(d.bo) info+=(info?' ':'')+d.bo;
-          if(d.status==='running'){
-            el.innerHTML='<span style="color:var(--green);font-weight:600">● '+(info||'LIVE')+'</span>';
-          }else{
-            el.innerHTML=info?'<span style="color:#f59e0b">'+info+'</span>':'';
-          }
-        }else{
-          el.innerHTML='';
         }
       }).catch(()=>{_liveInfoCache[q]=false});
   });
