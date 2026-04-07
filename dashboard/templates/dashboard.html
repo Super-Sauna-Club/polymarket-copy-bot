@@ -574,7 +574,7 @@ const AC=new(window.AudioContext||window.webkitAudioContext)();
 const _masterGain=AC.createGain();_masterGain.connect(AC.destination);_masterGain.gain.value=parseFloat(localStorage.getItem('sfxVol')||'0.18');
 let _moneyBuffer=null;
 fetch('/static/money-button.mp3').then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).then(buf=>{_moneyBuffer=buf}).catch(()=>{});
-function playMoney(){if(!_moneyBuffer)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=_moneyBuffer;g.gain.value=0.18;s.connect(g);g.connect(_masterGain);s.start()}catch(e){}}
+function playMoney(){if(!_moneyBuffer)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=_moneyBuffer;g.gain.value=1.0;s.connect(g);g.connect(_masterGain);s.start()}catch(e){}}
 /* ═══ MEME SOUND BUFFERS ═══ */
 let _sndWasted=null,_sndBell=null,_sndJackpot=null,_sndPolice=null,_sndCurb=null,_sndPayout=null;
 function _loadSnd(url){return fetch(url).then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).catch(()=>null)}
@@ -584,7 +584,7 @@ _loadSnd('/static/streak-jackpot.mp3?v=3').then(b=>{_sndJackpot=b});
 _loadSnd('/static/bigwin-police.mp3').then(b=>{_sndPolice=b});
 _loadSnd('/static/streak-curb.mp3').then(b=>{_sndCurb=b});
 _loadSnd('/static/payout-cashregister.mp3').then(b=>{_sndPayout=b});
-function _playBuf(buf,vol){if(!buf)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=buf;g.gain.value=vol||0.2;s.connect(g);g.connect(_masterGain);s.start()}catch(e){}}
+function _playBuf(buf){if(!buf)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=buf;g.gain.value=1.0;s.connect(g);g.connect(_masterGain);s.start()}catch(e){}}
 const _rnd=a=>a[Math.floor(Math.random()*a.length)];
 /* ═══ MEME GIF ARRAYS ═══ */
 const _lossGif='https://media.giphy.com/media/AHMHuF12pW4b6/giphy.gif';
@@ -636,11 +636,11 @@ function togSfxTrade(){sfx=!sfx;localStorage.setItem('sfx',sfx?'on':'off');if(sf
 function togSfxPop(){sfxPop=!sfxPop;localStorage.setItem('sfxPop',sfxPop?'on':'off');if(sfxPop)AC.resume();_updSfxUI()}
 function beep(){if(!sfx)return;try{const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(_masterGain);
   o.type='sine';o.frequency.setValueAtTime(660,AC.currentTime);o.frequency.exponentialRampToValueAtTime(1320,AC.currentTime+.1);
-  o.frequency.exponentialRampToValueAtTime(330,AC.currentTime+.25);g.gain.setValueAtTime(.12,AC.currentTime);
+  o.frequency.exponentialRampToValueAtTime(330,AC.currentTime+.25);g.gain.setValueAtTime(1,AC.currentTime);
   g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.4);o.start();o.stop(AC.currentTime+.4)}catch(e){}}
 function beepClose(){if(!sfx)return;try{const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(_masterGain);
   o.type='triangle';o.frequency.setValueAtTime(880,AC.currentTime);o.frequency.exponentialRampToValueAtTime(440,AC.currentTime+.15);
-  o.frequency.exponentialRampToValueAtTime(220,AC.currentTime+.3);g.gain.setValueAtTime(.15,AC.currentTime);
+  o.frequency.exponentialRampToValueAtTime(220,AC.currentTime+.3);g.gain.setValueAtTime(1,AC.currentTime);
   g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.5);o.start();o.stop(AC.currentTime+.5)}catch(e){}}
 /* ═══ MEME GIF OVERLAY (bottom-right) ═══ */
 function _showMeme(cfg){
