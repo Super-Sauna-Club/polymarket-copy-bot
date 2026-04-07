@@ -982,7 +982,7 @@ function renderLog(){
       const{e:ae,l:al2}=dSp(a);const aSp=(ae&&al2)?ae+' '+al2+' ':(ae?ae+' ':(a.icon==='CASH'||a.icon==='SYS')?'':'\uD83D\uDCCA ');
       const amtMatch=(a.detail||'').match(/\$(\d+\.?\d*)/);
       const cashMatch=(t==='buy'&&a.detail)?(a.detail.match(/Cash:\s*\$(\d+\.?\d*)/)):null;
-      const amtHtml=(t==='buy'&&amtMatch)?`<div class="cl-pnl" style="color:var(--gold)">$${amtMatch[1]}${cashMatch?' <span style="color:var(--text-dim);font-size:.8em">Cash:$'+cashMatch[1]+'</span>':''}</div>`:'';
+      const amtHtml=(t==='buy'&&amtMatch)?`<div class="cl-pnl" style="color:var(--gold)">$${amtMatch[1]}</div>`:'';
       return`<div class="cl"><div class="cl-t">${ts}</div><div class="cl-p ${pCol}">${sym}</div><div class="cl-msg">${aSp}<b>${a.title||''}</b>${detail}</div>${pnlHtml||amtHtml}</div>`}).join('')}
   else{hp.innerHTML='<div class="cl"><div class="cl-p d">\u00B7</div><div class="cl-msg" style="color:#4a4a5a">no history yet \u2014 buys, sells, wins, losses and redeems appear here</div><div class="cl-pnl"></div></div>'}
 }
