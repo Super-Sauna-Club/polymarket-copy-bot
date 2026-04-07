@@ -192,7 +192,9 @@ def update_prices():
                             except Exception:
                                 pass
                         continue  # Already handled — skip auto-sell
-                    if _cp >= config.AUTO_SELL_PRICE and _cv > 0.50 and _pnl_check > 0:
+                    # Use OUR entry price for profit check — API's initialValue differs due to slippage/fees
+                    _our_pnl_check = (_cp - _our_entry) * (_our_size / _our_entry) if _our_entry > 0 else 0
+                    if _cp >= config.AUTO_SELL_PRICE and _cv > 0.50 and _our_pnl_check > 0:
                         _out = _p.get("outcome", "")
                         if _out.lower() in ("yes", "y"): _side = "YES"
                         elif _out.lower() in ("no", "n"): _side = "NO"
@@ -427,7 +429,7 @@ def main():
                         _conn.execute("INSERT INTO activity_log (event_type, icon, title, detail, pnl) VALUES (?,?,?,?,?)",
                                       ("resolved", "LOSS", "Position lost", "%s — P&L $%.2f" % ((_ot["market_question"] or "")[:35], _pnl), _pnl))
                         _cleaned += 1
-                    elif _cp >= 0.98:
+                    elif _cp >= config.AUTO_CLOSE_WON_PRICE:
                         # Won: shares × $1 - invested
                         _ep = 0
                         try:

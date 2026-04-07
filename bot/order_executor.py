@@ -202,30 +202,70 @@ def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
             logger.info("SELL: Keine Shares fuer %s / %s", condition_id[:20], side)
             return None
 
-        # Fee Rate (braucht token_id)
-        fee_rate = 0
+        # Fee Rate (braucht token_id), default 200bps = 2%
+        fee_rate = 200
         try:
             fee_rate = int(client.get_fee_rate_bps(token_id))
         except Exception:
-            pass
+            logger.debug("Fee rate lookup failed for sell, using default 200bps")
 
-        # Market Sell — price muss zwischen 0.001 und 0.999 liegen
-        sell_price = round(min(max(price - 0.01, 0.01), 0.99), 2)
-        sell_amount = round(shares * sell_price, 2)
-        order_args = MarketOrderArgs(
-            token_id=token_id,
-            amount=sell_amount,
-            side=SELL,
-            price=sell_price,
-            fee_rate_bps=fee_rate,
-        )
+        # Market Sell with slippage retry (like buy) — try increasing slippage until filled
+        # IMPORTANT: never retry after "delayed" to prevent double sell
+        for slippage in [0.01, 0.03, 0.06]:
+            sell_price = round(min(max(price - slippage, 0.01), 0.99), 2)
+            sell_amount = round(shares * sell_price, 2)
+            order_args = MarketOrderArgs(
+                token_id=token_id,
+                amount=sell_amount,
+                side=SELL,
+                price=sell_price,
+                fee_rate_bps=fee_rate,
+            )
 
-        signed_order = client.create_market_order(order_args)
-        response = client.post_order(signed_order, OrderType.FOK)
+            signed_order = client.create_market_order(order_args)
+            response = client.post_order(signed_order, OrderType.FOK)
 
-        logger.info("ORDER SELL: %.2f shares @ %.0fc | %s | Response: %s",
-                    shares, price * 100, side, response)
-        return response
+            success = False
+            if isinstance(response, dict):
+                status = (response.get("status") or response.get("orderStatus") or "").lower()
+                if status in ("matched", "filled", "live"):
+                    success = True
+                elif status == "delayed":
+                    # "delayed" = queued, may or may not fill. Do NOT retry.
+                    time.sleep(6)
+                    # Check if shares are gone (= sold)
+                    try:
+                        _params2 = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
+                        _bal2 = client.get_balance_allowance(_params2)
+                        _raw2 = float(_bal2.get("balance", 0)) if isinstance(_bal2, dict) else 0
+                        _shares2 = _raw2 / 1_000_000
+                        success = _shares2 < shares * 0.5  # most shares gone = filled
+                        logger.info("SELL VERIFY: delayed → %s (shares before=%.2f after=%.2f)",
+                                    "FILLED" if success else "NOT FILLED", shares, _shares2)
+                    except Exception:
+                        success = False
+                    if success:
+                        logger.info("ORDER SELL: %.2f shares @ %.0fc (limit %.0fc -%.0fc slip) | %s | FILLED (delayed)",
+                                    shares, price * 100, sell_price * 100, slippage * 100, side)
+                        return response
+                    else:
+                        logger.warning("ORDER SELL: delayed order did not fill after 6s — giving up (no retry to prevent double sell)")
+                        return None
+            elif response:
+                success = True
+
+            if success:
+                logger.info("ORDER SELL: %.2f shares @ %.0fc (limit %.0fc -%.0fc slip) | %s | FILLED",
+                            shares, price * 100, sell_price * 100, slippage * 100, side)
+                return response
+            else:
+                logger.info("ORDER SELL: attempt -%.0fc slip failed, %s",
+                            slippage * 100, "retrying..." if slippage < 0.06 else "giving up")
+
+        # All attempts failed
+        logger.warning("ORDER SELL FAILED: all slippage levels tried | %s / %s / %.2f shares",
+                        condition_id[:20], side, shares)
+        return None
 
     except Exception as e:
         logger.error("ORDER FEHLER (SELL): %s | %s / %s", e, condition_id[:20], side)
