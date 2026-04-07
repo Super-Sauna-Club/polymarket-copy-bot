@@ -314,7 +314,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <div style="margin-right:auto"><div class="logo">Poly Copybot</div><div style="font-size:.8rem;color:var(--text-dim);letter-spacing:.12em;font-weight:300">by Super Sauna Club</div></div>
     </div>
     <div class="hd-center">
-      <div id="digiclock" style="font-family:var(--mono);font-size:1.8rem;font-weight:700;letter-spacing:.12em;color:var(--green);text-shadow:0 0 20px rgba(52,211,153,0.4),0 0 40px rgba(52,211,153,0.15);display:none"></div>
+      <div id="digiclock" style="font-family:var(--mono);font-size:1.6rem;font-weight:300;letter-spacing:.18em;color:var(--gold);text-shadow:0 0 20px rgba(201,168,76,0.3),0 0 50px rgba(201,168,76,0.1);display:none"></div>
       <div class="live-tag"><span class="live-dot"></span>LIVE</div>
       <div class="status-tags">
         <span class="st" id="st-bot"><span class="st-dot on"></span>Bot</span>
@@ -1041,7 +1041,8 @@ function _tickClock(){
   const h=String(now.getHours()).padStart(2,'0');
   const m=String(now.getMinutes()).padStart(2,'0');
   const s=String(now.getSeconds()).padStart(2,'0');
-  el.innerHTML=h+'<span style="opacity:'+(now.getSeconds()%2?'1':'0.3')+'">:</span>'+m+'<span style="opacity:'+(now.getSeconds()%2?'1':'0.3')+'">:</span>'+s;
+  const dim=now.getSeconds()%2?'1':'0.35';
+  el.innerHTML=h+'<span style="opacity:'+dim+';color:var(--gold-bright)">:</span>'+m+'<span style="opacity:'+dim+';color:var(--gold-bright)">:</span>'+s;
 }
 setInterval(_tickClock,1000);
 _tickClock();
