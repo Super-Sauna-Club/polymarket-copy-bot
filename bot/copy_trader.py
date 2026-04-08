@@ -577,11 +577,15 @@ def _position_diff_scan(address: str, username: str, balance: float,
                         continue
 
             # Max per match (DB query includes recently closed)
+            _diff_remaining = None
             if config.MAX_PER_MATCH > 0:
                 _diff_evt = pos.get("event_slug", "") or ""
                 if _diff_evt:
                     _diff_match_inv = db.get_invested_for_event(_diff_evt)
-                    if _diff_match_inv >= config.MAX_PER_MATCH:
+                    _diff_remaining = config.MAX_PER_MATCH - _diff_match_inv
+                    if _diff_remaining < config.MIN_TRADE_SIZE:
+                        logger.info("[DIFF] Match full $%.0f/$%.0f, skipping: %s",
+                                    _diff_match_inv, config.MAX_PER_MATCH, pos["market_question"][:40])
                         continue
 
             # Max exposure per trader (DB query includes recently closed)
@@ -620,6 +624,11 @@ def _position_diff_scan(address: str, username: str, balance: float,
 
             entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, config.MAX_ENTRY_PRICE_CAP), 4)
             size = _calculate_position_size(entry_price, balance, trader_name=username)
+            # Cap to match/event remaining budget (like activity scan does)
+            if _diff_remaining is not None and size > _diff_remaining:
+                size = round(_diff_remaining, 2)
+                logger.info("[DIFF] Size capped to match budget: $%.2f (remaining $%.2f of $%.0f) | %s",
+                            size, _diff_remaining, config.MAX_PER_MATCH, pos["market_question"][:35])
             cash_left = balance - total_invested - size
             if cash_left < _load_dynamic_floor():
                 break
@@ -1824,7 +1833,10 @@ def update_copy_positions():
                         best_price = live_price if live_price is not None else current_price
                         # Positions-API-Preis als Untergrenze: WS kann leicht abweichen (Rounding)
                         effective_price = max(best_price, current_price) if (best_price and current_price) else (best_price or current_price)
-                        if effective_price:
+                        # Always update price (even 0c) so dashboard shows current state
+                        if effective_price is None:
+                            effective_price = current_price or 0
+                        if effective_price is not None:
                             pnl, shares = _calc_pnl(trade, effective_price)
 
                             db.update_copy_trade_price(trade["id"], effective_price, pnl)
