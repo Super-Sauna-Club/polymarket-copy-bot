@@ -216,7 +216,10 @@ _CATEGORY_KEYWORDS = {
     "nba": ["nba", "lakers", "celtics", "warriors", "bulls", "bucks", "heat", "knicks", "76ers",
             "nets", "clippers", "mavericks", "nuggets", "suns", "grizzlies", "pelicans", "hawks",
             "cavaliers", "wizards", "hornets", "magic", "pacers", "pistons", "raptors", "kings",
-            "spurs", "thunder", "timberwolves", "trail blazers", "jazz", "rockets"],
+            "spurs", "thunder", "timberwolves", "trail blazers", "jazz", "rockets",
+            # Euroleague / international basketball (sovereign2013 trades these)
+            "euroleague", "zalgiris", "fenerbahce", "hapoel", "maccabi", "olympiacos",
+            "panathinaikos", "partizan", "red star", "bc dubai", "virtus bologna"],
     "mlb": ["mlb", "yankees", "red sox", "cubs", "dodgers", "mets", "astros", "braves", "phillies",
             "padres", "cardinals", "orioles", "rays", "guardians", "rangers", "twins", "mariners",
             "royals", "tigers", "white sox", "pirates", "reds", "brewers", "diamondbacks", "giants",
@@ -232,6 +235,7 @@ _CATEGORY_KEYWORDS = {
     "tennis": ["tennis", "atp", "wta", "roland garros", "wimbledon", "us open tennis",
                "australian open", "monte carlo", "madrid open", "rome open", "indian wells",
                "miami open", "campinas", "sarasota", "monza", "challenger",
+               "upper austria", "linz",  # WTA Linz tournament
                # Known tennis tournament cities (Challengers/ITF often just show city name)
                "mexico city:", "buenos aires:", "santiago:", "lima:", "bogota:",
                "pune:", "bengaluru:", "chennai:", "taipei:",
@@ -240,7 +244,11 @@ _CATEGORY_KEYWORDS = {
                "alcaraz", "djokovic", "medvedev", "rublev", "fritz", "ruud",
                "tsitsipas", "zverev", "berrettini", "tiafoe", "paul", "shelton",
                "volynets", "vekic", "badosa", "pliskova", "sasnovich", "grabher",
-               "swiatek", "sabalenka", "gauff", "pegula", "keys", "rybakina"],
+               "swiatek", "sabalenka", "gauff", "pegula", "keys", "rybakina",
+               "ostapenko", "yastremska", "ruse", "danilina", "boulter",  # more WTA players
+               "nardi", "landaluce", "gaston", "fery", "sachko", "rincon",  # ATP Challengers
+               "pigato", "semenistaja", "kolar", "sakellaridis",  # more Challengers
+               "basavareddy", "draxl", "moutet", "atmane", "popyrin", "cilic"],
     "soccer": ["soccer", "football", "premier league", "la liga", "bundesliga", "serie a",
                "ligue 1", "champions league", "ucl", "europa league", "mls",
                "bayern", "barcelona", "madrid", "arsenal", "liverpool", "manchester",
