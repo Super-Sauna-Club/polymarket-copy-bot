@@ -664,7 +664,17 @@ def copy_trading():
 
 @app.route("/api/copy/trader-stats")
 def api_trader_stats():
-    """Per-Trader P&L breakdown — zeigt welche Trader profitabel sind."""
+    """Per-Trader P&L breakdown — shows all-time + last 24h stats.
+
+    ?hours=24 (default) filters closed trades to last N hours.
+    ?hours=0 returns all-time stats.
+    """
+    hours = request.args.get("hours", "24")
+    try:
+        hours = int(hours)
+    except ValueError:
+        hours = 24
+
     all_trades = db.get_all_copy_trades(limit=5000)
     trader_map = {}
     for t in all_trades:
@@ -676,6 +686,8 @@ def api_trader_stats():
                 "open": 0, "closed": 0, "wins": 0, "losses": 0,
                 "pnl_realized": 0.0, "pnl_unrealized": 0.0,
                 "total_invested": 0.0,
+                # All-time stats (always shown)
+                "all_closed": 0, "all_pnl": 0.0, "all_wins": 0, "all_losses": 0,
             }
         s = trader_map[addr]
         if t["status"] == "open":
@@ -683,13 +695,30 @@ def api_trader_stats():
             s["pnl_unrealized"] += (t["pnl_unrealized"] or 0)
             s["total_invested"] += t["size"]
         elif t["status"] == "closed":
-            s["closed"] += 1
             pnl = t["pnl_realized"] or 0
-            s["pnl_realized"] += pnl
+            # All-time always counted
+            s["all_closed"] += 1
+            s["all_pnl"] += pnl
             if pnl > 0:
-                s["wins"] += 1
+                s["all_wins"] += 1
             elif pnl < 0:
-                s["losses"] += 1
+                s["all_losses"] += 1
+            # Period-filtered (24h default)
+            in_period = True
+            if hours > 0 and t.get("closed_at"):
+                try:
+                    from datetime import datetime as _dt, timedelta as _td
+                    closed_dt = _dt.strptime(t["closed_at"][:19], "%Y-%m-%d %H:%M:%S")
+                    in_period = (_dt.now() - closed_dt) < _td(hours=hours)
+                except Exception:
+                    in_period = True
+            if in_period:
+                s["closed"] += 1
+                s["pnl_realized"] += pnl
+                if pnl > 0:
+                    s["wins"] += 1
+                elif pnl < 0:
+                    s["losses"] += 1
     stats = sorted(trader_map.values(), key=lambda x: x["pnl_realized"], reverse=True)
     for s in stats:
         total = s["wins"] + s["losses"]
@@ -697,6 +726,10 @@ def api_trader_stats():
         s["pnl_total"] = round(s["pnl_realized"] + s["pnl_unrealized"], 2)
         s["pnl_realized"] = round(s["pnl_realized"], 2)
         s["pnl_unrealized"] = round(s["pnl_unrealized"], 2)
+        s["all_pnl"] = round(s["all_pnl"], 2)
+        all_total = s["all_wins"] + s["all_losses"]
+        s["all_win_rate"] = round(s["all_wins"] / all_total * 100, 1) if all_total > 0 else 0
+        s["period_hours"] = hours
     return jsonify(stats)
 
 

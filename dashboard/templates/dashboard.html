@@ -1279,19 +1279,64 @@ function buildPreview(raw){
   }).join('');
 }
 function loadReport(){
-  fetch('/api/report/latest').then(r=>r.json()).then(d=>{
-    if(d.report&&!d.report.startsWith('No reports')){
-      const parts=d.report.split('\n---\n');
-      const previewText=parts[0]||'';
-      const fullText=parts[1]||d.report;
-      window._reportFull=fullText;
-      $('reportText').innerHTML=buildPreview(previewText);
-      $('reportModalText').innerHTML=fmtReport(fullText);
-      const t=d.created_at||'';
-      if(t){try{const dt=new Date(t+'Z');const ts=dt.toLocaleString('de-AT',{timeZone:'Europe/Vienna',hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
-        $('reportTime').textContent='last check: '+ts;$('reportModalTime').textContent='last check: '+ts}catch(e){}}
-    }else{$('reportText').innerHTML='<span style="color:var(--text-dim)">Report wird nach den n\u00e4chsten Trades automatisch erstellt</span>'}
-  }).catch(()=>{})
+  // Live trader stats from DB (24h default)
+  fetch('/api/copy/trader-stats?hours=24').then(r=>r.json()).then(stats=>{
+    if(!stats||!stats.length){$('reportText').innerHTML='<span style="color:var(--text-dim)">Keine Trades in den letzten 24h</span>';return}
+    $('reportTime').textContent='live \u00B7 last 24h';
+    $('reportText').innerHTML=stats.map(p=>{
+      const pnl=p.pnl_realized||0;const pnlT=p.pnl_total||0;
+      const pnlCol=pnlT>=0?'var(--green)':'var(--red)';
+      const pnlBg=pnlT>=0?'rgba(52,211,153,.08)':'rgba(248,113,113,.08)';
+      const wr=p.win_rate||0;const wrCol=wr>=60?'var(--green)':wr>=40?'var(--gold)':'var(--red)';
+      const verdict=p.closed===0?'no results yet':wr>=60?'mostly winning':wr<=35?'mostly losing':'mixed';
+      const vc=verdict.includes('winning')?'var(--green)':verdict.includes('losing')?'var(--red)':verdict==='mixed'?'var(--gold)':'var(--text-dim)';
+      const vBg=verdict.includes('winning')?'rgba(52,211,153,.1)':verdict.includes('losing')?'rgba(248,113,113,.1)':verdict==='mixed'?'rgba(201,168,76,.08)':'rgba(92,90,106,.08)';
+      const bestPnl=Math.max(...stats.map(s=>s.pnl_total||0));
+      const isBest=stats.length>1&&pnlT===bestPnl&&pnlT>0;
+      const crown=isBest?'<span style="font-size:.7em;margin-left:4px" title="Best performer">\uD83D\uDC51</span>':'';
+      const addr=_traderAddr(p.username);
+      const avatar=addr?mkBlockie(addr,28):'';
+      // All-time line
+      const allLine=p.all_closed>0?'<div style="text-align:center;margin-top:6px;font-size:.68em;color:var(--text-dim)">all-time: <span style="color:'+(p.all_pnl>=0?'var(--green)':'var(--red)')+'">$'+(p.all_pnl>=0?'+':'')+p.all_pnl.toFixed(2)+'</span> ('+p.all_closed+' trades, '+p.all_win_rate+'% WR)</div>':'';
+      return`<div onclick="showTraderDetail('${p.username}')" style="background:var(--bg3);border:1px solid var(--border);padding:14px 16px;border-radius:6px;cursor:pointer;transition:border-color .2s" onmouseenter="this.style.borderColor='var(--gold)'" onmouseleave="this.style.borderColor='var(--border)'">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            ${avatar?'<img src="'+avatar+'" style="width:28px;height:28px;border-radius:4px">':''}
+            <a href="https://polymarket.com/profile/${addr}" target="_blank" onclick="event.stopPropagation()" style="color:var(--gold);font-weight:700;font-size:1em;text-decoration:none" onmouseenter="this.style.textDecoration='underline'" onmouseleave="this.style.textDecoration='none'">${p.username}${crown}</a>
+          </div>
+          <span style="color:${vc};font-weight:700;font-size:.62em;letter-spacing:.06em;background:${vBg};padding:2px 7px;border-radius:3px;text-transform:uppercase">${verdict}</span>
+        </div>
+        <div style="text-align:center;padding:8px 0;margin-bottom:10px;background:${pnlBg};border-radius:4px">
+          <div style="color:${pnlCol};font-weight:800;font-size:1.4em;font-family:var(--mono)">$${pnlT>=0?'+':''}${pnlT.toFixed(2)}</div>
+          <div style="color:var(--text-dim);font-size:.65em;margin-top:2px">24H P&L</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;font-size:.75em">
+          <div style="background:var(--bg);padding:6px 4px;border-radius:4px">
+            <div style="color:var(--green);font-weight:700;font-size:1.2em">${p.wins}</div>
+            <div style="color:var(--text-dim);font-size:.85em">Wins</div>
+          </div>
+          <div style="background:var(--bg);padding:6px 4px;border-radius:4px">
+            <div style="color:var(--red);font-weight:700;font-size:1.2em">${p.losses}</div>
+            <div style="color:var(--text-dim);font-size:.85em">Losses</div>
+          </div>
+          <div style="background:var(--bg);padding:6px 4px;border-radius:4px">
+            <div style="color:${wrCol};font-weight:700;font-size:1.2em">${wr}%</div>
+            <div style="color:var(--text-dim);font-size:.85em">Win Rate</div>
+          </div>
+        </div>
+        ${p.open>0?'<div style="text-align:center;margin-top:6px;font-size:.72em;color:var(--text-dim)">'+p.open+' open ($'+p.total_invested.toFixed(0)+' inv.)</div>':''}
+        ${allLine}
+      </div>`;
+    }).join('');
+  }).catch(()=>{
+    // Fallback to old report-based view
+    fetch('/api/report/latest').then(r=>r.json()).then(d=>{
+      if(d.report&&!d.report.startsWith('No reports')){
+        const parts=d.report.split('\n---\n');
+        $('reportText').innerHTML=buildPreview(parts[0]||'');
+      }
+    }).catch(()=>{})
+  })
 }
 function showReportModal(){
   $('reportModalText').innerHTML=fmtReport(window._reportFull||'');
