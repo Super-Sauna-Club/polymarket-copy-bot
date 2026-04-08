@@ -436,28 +436,28 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:.8rem;color:var(--text)">New Trade (Bell)</span>
         <div style="display:flex;gap:5px;align-items:center">
-          <button onclick="AC.resume();_showMeme({gif:_rnd(_tradeGifs),lbl:_rnd(_tradeLabels),snd:_sndBell,vol:0.2,dur:4000,color:'var(--gold)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
+          <button onclick="AC.resume();_showMeme({gif:_rnd(_tradeGifs),lbl:_rnd(_tradeLabels),snd:_sndBell,vol:1.0,dur:4000,color:'var(--gold)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
           <button id="sfxTogsfxTrade" onclick="_togMeme('sfxTrade')" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.7rem;padding:3px 10px;border-radius:4px;min-width:38px;font-weight:600">OFF</button>
         </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:.8rem;color:var(--text)">Win Streak</span>
         <div style="display:flex;gap:5px;align-items:center">
-          <button onclick="AC.resume();_showMeme({gif:_streakWinCfg[1].gif,lbl:_streakWinCfg[1].lbl,snd:_sndJackpot,vol:0.22,dur:11000,color:'var(--green)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
+          <button onclick="AC.resume();_showMeme({gif:_streakWinCfg[1].gif,lbl:_streakWinCfg[1].lbl,snd:_sndJackpot,vol:1.0,dur:11000,color:'var(--green)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
           <button id="sfxTogsfxStreak" onclick="_togMeme('sfxStreak')" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.7rem;padding:3px 10px;border-radius:4px;min-width:38px;font-weight:600">OFF</button>
         </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:.8rem;color:var(--text)">Loss Streak</span>
         <div style="display:flex;gap:5px;align-items:center">
-          <button onclick="AC.resume();_showMeme({gif:_streakLossCfg[1].gif,lbl:_streakLossCfg[1].lbl,sub:_streakLossCfg[1].sub,snd:_sndCurb,vol:0.22,dur:5000,color:'var(--red)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
+          <button onclick="AC.resume();_showMeme({gif:_streakLossCfg[1].gif,lbl:_streakLossCfg[1].lbl,sub:_streakLossCfg[1].sub,snd:_sndCurb,vol:1.0,dur:5000,color:'var(--red)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
           <button id="sfxTogsfxLStreak" onclick="_togMeme('sfxLStreak')" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.7rem;padding:3px 10px;border-radius:4px;min-width:38px;font-weight:600">OFF</button>
         </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:.8rem;color:var(--text)">Payout</span>
         <div style="display:flex;gap:5px;align-items:center">
-          <button onclick="AC.resume();_showMeme({gif:_rnd(_payoutGifs),lbl:_rnd(_payoutLabels),sub:'+$42.50 USDC',snd:_sndPayout,vol:0.25,dur:5000,color:'var(--green)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
+          <button onclick="AC.resume();_showMeme({gif:_rnd(_payoutGifs),lbl:_rnd(_payoutLabels),sub:'+$42.50 USDC',snd:_sndPayout,vol:1.0,dur:5000,color:'var(--green)',force:1})" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.6rem;padding:2px 7px;border-radius:3px">TEST</button>
           <button id="sfxTogsfxPayout" onclick="_togMeme('sfxPayout')" style="background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-size:.7rem;padding:3px 10px;border-radius:4px;min-width:38px;font-weight:600">OFF</button>
         </div>
       </div>
@@ -659,7 +659,7 @@ function _showMeme(cfg){
     <div class="meme-lbl" style="${cfg.color?'color:'+cfg.color:''}">${cfg.lbl}</div>
     ${cfg.sub?'<div class="meme-sub">'+cfg.sub+'</div>':''}
   </div>`;
-  if(cfg.snd)_playBuf(cfg.snd,cfg.vol||0.2);
+  if(cfg.snd)_playBuf(cfg.snd,cfg.vol||1.0);
   if(_memeTimer)clearTimeout(_memeTimer);
   const dur=cfg.dur||4000;
   setTimeout(()=>{const c=o.querySelector('.meme-card');if(c)c.classList.add('out')},dur-400);
@@ -691,7 +691,7 @@ function _checkStreaks(pnl){
   if(isWin&&!sfxStreak)return;
   if(!isWin&&!sfxLStreak)return;
   setTimeout(()=>{_showMeme({gif:match.gif,lbl:match.lbl,sub:match.sub||'',
-    snd:match.snd(),vol:0.22,dur:11000,
+    snd:match.snd(),vol:1.0,dur:isWin?11000:5000,
     color:isWin?'var(--green)':'var(--red)'})},1800);
 }
 /* ═══ PAYOUT DETECTION ═══ */
@@ -705,7 +705,7 @@ function _checkPayouts(){
       const recent=D.activity.find(a=>a.event_type==='redeem'&&a.icon==='CASH'&&a.created_at&&(now-new Date(a.created_at).getTime()/1000)<120);
       if(recent&&sfxPayout){
         _showMeme({gif:_rnd(_payoutGifs),lbl:_rnd(_payoutLabels),
-          sub:'+$'+delta.toFixed(2)+' USDC',snd:_sndPayout,vol:0.25,dur:5000,color:'var(--green)'});
+          sub:'+$'+delta.toFixed(2)+' USDC',snd:_sndPayout,vol:1.0,dur:5000,color:'var(--green)'});
       }
     }
   }
@@ -727,9 +727,9 @@ function _showCloseAlert(t){
     <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl" style="color:${w?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}$${(t.pnl||0).toFixed(2)}</span> @ ${t.price||0}\u00A2 \u00B7 via <span class="hl">${t.trader||'?'}</span></div>
     </div>${gifHtml}</div>`;
-  if(w&&bigWin&&sfxBigWin){_playBuf(_sndPolice,0.22)}
+  if(w&&bigWin&&sfxBigWin){_playBuf(_sndPolice,1.0)}
   if(w&&!bigWin&&sfxWin){playMoney()}
-  if(!w&&sfxLoss){_playBuf(_sndWasted,0.22)}
+  if(!w&&sfxLoss){_playBuf(_sndWasted,1.0)}
   _alertIsWin=w;_alertIsBigWin=bigWin;
   if(_alertTimer)clearTimeout(_alertTimer);
   const dur=bigWin?16500:6000;
@@ -777,7 +777,7 @@ function _processNewActivities(){
           size:ot?(ot.size||0):parseFloat(((a.detail||'').match(/\$(\d+\.?\d*)/)||[])[1]||'0'),
           trader:trader,side:ot?(ot.side||''):'',live:true};
         alert_(d);beep();
-        if(sfxTrade){_showMeme({gif:_rnd(_tradeGifs),lbl:_rnd(_tradeLabels),snd:_sndBell,vol:0.2,dur:4000,color:'var(--gold)'})}
+        if(sfxTrade){_showMeme({gif:_rnd(_tradeGifs),lbl:_rnd(_tradeLabels),snd:_sndBell,vol:1.0,dur:4000,color:'var(--gold)'})}
         hist.unshift(d);if(hist.length>20)hist.pop();ticker();
       }else if(a.event_type==='sell'){
         const ct=tradeId&&D.closed_trades?D.closed_trades.find(t=>t.id===tradeId):null;
