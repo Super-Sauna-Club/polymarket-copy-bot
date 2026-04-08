@@ -252,7 +252,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
 
 /* ═══ MEME GIF OVERLAY (bottom-right) ═══ */
 .meme-ov{position:fixed;inset:0;z-index:9997;pointer-events:none;display:flex;
-  align-items:flex-start;justify-content:center;padding-top:80px}
+  align-items:flex-end;justify-content:flex-end;padding:0 32px 32px 0}
 .meme-card{pointer-events:auto;background:var(--bg);border:1px solid var(--border-h);
   padding:14px 18px;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.7);
   animation:memeIn .35s cubic-bezier(.17,.67,.35,1.2);max-width:340px;text-align:center}
@@ -261,8 +261,8 @@ tr:hover{background:rgba(201,168,76,0.03)}
 .meme-lbl{font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;font-weight:700;
   color:var(--gold);margin-bottom:2px}
 .meme-sub{font-size:.68rem;color:var(--text-dim);font-weight:300;font-style:italic}
-@keyframes memeIn{from{transform:translateY(-30px) scale(.95);opacity:0}to{transform:none;opacity:1}}
-@keyframes memeOut{to{transform:translateY(-15px);opacity:0}}
+@keyframes memeIn{from{transform:translateY(30px) scale(.95);opacity:0}to{transform:none;opacity:1}}
+@keyframes memeOut{to{transform:translateY(15px);opacity:0}}
 
 /* ═══ EMPTY ═══ */
 .empty{text-align:center;padding:52px;color:var(--text-dim);font-size:1.05rem;font-weight:300;
@@ -327,7 +327,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <div class="status-tags">
         <span class="st" id="st-bot"><span class="st-dot on"></span>Bot</span>
         <span class="st" id="st-api"><span class="st-dot" id="st-api-dot"></span>API</span>
-        <span class="st" id="st-ws"><span class="st-dot" id="st-ws-dot"></span>SSE</span>
+        <span class="st" id="st-ws"><span class="st-dot" id="st-ws-dot"></span>Poll</span>
       </div>
     </div>
     <div class="hd-right">
@@ -516,7 +516,8 @@ tr:hover{background:rgba(201,168,76,0.03)}
 <div class="meme-ov" id="memeOv" style="display:none"></div>
 
 <script>
-let D=null,CI=null,sfx=localStorage.getItem('sfx')!=='off',sfxPop=localStorage.getItem('sfxPop')!=='off',sseOk=false;
+let D=null,CI=null,sfx=localStorage.getItem('sfx')!=='off',sfxPop=localStorage.getItem('sfxPop')!=='off',pollOk=false;
+let _lastSeenActivityId=0,_firstLoad=true;
 /* ═══ MEME SYSTEM STATE ═══ */
 let _winStreak=0,_lossStreak=0,_prevWallet=null,_streakInit=false,_prevPnl={};
 let _memeTimer=null,_lastMemeTime=0;
@@ -583,14 +584,14 @@ fetch('/static/money-button.mp3').then(r=>r.arrayBuffer()).then(b=>AC.decodeAudi
 function playMoney(){if(!_moneyBuffer)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=_moneyBuffer;g.gain.value=1.0;s.connect(g);g.connect(_masterGain);s.start()}catch(e){}}
 /* ═══ MEME SOUND BUFFERS ═══ */
 let _sndWasted=null,_sndBell=null,_sndJackpot=null,_sndPolice=null,_sndCurb=null,_sndPayout=null;
-function _loadSnd(url){return fetch(url).then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).catch(()=>null)}
+function _loadSnd(url){return fetch(url).then(r=>{if(!r.ok){console.warn('[SFX] failed to load:',url,r.status);return null}return r.arrayBuffer()}).then(b=>b?AC.decodeAudioData(b):null).catch(e=>{console.warn('[SFX] decode error:',url,e);return null})}
 _loadSnd('/static/loss-wasted.mp3').then(b=>{_sndWasted=b});
 _loadSnd('/static/trade-bell.mp3').then(b=>{_sndBell=b});
 _loadSnd('/static/streak-jackpot.mp3?v=3').then(b=>{_sndJackpot=b});
 _loadSnd('/static/bigwin-police.mp3').then(b=>{_sndPolice=b});
 _loadSnd('/static/streak-curb.mp3').then(b=>{_sndCurb=b});
 _loadSnd('/static/payout-cashregister.mp3').then(b=>{_sndPayout=b});
-function _playBuf(buf){if(!buf)return;try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=buf;g.gain.value=1.0;s.connect(g);g.connect(_masterGain);s.start()}catch(e){}}
+function _playBuf(buf,vol){if(!buf){console.warn('[SFX] buffer is null — sound file failed to load');return}try{AC.resume();const s=AC.createBufferSource(),g=AC.createGain();s.buffer=buf;g.gain.value=typeof vol==='number'?vol:1.0;s.connect(g);g.connect(_masterGain);s.start()}catch(e){console.warn('[SFX] playback error:',e)}}
 const _rnd=a=>a[Math.floor(Math.random()*a.length)];
 /* ═══ MEME GIF ARRAYS ═══ */
 const _lossGif='https://media.giphy.com/media/AHMHuF12pW4b6/giphy.gif';
@@ -737,7 +738,7 @@ function _showCloseAlert(t){
 function _processAlertQueue(){
   if(!_alertQueue.length)return;
   const next=_alertQueue.shift();
-  _showCloseAlert(next);
+  if(next._isBuy){_showBuyAlert(next)}else{_showCloseAlert(next)}
 }
 function alertClose(t){
   const w=t.pnl>=0;
@@ -752,25 +753,61 @@ function alertClose(t){
   _alertQueue.push(t);
 }
 
-function initSSE(){try{const es=new EventSource('/api/stream');
-  es.onopen=()=>{sseOk=true;dot()};
-  es.onerror=()=>{sseOk=false;dot();try{es.close()}catch(e){}setTimeout(initSSE,1000)};
-  es.addEventListener('new_trade',e=>{try{const d=JSON.parse(e.data);alert_(d);beep();
-    if(sfxTrade){_showMeme({gif:_rnd(_tradeGifs),lbl:_rnd(_tradeLabels),snd:_sndBell,vol:0.2,dur:4000,color:'var(--gold)'})}
-    hist.unshift(d);if(hist.length>20)hist.pop();ticker();setTimeout(load,1500)}catch(x){}});
-  es.addEventListener('trade_closed',e=>{try{const d=JSON.parse(e.data);alertClose(d);beepClose();
-    _checkStreaks(d.pnl??0);
-    setTimeout(load,1500)}catch(x){}})}catch(e){console.log('SSE not available')}}
+/* ═══ ACTIVITY-LOG POLLING (replaces SSE) ═══ */
+function _processNewActivities(){
+  if(!D||!D.activity||!D.activity.length)return;
+  const acts=D.activity;
+  const maxId=Math.max(...acts.map(a=>a.id||0));
+  if(_firstLoad){_lastSeenActivityId=maxId;_firstLoad=false;pollOk=true;dot();return}
+  pollOk=true;dot();
+  const newActs=acts.filter(a=>(a.id||0)>_lastSeenActivityId).sort((a,b)=>(a.id||0)-(b.id||0));
+  if(!newActs.length)return;
+  _lastSeenActivityId=maxId;
+  const toProcess=newActs.slice(-5); /* cap to avoid popup flood after tab wake */
+  for(const a of toProcess){
+    try{
+      const idMatch=(a.detail||'').match(/#(\d+)/);
+      const tradeId=idMatch?parseInt(idMatch[1]):0;
+      if(a.event_type==='buy'){
+        const ot=tradeId&&D.open_trades?D.open_trades.find(t=>t.id===tradeId):null;
+        const m=(a.detail||'').match(/#(\d+)\s+(.+?)\s+@\s+(\d+)c/);
+        const trader=ot?(ot.wallet_username||''):(a.title||'').replace(/^Copied position from\s*/i,'').replace(/\s*\(.*\)$/,'');
+        const d={market:ot?(ot.market_question||'').substring(0,60):(m?m[2]:(a.detail||'').substring(0,50)),
+          price:ot?Math.round((ot.entry_price||0)*100):(m?parseInt(m[3]):0),
+          size:ot?(ot.size||0):parseFloat(((a.detail||'').match(/\$(\d+\.?\d*)/)||[])[1]||'0'),
+          trader:trader,side:ot?(ot.side||''):'',live:true};
+        alert_(d);beep();
+        if(sfxTrade){_showMeme({gif:_rnd(_tradeGifs),lbl:_rnd(_tradeLabels),snd:_sndBell,vol:0.2,dur:4000,color:'var(--gold)'})}
+        hist.unshift(d);if(hist.length>20)hist.pop();ticker();
+      }else if(a.event_type==='sell'){
+        const ct=tradeId&&D.closed_trades?D.closed_trades.find(t=>t.id===tradeId):null;
+        const m=(a.detail||'').match(/#(\d+)\s+(.+?)\s+—/);
+        const pnl=a.pnl||0;
+        const d={market:ct?(ct.market_question||'').substring(0,60):(m?m[2]:(a.detail||'').substring(0,50)),
+          pnl:pnl,price:ct?Math.round((ct.current_price||0)*100):0,
+          trader:ct?(ct.wallet_username||''):'bot',
+          size:ct?(ct.size||0):0};
+        alertClose(d);beepClose();_checkStreaks(pnl);
+      }
+    }catch(x){console.warn('[POLL] error processing activity #'+(a.id||'?'),x)}
+  }
+}
 function dot(){
-  $('st-ws-dot').className='st-dot '+(sseOk?'on':'off');
+  $('st-ws-dot').className='st-dot '+(pollOk?'on':'off');
   $('st-api-dot').className='st-dot '+(D?'on':'off');
 }
 
-function alert_(t){if(!sfx)return;const o=$('alOv');o.style.display='flex';
+function _showBuyAlert(t){
+  const o=$('alOv');o.style.display='flex';
   o.innerHTML=`<div class="al-ban"><div class="al-lbl">\u26A1 New Trade Incoming</div>
     <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl">${t.side||'?'}</span> @ ${t.price||0}\u00A2 \u00B7 $${fm(t.size)} \u00B7 via <span class="hl">${t.trader||'?'}</span>${t.live?' \u2014 LIVE':''}</div></div>`;
-  setTimeout(()=>{o.style.display='none'},4200)}
+  _alertIsWin=false;_alertIsBigWin=false;
+  if(_alertTimer)clearTimeout(_alertTimer);
+  _alertTimer=setTimeout(()=>{o.style.display='none';_alertTimer=null;_alertIsWin=false;_alertIsBigWin=false;_processAlertQueue()},4200)}
+function alert_(t){if(!sfx)return;
+  if(_alertTimer){_alertQueue.push({...t,_isBuy:true});return}
+  _showBuyAlert(t)}
 
 function dSp(t){const s=((t.market_slug||t.slug||'')+(t.market_question||'')+(t.title||'')+(t.detail||'')).toLowerCase();
   const m=[
@@ -1047,7 +1084,7 @@ document.querySelectorAll('.cp-btn').forEach(b=>b.addEventListener('click',()=>{
   b.classList.add('act');if(CI){CI.destroy();CI=null}chart(b.dataset.p)}))
 
 let _reportLoaded=false;
-async function load(){try{const r=await fetch('/api/live-data');D=await r.json();render();chart();dot();_initStreaks();_checkPayouts();_fetchLiveInfo();if(!_reportLoaded&&D.followed){_reportLoaded=true;loadReport()}}catch(e){console.error('fetch:',e);dot()}}
+async function load(){try{const r=await fetch('/api/live-data');D=await r.json();_processNewActivities();render();chart();dot();_initStreaks();_checkPayouts();_fetchLiveInfo();if(!_reportLoaded&&D.followed){_reportLoaded=true;loadReport()}}catch(e){console.error('fetch:',e);pollOk=false;dot()}}
 function togWide(){
   const u=new URL(location);
   if(u.searchParams.has('wide')){u.searchParams.delete('wide')}else{u.searchParams.set('wide','1')}
@@ -1099,7 +1136,7 @@ if(new URLSearchParams(location.search).has('wide')){
   content.appendChild(right);
   app.appendChild(content);
 }
-load();setInterval(load,10000);setTimeout(initSSE,2000);
+load();setInterval(load,10000);
 setTimeout(_updSfxUI,100);
 // Auto-refresh report every 60s
 setInterval(loadReport,60000);
