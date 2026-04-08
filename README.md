@@ -495,10 +495,10 @@ Alle Einstellungen kommen in `settings.env`. Nur `POLYMARKET_PRIVATE_KEY`, `POLY
 | `MIN_ENTRY_PRICE_MAP` | | Pro Trader (z.B. `sovereign2013:0.40` = nur ab 40c) |
 | `MAX_ENTRY_PRICE` | 0.85 | Ueber 85 Cent nicht kaufen (zu wenig Gewinnmarge) |
 | `MAX_ENTRY_PRICE_MAP` | | Pro Trader (z.B. `sovereign2013:0.75` = max 75c) |
-| `MAX_COPIES_PER_MARKET` | 1 | 1 Kopie pro Markt (kein Doppelkauf) |
+| `MAX_COPIES_PER_MARKET` | 1 | 1 Kopie pro Markt (kein Doppelkauf). Zaehlt auch kuerzlich geschlossene Trades (<30min) |
 | `ENTRY_TRADE_SEC` | 300 | Trades aelter als 5 Minuten ignorieren |
 | `MAX_SPREAD` | 0.05 | Max 5% Spread (Differenz zwischen Kauf- und Verkaufspreis) |
-| `NO_REBUY_MINUTES` | 0 | Nach Verkauf X Minuten Sperre fuer selben Markt (0=aus) |
+| `NO_REBUY_MINUTES` | 120 | Nach Close/Sell X Minuten Sperre fuer selben Markt (120=2h, 0=aus). Verhindert Kauf-Loops bei Esports |
 | `CATEGORY_BLACKLIST_MAP` | | Kategorien pro Trader blocken (z.B. `sovereign2013:tennis\|mlb`) |
 | `MIN_CONVICTION_RATIO` | 0 | Min Conviction-Ratio zum Kopieren (0=aus) |
 | `MIN_CONVICTION_RATIO_MAP` | | Pro Trader (z.B. `sovereign2013:1.5` = nur 1.5x+ Conviction) |
@@ -586,13 +586,24 @@ Alles standardmaessig aus (0 = deaktiviert).
 
 | Einstellung | Standard | Erklaerung |
 |-------------|----------|------------|
-| `BUY_SLIPPAGE_LEVELS` | 0.05,0.08,0.12 | Kauf-Retry: +5c, +8c, +12c Slippage |
-| `SELL_SLIPPAGE_LEVELS` | 0.01,0.03,0.06 | Verkauf-Retry: -1c, -3c, -6c Slippage |
+| `BUY_SLIPPAGE_LEVELS` | 0.02,0.05,0.08 | Kauf-Retry Slippage-Stufen. Niedriger = weniger Drag, aber mehr fehlgeschlagene Orders |
+| `SELL_SLIPPAGE_LEVELS` | 0.01,0.03,0.05 | Verkauf-Retry Slippage-Stufen |
 | `DELAYED_BUY_VERIFY_SECS` | 8 | Sekunden warten um verzoegerte Kauforder zu verifizieren |
 | `DELAYED_SELL_VERIFY_SECS` | 6 | Sekunden warten um verzoegerte Verkauforder zu verifizieren |
 | `SELL_VERIFY_THRESHOLD` | 0.5 | Anteil der Shares der verschwunden sein muss (0.5 = 50%) |
 
-### Fill-Verifizierung
+### Fill-Verifizierung & P&L-Tracking
+
+Der Bot misst nach jedem Kauf/Verkauf den echten USDC- und Token-Balance-Delta.
+Dadurch wird der tatsaechliche Fill-Preis (inkl. Slippage + Fees) in der DB gespeichert.
+
+**DB-Spalten:** `actual_entry_price`, `actual_size`, `shares_held`, `usdc_received`
+
+**WICHTIG:** Die Standard-DB-Felder (`entry_price`, `size`) enthalten den geplanten Preis.
+Fuer echte P&L-Berechnung immer `actual_entry_price` verwenden (Fallback auf `entry_price` wenn NULL).
+
+**Drag-Info:** Polymarket Fees sind 0-10% (Esports: 10%, NHL/Politik: 0%). Plus Slippage.
+Echte Kosten pro Trade: 12-20% des investierten Betrags.
 
 | Einstellung | Standard | Erklaerung |
 |-------------|----------|------------|
