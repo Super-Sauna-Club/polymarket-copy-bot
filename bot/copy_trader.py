@@ -558,6 +558,20 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 continue
 
             # === SAME FILTERS AS ACTIVITY SCAN ===
+            # No-rebuy: don't re-enter a market we recently closed
+            if cid and config.NO_REBUY_MINUTES > 0:
+                try:
+                    from database.db import get_connection as _gc_diff
+                    with _gc_diff() as _rc_diff:
+                        _was_closed_diff = _rc_diff.execute(
+                            "SELECT id FROM copy_trades WHERE condition_id=? AND status='closed' "
+                            "AND closed_at > datetime('now', '-' || ? || ' minutes', 'localtime')", (cid, str(config.NO_REBUY_MINUTES))
+                        ).fetchone()
+                        if _was_closed_diff:
+                            continue
+                except Exception:
+                    pass
+
             # Category blacklist
             if _is_category_blocked(username, pos["market_question"]):
                 continue

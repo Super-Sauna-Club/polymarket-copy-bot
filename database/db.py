@@ -338,10 +338,13 @@ def is_trade_duplicate(wallet_address: str, market_question: str, condition_id: 
 
 
 def count_copies_for_market(wallet_address: str, condition_id: str) -> int:
-    """Wie viele aktive Kopien haben wir von diesem Markt/Trader?"""
+    """Wie viele aktive Kopien haben wir von diesem Markt/Trader?
+    Counts OPEN trades + trades closed in the last 30 minutes (prevents rapid re-entry loops).
+    """
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT COUNT(*) as cnt FROM copy_trades WHERE wallet_address=? AND condition_id=? AND status='open'",
+            "SELECT COUNT(*) as cnt FROM copy_trades WHERE wallet_address=? AND condition_id=? "
+            "AND (status='open' OR (status='closed' AND closed_at > datetime('now', '-30 minutes', 'localtime')))",
             (wallet_address, condition_id)
         ).fetchone()
         return row["cnt"] if row else 0
