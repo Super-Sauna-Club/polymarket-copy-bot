@@ -224,10 +224,10 @@ _CATEGORY_KEYWORDS = {
             "padres", "cardinals", "orioles", "rays", "guardians", "rangers", "twins", "mariners",
             "royals", "tigers", "white sox", "pirates", "reds", "brewers", "diamondbacks", "giants",
             "rockies", "marlins", "athletics", "angels", "nationals"],
-    "nhl": ["nhl", "bruins", "rangers", "maple leafs", "panthers", "hurricanes", "devils",
-            "islanders", "capitals", "penguins", "flyers", "blue jackets", "red wings", "lightning",
-            "senators", "canadiens", "sabres", "jets", "stars", "avalanche", "wild", "predators",
-            "blues", "blackhawks", "flames", "oilers", "canucks", "kraken", "golden knights", "ducks", "sharks"],
+    "nhl": ["nhl", "bruins", "maple leafs", "hurricanes", "devils",
+            "islanders", "penguins", "flyers", "blue jackets", "red wings", "lightning",
+            "senators", "canadiens", "sabres", "avalanche", "minnesota wild", "predators",
+            "blackhawks", "flames", "oilers", "canucks", "kraken", "golden knights", "ducks", "sharks"],
     "nfl": ["nfl", "chiefs", "eagles", "49ers", "ravens", "cowboys", "bills", "dolphins",
             "lions", "packers", "texans", "bengals", "steelers", "broncos", "chargers", "rams",
             "seahawks", "bears", "vikings", "saints", "falcons", "buccaneers", "commanders",
@@ -265,9 +265,19 @@ _CATEGORY_KEYWORDS = {
 
 
 def _detect_category(question: str) -> str:
-    """Detect category from market question. Returns lowercase category name or empty string."""
+    """Detect category from market question. Returns lowercase category name or empty string.
+    Checks esports first (cs/lol/valorant/dota) to avoid false matches with generic sport keywords.
+    """
     q = question.lower()
+    # Check esports first — their prefixes are unambiguous
+    for cat in ("cs", "lol", "valorant", "dota"):
+        for kw in _CATEGORY_KEYWORDS[cat]:
+            if kw in q:
+                return cat
+    # Then check all other categories
     for cat, keywords in _CATEGORY_KEYWORDS.items():
+        if cat in ("cs", "lol", "valorant", "dota"):
+            continue
         for kw in keywords:
             if kw in q:
                 return cat
