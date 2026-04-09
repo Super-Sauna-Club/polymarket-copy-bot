@@ -54,16 +54,21 @@ Weil selbst Profis manchmal Mist machen. Deshalb hat der Bot ein ganzes System a
 ## Features
 
 - **Copy Trading** — Kopiert Positionen von gefolgten Tradern innerhalb von 5 Sekunden
+- **5 Buy-Pfade** — Activity Scan, Position-Diff, Event-Wait, Hedge-Wait, Pending-Buy (alle mit denselben Filtern und Size-Caps)
+- **Thread-Safe** — Buy-Lock verhindert Race Conditions bei gleichzeitigen Scans
 - **Proportionales Sizing** — Wetteinsatz skaliert mit der Ueberzeugung des Traders (0.2x bis 3.0x)
+- **Kategorie-Blacklist** — Pro Trader bestimmte Sportarten/Kategorien blocken (Erkennung: NBA, MLB, NHL, NFL, Tennis, Soccer, CS, LoL, Valorant, Dota, Geopolitik, Cricket)
 - **Hedge-Erkennung** — Erkennt wenn ein Trader beide Seiten kauft und ueberspringt beides
+- **Size-Caps** — Alle Limits (Event, Match, Exposure, Position) cappen die Trade-Groesse auf den verbleibenden Platz (nicht nur Skip bei voll)
+- **Sell-before-Close** — Verkauft Shares BEVOR die DB geschlossen wird (keine verwaisten Positionen)
 - **Fast-Sell** — Kopiert Verkaeufe der Trader innerhalb von 5 Sekunden
-- **Auto-Sell** — Verkauft gewonnene Positionen ab 96 Cent automatisch (Kapital recyceln)
-- **Auto-Close** — Markiert verlorene Positionen (0 Cent) als geschlossen
-- **Auto-Redeem** — Loest gewonnene Positionen ueber den Builder Relayer ein (keine Gaskosten)
+- **Auto-Sell** — Verkauft gewonnene Positionen ab 96 Cent automatisch
+- **Auto-Redeem** — Loest gewonnene Positionen ueber den Builder Relayer ein
+- **P&L-Tracking** — Misst echten Fill-Preis (USDC-Delta), nicht geplanten Preis
+- **P&L-Monitor** — Dauerhafter Service der bei jedem Close DB-P&L vs. USDC-Delta vergleicht
 - **Stale-Position-Erkennung** — Schliesst Positionen die aus der Trader-Wallet verschwunden sind
-- **Performance Report** — Automatischer Bericht alle 10 Minuten mit Gewinn/Verlust pro Trader
-- **Live Dashboard** — Echtzeit-Weboberflaeche mit Equity-Kurve, Aktivitaets-Log, Meme-GIFs
-- **Sport-Erkennung** — Automatische Emoji-Tags (MLB, NBA, NHL, NFL, CS2, LoL, Dota, Valorant, Tennis, Geopolitik)
+- **Live Dashboard** — Echtzeit mit Equity-Kurve, 24h-Trader-Performance, Exposure-Meter, Sound-System
+- **Circuit Breaker** — Pausiert nach 8 API-Fehlern fuer 60 Sekunden
 
 ---
 
@@ -88,11 +93,9 @@ Wette C: Trader setzt $10 (0.1x Durchschnitt = nur ein Test)
   → Bot setzt: $15 Basis x 0.2 Ratio (Minimum) = $3
 ```
 
-Der Ratio wird begrenzt durch `RATIO_MIN` (Standard: 0.2x) und `RATIO_MAX` (Standard: 3.0x).
-
 ### Preis-Signal
 
-Wetten weit weg von 50 Cent zeigen staerkere Ueberzeugung. Wenn ein Trader bei 15 Cent kauft (= "das passiert mit 15% Chance, aber ich glaub dran"), ist das ein staerkeres Signal als bei 50 Cent (= Muenzwurf).
+Wetten weit weg von 50 Cent zeigen staerkere Ueberzeugung.
 
 ```
 Preis 15c → Starkes Signal  → Einsatz x 1.5
@@ -110,114 +113,29 @@ Preis     = 1.5x (stark) / 1.0x (normal) / 0.6x (schwach)
 Conviction = Trader-Wette / Trader-Durchschnitt (begrenzt auf RATIO_MIN bis RATIO_MAX)
 ```
 
-**Konkretes Beispiel:**
-```
-Wallet: $300
-Trader: xsaghav (BET_SIZE_MAP = 0.07 = 7%)
-Trader-Durchschnitt: $25
-Trader setzt diesmal: $75 (= 3x Durchschnitt)
-Preis: 20 Cent (Edge = 0.30 → starkes Signal)
-
-Basis:      $300 x 0.07 = $21
-Preis-Mult: 1.5x (stark)
-Conviction: 3.0x (begrenzt auf RATIO_MAX=3.0)
-
-Endgroesse: $21 x 1.5 x 3.0 = $94.50
-→ Begrenzt auf MAX_POSITION_SIZE = $30
-```
-
 ---
 
-## Wie funktioniert die Hedge-Erkennung?
+## Sicherheits-Features
 
-Manche Trader kaufen BEIDE Seiten eines Marktes. Zum Beispiel "Lakers gewinnen" UND "Celtics gewinnen". Das ist wie gleichzeitig auf Rot UND Schwarz setzen — egal was passiert, du verlierst die Gebuehren.
+### Thread-Safe Buy-Lock
 
-Der Bot erkennt das:
+Alle 4 Buy-Pfade sind mit einem `_buy_lock` geschuetzt. Verhindert dass zwei Scan-Zyklen gleichzeitig denselben Markt kaufen.
 
-```
-Sekunde 0:  Trader kauft "Lakers gewinnen"
-            → Bot: "Hmm, warte 60 Sekunden..."
+### Sell-before-Close
 
-Sekunde 30: Trader kauft "Celtics gewinnen"
-            → Bot: "AHA! Hedge erkannt! Beide uebersprungen."
+Bei Stop-Loss, Take-Profit und Copy-Sell wird **zuerst verkauft, dann die DB geschlossen**. Wenn der Sell fehlschlaegt, bleibt die Position offen — keine verwaisten Shares im Wallet.
 
-Haette der Trader NICHTS mehr gekauft:
-Sekunde 60: → Bot: "Keine Gegenwette → echte Ueberzeugung → KAUFEN!"
-```
+### Size-Caps auf allen Limits
 
-Konfigurierbar pro Trader: `HEDGE_WAIT_TRADERS=xsaghav:60,sovereign2013:60`
-
----
-
-## Wie funktioniert Event-Timing?
-
-Wenn ein NBA-Spiel erst in 8 Stunden anfaengt, macht es keinen Sinn jetzt schon zu kaufen. Der Preis kann sich noch stark aendern, und das Geld ist stundenlang blockiert.
+Jedes Limit (MAX_PER_EVENT, MAX_PER_MATCH, Exposure, Position) **cappt die Trade-Groesse** auf den verbleibenden Platz. Vorher wurde nur bei vollem Limit uebersprungen — jetzt wird die Groesse reduziert.
 
 ```
-MAX_HOURS_BEFORE_EVENT=2  (nur 2 Stunden vorher kaufen)
-
-Trader kauft "Lakers gewinnen" — Spiel ist in 6 Stunden
-  → Bot: "Zu frueh. Ich merke mir das und warte."
-
-4 Stunden spaeter (Spiel in 2 Stunden):
-  → Bot: "Jetzt passt's!" → Schaut aktuellen Preis → Kauft (oder nicht)
+Match-Limit: $15, bereits investiert: $8
+Geplante Trade-Groesse: $12
+→ Gecappt auf $7 ($15 - $8)
 ```
-
-### Preis-Drift-Filter
-
-Wenn der Trader bei 50 Cent gekauft hat, aber 4 Stunden spaeter steht der Preis bei 60 Cent — dann ist der Trade nicht mehr so gut. Der Bot prueft ob sich der Preis zu stark bewegt hat:
-
-| Einstiegspreis | Max erlaubte Drift | Beispiel |
-|---|---|---|
-| Unter 20c (Lotterie) | 30% | 15c → 19c OK, 15c → 20c SKIP |
-| 20-40c (Aussenseiter) | 40% | 30c → 42c OK, 30c → 43c SKIP |
-| 40-60c (Muenzwurf) | 3% | 50c → 51c OK, 50c → 52c SKIP |
-| 60-85c (Favorit) | 5% | 70c → 73c OK, 70c → 74c SKIP |
-
-Muenzwuerfe (40-60c) haben nur minimale Gewinnmarge — da reicht schon 3% Drift um den Profit zu zerstoeren. Aussenseiter (20-40c) haben viel mehr Marge und vertragen mehr Drift.
-
----
-
-## Wie kauft und verkauft der Bot?
-
-### Kaufen (Buy)
-
-1. Bot erkennt neuen Trade vom Trader
-2. Alle Filter werden geprueft (Preis, Groesse, Hedge, Exposure, etc.)
-3. Bot berechnet Einsatzgroesse (Sizing-Formel)
-4. Bot schickt Kauf-Order an Polymarket CLOB API
-5. Falls die Order nicht durchgeht: Bot versucht mit mehr Slippage (+5c, +8c, +12c)
-6. Falls die Order "delayed" (verzoegert) ist: Bot wartet 8 Sekunden und prueft ob USDC abgebucht wurde
-7. Bot speichert den Trade in der Datenbank
-
-### Verkaufen (Sell)
-
-Der Bot verkauft in mehreren Situationen:
-
-- **Fast-Sell** — Trader verkauft → Bot verkauft auch (innerhalb 5 Sekunden)
-- **Auto-Sell** — Preis steigt auf 96+ Cent → Bot verkauft automatisch (Kapital recyceln)
-- **Take-Profit** — Position hat X% Gewinn erreicht → Bot verkauft
-- **Stop-Loss** — Position hat X% Verlust → Bot verkauft
-- **Auto-Close** — Preis faellt auf 0-1 Cent → Position als Verlust markiert (kein Verkauf noetig, wertlos)
-- **Stale-Close** — Position verschwunden aus Trader-Wallet → nach 180 Pruefungen automatisch geschlossen
-
-Sell-Orders haben auch Retry mit Slippage (-1c, -3c, -6c) und Delayed-Verification.
-
-### Redeem (Gewinne einloesen)
-
-Wenn ein Markt offiziell ausgewertet wird ("resolved"), muessen die Gewinne eingeloest werden. Das geht ueber den Builder Relayer (keine Gaskosten noetig):
-
-```bash
-python redeem_positions.py --exec
-```
-
----
-
-## Alle Sicherheits-Features
 
 ### Cash Floor (Notbremse)
-
-Unter einem bestimmten Betrag kauft der Bot nichts mehr. Damit du nie auf $0 gehst.
 
 ```
 CASH_FLOOR=20        → Unter $20 wird nicht mehr gekauft
@@ -225,62 +143,86 @@ CASH_RECOVERY=6      → Erst wenn Cash $26 erreicht ($20 + $6) wird wieder geka
 SAVE_POINT_STEP=1    → Danach steigt der Floor auf $21, naechste Recovery bei $27, usw.
 ```
 
-**Beispiel-Ablauf:**
-```
-Cash faellt auf $20  → STOP (Cash Floor erreicht)
-Cash steigt auf $26  → Kaufen erlaubt! Floor steigt auf $21
-Cash faellt auf $21  → STOP
-Cash steigt auf $27  → Kaufen erlaubt! Floor steigt auf $22
-...und so weiter
-```
-
 ### Max Exposure pro Trader
 
-Jeder Trader darf nur einen bestimmten Prozentsatz deines Portfolios nutzen. Damit ein einzelner Trader nicht alles verzocken kann.
+Jeder Trader darf nur einen bestimmten Prozentsatz deines Portfolios nutzen. Die Trade-Groesse wird auf den verbleibenden Platz gecappt.
 
 ```
-Portfolio: $400 (Wallet $200 + Positionen $200)
-MAX_EXPOSURE_PER_TRADER=0.33 (33%)
-
-Trader A: max $132 → hat $100 investiert → kann noch $32 mehr
-Trader B: max $132 → hat $50 investiert  → kann noch $82 mehr
-Trader C: max $132 → hat $0 investiert   → kann noch $132 mehr
+Portfolio: $200, KING: 65% Exposure
+→ Max $130 fuer KING, hat $50 → naechster Trade max $80
 ```
-
-Pro Trader ueberschreibbar: `TRADER_EXPOSURE_MAP=xsaghav:0.65,sovereign2013:0.40`
-
-Die Limits sind UNABHAENGIG — sie muessen nicht 100% ergeben. 65% + 40% + 30% ist voellig OK. Der Cash Floor verhindert dass die Wallet leer wird.
 
 ### Max pro Event/Match
 
-Ein Trader setzt manchmal 5 verschiedene Wetten auf dasselbe Spiel (Spread -17.5, Spread -18.5, O/U 245, O/U 246, O/U 248). Wenn das Spiel schiefgeht, verlierst du bei ALLEN gleichzeitig.
-
 ```
-MAX_PER_EVENT=15   → Maximal $15 pro Spiel (erste Wette kopiert, Rest blockiert)
+MAX_PER_EVENT=15   → Maximal $15 pro Spiel
 MAX_PER_MATCH=15   → Gilt auch fuer zusammengehoerende Maerkte (Map 1 + Map 2 + BO3 = 1 Match)
 ```
 
-**Echtes Beispiel:** sovereign2013 hat 5 Wetten auf Wizards vs Heat platziert ($39 total). Alle verloren. Mit `MAX_PER_EVENT=15` waere nur 1 Wette ($10) kopiert worden — $29 gespart.
+### Kategorie-Blacklist
 
-### Circuit Breaker (Sicherung)
-
-Wenn die Polymarket API 8x hintereinander fehlschlaegt, pausiert der Bot 60 Sekunden. Verhindert dass der Bot in einer Stoerung wild Orders schickt.
+Bestimmte Sportarten/Kategorien pro Trader blockieren. Der Bot erkennt die Kategorie automatisch anhand von Keywords im Marktnamen.
 
 ```
-CB_THRESHOLD=8      → Nach 8 Fehlern: Pause
+CATEGORY_BLACKLIST_MAP=sovereign2013:tennis|mlb|soccer|nba|nfl|nhl|cricket|geopolitics,xsaghav:cs|valorant
+```
+
+Esports-Kategorien (CS, LoL, Valorant, Dota) werden ZUERST geprueft — vermeidet falsche Matches mit generischen Sport-Keywords (z.B. "Wildcard" im Teamnamen ≠ NHL "Wild").
+
+### NO_REBUY (Kauf-Loop-Schutz)
+
+Esports-Maerkte resolven manchmal in 30 Sekunden. Ohne Schutz kauft der Bot denselben Markt 10x hintereinander.
+
+```
+NO_REBUY_MINUTES=120  → 2 Stunden Sperre nach Close/Sell fuer selben Markt
+```
+
+Alle DB-Queries (MAX_COPIES, Cross-Trader-Dupe) nutzen ein Fenster von `max(NO_REBUY_MINUTES, 30)` Minuten.
+
+Bei DB-Fehler wird der Trade konservativ uebersprungen (nicht durchgelassen).
+
+### Circuit Breaker
+
+```
+CB_THRESHOLD=8      → Nach 8 API-Fehlern hintereinander: Pause
 CB_PAUSE_SECS=60    → 60 Sekunden warten, dann weiter
 ```
 
-### Taegliche Limits (optional)
+---
+
+## P&L-Tracking
+
+### Echte Fill-Preise
+
+Der Bot misst nach jedem Kauf/Verkauf den echten USDC- und Token-Balance-Delta. Dadurch wird der tatsaechliche Fill-Preis (inkl. Slippage + Fees) in der DB gespeichert.
+
+**DB-Spalten:** `actual_entry_price`, `actual_size`, `shares_held`, `usdc_received`
+
+Die Standard-Felder (`entry_price`, `size`) enthalten den geplanten Preis. Fuer echte P&L wird immer `actual_entry_price` verwendet (Fallback auf `entry_price` wenn NULL).
+
+### Drag (versteckte Kosten)
+
+**WICHTIG:** Die DB-P&L ist NICHT die echte P&L. Polymarket Fees + Slippage fressen 10-20% pro Roundtrip.
 
 ```
-MAX_DAILY_LOSS=50     → Bot stoppt nach $50 Tagesverlust
-MAX_DAILY_TRADES=20   → Maximal 20 neue Trades pro Tag
-STOP_LOSS_PCT=0.50    → Verkauft automatisch bei 50% Verlust
-TAKE_PROFIT_PCT=2.0   → Verkauft automatisch bei 200% Gewinn
+Echte P&L ≈ DB_P&L - (Volumen × 10.3%)
 ```
 
-Alle standardmaessig deaktiviert (0 = aus).
+| Kostenart | Betrag | Erklaerung |
+|-----------|--------|------------|
+| Fees | 0-10% | Esports/Sport: 10% (1000bps). NHL/Politik: 0% |
+| Slippage | 2-5c | BUY_SLIPPAGE_LEVELS startet bei +2c |
+| Gesamt | 12-20% | Pro Roundtrip (Kauf + Verkauf) |
+
+### P&L-Monitor
+
+Laeuft als dauerhafter systemd Service (`pnl-monitor.service`). Vergleicht bei jedem Close die DB-P&L mit dem echten USDC-Delta und gibt Alarm wenn die Werte abweichen:
+
+- `[PNL OK]` — DB und USDC stimmen ueberein
+- `[PNL DRIFT]` — Abweichung >$0.05 (warnung)
+- `[PNL ALARM]` — Abweichung >$0.50 (fehler)
+
+Log: `logs/pnl_monitor.log`
 
 ---
 
@@ -289,23 +231,15 @@ Alle standardmaessig deaktiviert (0 = aus).
 Eine Website auf deinem Server die in Echtzeit zeigt was passiert:
 
 - **Kennzahlen** — Gesamtwert, Gewinn/Verlust, Wallet-Balance, offene Positionen, Win-Rate
-- **Equity-Kurve** — Wie sich dein Portfolio ueber Zeit entwickelt (4H/1D/1W/1M/Alles)
-- **Performance-Report** — Automatischer Bericht pro Trader mit Gewinn/Verlust-Aufteilung
+- **Equity-Kurve** — Portfolio-Entwicklung (4H/1D/1W/1M/Alles)
+- **Trader-Performance** — Live 24h-Karten pro Trader mit P&L, Win-Rate, All-Time-Vergleich
 - **Aktivitaets-Log** — Live-Feed aller Kaeufe, Verkaeufe, Gewinne, Verluste mit Sport-Emojis
 - **Aktive Positionen** — Alle offenen Wetten mit aktuellem Gewinn/Verlust
 - **Geschlossene Positionen** — Handelshistorie sortiert nach Datum
 - **Exposure-Meter** — Balken pro Trader der zeigt wie viel vom Budget verbraucht ist
-- **Meme-System** — Weil Wetten Spass machen soll:
-  - Gewinn: Hasbulla Geld-GIF + "Here Comes The Money" Sound
-  - Grosser Gewinn (50%+ ROI): Vince McMahon Reaktion + Geld-Sound
-  - Verlust: GTA "WASTED" + Bildschirm-Wackeln + zufaellige Sprueche
-  - Neuer Trade: "Shut Up And Take My Money" GIF + WWE Glocke
-  - Gewinnserie (3x/5x/7x): John Cena GIF + eskalierende Sounds
-  - Verlustserie (3x/5x/7x): "This is Fine" / Clown Makeup + Curb Your Enthusiasm
-  - Auszahlung: Dave Chappelle Geld-GIF + Kasse-Sound
-- **Sound-Einstellungen** — Alles einzeln ein/ausschaltbar mit Test-Buttons
-- **Widescreen-Modus** — Fullscreen-Layout fuer grosse Bildschirme
-- **Mobile** — Tabellen horizontal scrollbar auf kleinen Screens
+- **Settings-Ansicht** — Alle aktiven Einstellungen auf einen Blick (inkl. SELL_VERIFY_THRESHOLD, CATEGORY_BLACKLIST)
+- **Sound-System** — Gewinn/Verlust/Trade Sounds mit GIFs (alles einzeln ein/ausschaltbar)
+- **Widescreen-Modus** — Fullscreen-Layout fuer grosse Bildschirme (`/copy?wide=1`)
 
 ---
 
@@ -323,7 +257,7 @@ pip install -r requirements.txt
 
 ### 2. Konfiguration
 
-Es gibt **zwei** Config-Dateien (nicht eine!):
+Es gibt **zwei** Config-Dateien:
 
 | Datei | Inhalt | Im Git? |
 |-------|--------|---------|
@@ -337,85 +271,37 @@ cp secrets.example.env secrets.env      # Deine Keys eintragen
 cp settings.example.env settings.env    # Bot-Settings anpassen
 ```
 
+**KEIN `.env` Fallback.** Beide Dateien muessen existieren.
+
 #### secrets.env (Pflicht)
 
 ```env
-# Polymarket CLOB API (PFLICHT fuer Live-Trading)
-# Private Key aus deiner Polymarket Wallet exportieren
 POLYMARKET_PRIVATE_KEY=dein_private_key
 POLYMARKET_FUNDER=deine_proxy_wallet_adresse
-
-# Builder API (PFLICHT fuer Auto-Redeem von Gewinnen)
-# Holen von: polymarket.com/settings → Builder → Create New
 BUILDER_KEY=dein_key
 BUILDER_SECRET=dein_secret
 BUILDER_PASSPHRASE=dein_passphrase
-
-# Dashboard-Passwort (fuer Follow/Unfollow/Reset API)
 DASHBOARD_SECRET=dein_passwort
 ```
 
 #### settings.env (Anpassen)
 
-Kopiere `settings.example.env` und passe an. Die wichtigsten Einstellungen:
+Kopiere `settings.example.env` und passe an. Alle Einstellungen sind in der Datei dokumentiert.
 
-```env
-# Welche Trader kopieren? (Name:Wallet-Adresse)
-FOLLOWED_TRADERS=TraderName:0xAdresse,AndererTrader:0xAdresse
-
-# Echtgeld oder nur tracken?
-LIVE_MODE=true
-
-# Wie viel hast du eingezahlt? (fuer Gewinn/Verlust-Berechnung)
-STARTING_BALANCE=200
-
-# Hedge-Erkennung: 60 Sekunden warten bevor kopiert wird
-HEDGE_WAIT_TRADERS=TraderName:60,AndererTrader:60
-```
-
-Alle weiteren Einstellungen sind optional und haben sinnvolle Standardwerte. Siehe `settings.example.env` fuer die komplette Liste mit Erklaerungen.
-
-### 3. Trader finden
-
-Geh auf [polymarket.com/leaderboard](https://polymarket.com/leaderboard) und suche profitable Trader. Worauf achten:
-
-- **Konstant positiver Gewinn** ueber alle Zeitraeume (nicht nur letzte Woche)
-- **Win-Rate ueber 55%** (unter 55% verlierst du durch Gebuehren)
-- **Fokus auf eine Kategorie** (Sport-Spezialist > Allrounder)
-- **Vernuenftige Positionsgroessen** (nicht alles auf eine Wette)
-- **Wenig Hedging** (nicht staendig beide Seiten kaufen)
-
-Wallet-Adresse vom Profil kopieren und in `FOLLOWED_TRADERS` eintragen.
-
-### 4. Starten
+### 3. Starten
 
 ```bash
 # ZUERST im Paper-Modus testen (kein echtes Geld)
-LIVE_MODE=false python main.py
+# LIVE_MODE=false in settings.env setzen
+python main.py
 
-# Wenn alles funktioniert: Echtgeld
+# Wenn alles funktioniert: LIVE_MODE=true
 python main.py
 ```
 
-Dashboard oeffnen: `http://localhost:8090`
+Dashboard: `http://localhost:8090`
 
-### 5. Auto-Redeem (optional)
-
-Gewonnene Positionen muessen eingeloest werden um USDC zurueckzubekommen:
-
-```bash
-# Erst trocken schauen was eingeloest werden kann
-python redeem_positions.py
-
-# Dann wirklich einloesen
-python redeem_positions.py --exec
-```
-
-Am besten als Cron-Job alle 15 Minuten einrichten.
-
-### 6. Als Service einrichten (Server)
-
-Damit der Bot im Hintergrund laeuft und nach Neustart automatisch startet:
+### 4. Als Service einrichten (Server)
 
 ```bash
 sudo nano /etc/systemd/system/polybot.service
@@ -441,228 +327,79 @@ WantedBy=multi-user.target
 ```bash
 sudo systemctl enable polybot
 sudo systemctl start polybot
-
-# Logs anschauen
-sudo journalctl -u polybot -f
 ```
+
+Optional: P&L-Monitor als separaten Service einrichten (`pnl-monitor.service`).
+
+### 5. Auto-Redeem
+
+```bash
+# Trocken schauen was eingeloest werden kann
+python redeem_positions.py
+
+# Wirklich einloesen
+python redeem_positions.py --exec
+```
+
+Am besten als Cron-Job alle 15 Minuten.
 
 ---
 
 ## Alle Einstellungen
 
-Alle Einstellungen kommen in `settings.env`. Nur `POLYMARKET_PRIVATE_KEY`, `POLYMARKET_FUNDER` und `FOLLOWED_TRADERS` sind Pflicht. Alles andere hat sinnvolle Standardwerte.
+Alle Einstellungen kommen in `settings.env`. Siehe `settings.example.env` fuer die komplette Liste mit Erklaerungen und aktuellen Empfehlungen.
 
 ### Kern
 
 | Einstellung | Standard | Erklaerung |
 |-------------|----------|------------|
-| `LIVE_MODE` | false | false = nur tracken (kein Geld), true = echtes Geld |
-| `STARTING_BALANCE` | 320 | Wie viel du eingezahlt hast (fuer Gewinn/Verlust-Berechnung) |
+| `LIVE_MODE` | false | false = nur tracken, true = echtes Geld |
+| `STARTING_BALANCE` | 320 | Einzahlung fuer P&L-Berechnung |
 | `COPY_SCAN_INTERVAL` | 5 | Alle X Sekunden nach neuen Trades schauen |
-| `DASHBOARD_PORT` | 8090 | Port fuer die Web-Oberflaeche |
 
 ### Wettgroesse
 
 | Einstellung | Standard | Erklaerung |
 |-------------|----------|------------|
-| `BET_SIZE_PCT` | 0.05 | Basis-Wette = 5% vom Portfolio (~$15 bei $300) |
-| `MAX_POSITION_SIZE` | 30 | Maximum $30 pro einzelne Position |
+| `BET_SIZE_PCT` | 0.04 | Basis-Wette = 4% vom Portfolio |
+| `BET_SIZE_MAP` | | Pro Trader eigene Basis (z.B. `KING7777777:0.08`) |
+| `MAX_POSITION_SIZE` | 30 | Maximum $30 pro Position |
 | `MIN_TRADE_SIZE` | 1.0 | Minimum $1 pro Wette |
-| `RATIO_MIN` | 0.2 | Minimum-Multiplikator (kleine Trader-Wette → 0.2x) |
-| `RATIO_MAX` | 3.0 | Maximum-Multiplikator (grosse Trader-Wette → 3.0x) |
-| `BET_SIZE_BASIS` | cash | `cash` = nur Wallet-Balance, `portfolio` = Wallet + Positionen |
-| `BET_SIZE_MAP` | | Pro Trader eigene Basis (z.B. `xsaghav:0.07,Jargs:0.02`) |
-| `DEFAULT_AVG_TRADER_SIZE` | 10.0 | Fallback Durchschnittswette wenn keine Daten |
-| `AVG_TRADER_SIZE_MAP` | | Pro Trader Durchschnittswette (z.B. `xsaghav:25,sovereign2013:1400`) |
-
-### Preis-Signal-Multiplikatoren
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `PRICE_EDGE_HIGH` | 0.30 | Ab dieser Distanz von 50c → starkes Signal |
-| `PRICE_MULT_HIGH` | 1.50 | Multiplikator fuer starkes Signal |
-| `PRICE_EDGE_MED` | 0.15 | Ab dieser Distanz → normales Signal |
-| `PRICE_MULT_MED` | 1.00 | Multiplikator fuer normales Signal |
-| `PRICE_MULT_LOW` | 0.60 | Multiplikator fuer schwaches Signal (nahe 50c) |
 
 ### Trade-Filter
 
 | Einstellung | Standard | Erklaerung |
 |-------------|----------|------------|
-| `MIN_TRADER_USD` | 5 | Trader muss mindestens $5 setzen damit kopiert wird |
-| `MIN_TRADER_USD_MAP` | | Pro Trader (z.B. `sovereign2013:750` = nur grosse Wetten) |
-| `MIN_ENTRY_PRICE` | 0.08 | Unter 8 Cent nicht kaufen (zu spekulativ) |
-| `MIN_ENTRY_PRICE_MAP` | | Pro Trader (z.B. `sovereign2013:0.40` = nur ab 40c) |
-| `MAX_ENTRY_PRICE` | 0.85 | Ueber 85 Cent nicht kaufen (zu wenig Gewinnmarge) |
-| `MAX_ENTRY_PRICE_MAP` | | Pro Trader (z.B. `sovereign2013:0.75` = max 75c) |
-| `MAX_COPIES_PER_MARKET` | 1 | 1 Kopie pro Markt (kein Doppelkauf). Zaehlt auch kuerzlich geschlossene Trades (Fenster = max(NO_REBUY_MINUTES, 30min)) |
-| `ENTRY_TRADE_SEC` | 300 | Trades aelter als 5 Minuten ignorieren |
-| `MAX_SPREAD` | 0.05 | Max 5% Spread (Differenz zwischen Kauf- und Verkaufspreis) |
-| `NO_REBUY_MINUTES` | 120 | Nach Close/Sell X Minuten Sperre fuer selben Markt (120=2h, 0=aus). Verhindert Kauf-Loops bei Esports |
-| `CATEGORY_BLACKLIST_MAP` | | Kategorien pro Trader blocken (z.B. `sovereign2013:tennis\|mlb`) |
-| `MIN_CONVICTION_RATIO` | 0 | Min Conviction-Ratio zum Kopieren (0=aus) |
-| `MIN_CONVICTION_RATIO_MAP` | | Pro Trader (z.B. `sovereign2013:1.5` = nur 1.5x+ Conviction) |
+| `MIN_TRADER_USD` | 5 | Trader muss min $5 setzen damit kopiert wird |
+| `MIN_TRADER_USD_MAP` | | Pro Trader (z.B. `sovereign2013:750`) |
+| `MIN_ENTRY_PRICE` | 0.20 | Unter 20c nicht kaufen |
+| `MAX_ENTRY_PRICE` | 0.80 | Ueber 80c nicht kaufen (Drag frisst den Gewinn) |
+| `MAX_COPIES_PER_MARKET` | 1 | 1 Kopie pro Markt. Zaehlt auch kuerzlich geschlossene Trades (Fenster = max(NO_REBUY_MINUTES, 30min)) |
+| `NO_REBUY_MINUTES` | 120 | Sperre nach Close fuer selben Markt (0=aus) |
+| `CATEGORY_BLACKLIST_MAP` | | Kategorien pro Trader blocken |
+| `MAX_PER_EVENT` | 15 | Max $15 pro Event |
+| `MAX_PER_MATCH` | 15 | Max $15 pro Match (Map 1 + Map 2 + BO3 gruppiert) |
 
-### Conviction-Filter (Arb-Noise-Filter)
-
-Manche Trader (besonders Arb-Bots wie sovereign2013) machen hunderte kleine Trades die sich gegenseitig aufheben. Der Conviction-Filter laesst nur Trades durch wo der Trader **ueberdurchschnittlich viel** setzt — ein Zeichen fuer echte Ueberzeugung statt Routine-Arb.
-
-```
-Trader-Durchschnitt: $1400 (aus AVG_TRADER_SIZE_MAP)
-MIN_CONVICTION_RATIO_MAP=sovereign2013:1.5
-
-Trade A: $800 (0.57x Durchschnitt) → SKIP (unter 1.5x)
-Trade B: $1400 (1.0x Durchschnitt) → SKIP (unter 1.5x)
-Trade C: $2100 (1.5x Durchschnitt) → KOPIEREN (genau 1.5x)
-Trade D: $4200 (3.0x Durchschnitt) → KOPIEREN (ueber 1.5x)
-```
-
-So werden nur die staerksten Signale kopiert. Funktioniert pro Trader — andere Trader ohne Conviction-Filter kopieren weiterhin normal.
-
-### Event-Timing
+### Exposure
 
 | Einstellung | Standard | Erklaerung |
 |-------------|----------|------------|
-| `MAX_HOURS_BEFORE_EVENT` | 2 | Erst X Stunden vor Event kaufen (0=sofort) |
-| `EVENT_WAIT_MIN_CASH` | 0 | Nur warten wenn Cash unter $X (0=immer warten) |
-| `EVENT_WAIT_MAX_SECS` | 14400 | Gequeute Trades max 4 Stunden aufheben |
-
-### Queue-Drift-Filter
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `QUEUE_DRIFT_LOTTERY` | 0.30 | Unter 20c: max 30% Preisanstieg |
-| `QUEUE_DRIFT_UNDERDOG` | 0.40 | 20-40c: max 40% Preisanstieg |
-| `QUEUE_DRIFT_COINFLIP` | 0.03 | 40-60c: max 3% Preisanstieg |
-| `QUEUE_DRIFT_FAVORITE` | 0.05 | 60-85c: max 5% Preisanstieg |
-
-### Maximale Einsaetze pro Spiel
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `MAX_PER_EVENT` | 15 | Max $15 pro Event/Spiel |
-| `MAX_PER_MATCH` | 15 | Max $15 ueber zusammengehoerende Maerkte (Map 1 + Map 2 + BO3) |
-
-### Hedge-Erkennung
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `HEDGE_WAIT_SECS` | 60 | Standard-Wartezeit in Sekunden |
-| `HEDGE_WAIT_TRADERS` | | Pro Trader: `name:sekunden,name:sekunden` |
-
-### Cash-Management
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
+| `MAX_EXPOSURE_PER_TRADER` | 0.33 | Max 33% vom Portfolio pro Trader |
+| `TRADER_EXPOSURE_MAP` | | Pro Trader (z.B. `KING7777777:0.65,xsaghav:0.03`) |
 | `CASH_FLOOR` | 0 | Unter diesem Betrag nicht mehr kaufen |
-| `CASH_RECOVERY` | 6 | Cash muss um $6 ueber Floor steigen bevor wieder gekauft wird |
-| `SAVE_POINT_STEP` | 1.0 | Floor steigt um $1 pro Recovery-Zyklus |
-| `CASH_RESERVE` | 0 | Dollar die NIEMALS fuer Wetten verwendet werden |
-| `MAX_OPEN_POSITIONS` | 100 | Maximale gleichzeitig offene Positionen |
-| `MAX_EXPOSURE_PER_TRADER` | 0.33 | Standard: max 33% vom Portfolio pro Trader |
-| `TRADER_EXPOSURE_MAP` | | Pro Trader: `name:prozent` (z.B. `xsaghav:0.65`) |
-
-### Risiko-Management
-
-Alles standardmaessig aus (0 = deaktiviert).
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `MAX_DAILY_LOSS` | 0 | Trading stoppt bei $X Tagesverlust |
-| `MAX_DAILY_TRADES` | 0 | Max neue Trades pro Tag |
-| `STOP_LOSS_PCT` | 0 | Auto-Verkauf bei X% Verlust (z.B. 0.50 = 50%) |
-| `TAKE_PROFIT_PCT` | 0 | Auto-Verkauf bei X% Gewinn (z.B. 2.0 = 200%) |
-| `TAKE_PROFIT_MAP` | | Pro Trader (z.B. `xsaghav:9.0` = 900% TP) |
-
-### Auto-Sell / Auto-Close
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `AUTO_SELL_PRICE` | 0.96 | Gewonnene Positionen ab 96c verkaufen |
-| `AUTO_CLOSE_WON_PRICE` | 0.99 | Ab 99c als gewonnen markieren |
-| `AUTO_CLOSE_LOST_PRICE` | 0.01 | Unter 1c als verloren markieren |
+| `CASH_RECOVERY` | 6 | Recovery-Schwelle ueber Floor |
 
 ### Order-Ausfuehrung
 
 | Einstellung | Standard | Erklaerung |
 |-------------|----------|------------|
-| `BUY_SLIPPAGE_LEVELS` | 0.02,0.05,0.08 | Kauf-Retry Slippage-Stufen. Niedriger = weniger Drag, aber mehr fehlgeschlagene Orders |
+| `BUY_SLIPPAGE_LEVELS` | 0.02,0.05,0.08 | Kauf-Retry Slippage-Stufen |
 | `SELL_SLIPPAGE_LEVELS` | 0.01,0.03,0.05 | Verkauf-Retry Slippage-Stufen |
-| `DELAYED_BUY_VERIFY_SECS` | 8 | Sekunden warten um verzoegerte Kauforder zu verifizieren |
-| `DELAYED_SELL_VERIFY_SECS` | 6 | Sekunden warten um verzoegerte Verkauforder zu verifizieren |
-| `SELL_VERIFY_THRESHOLD` | 0.05 | Max Anteil verbleibender Shares (0.05 = 95% muessen verkauft sein) |
+| `SELL_VERIFY_THRESHOLD` | 0.05 | Max verbleibende Shares (0.05 = 95% muessen verkauft sein) |
+| `AUTO_SELL_PRICE` | 0.96 | Gewonnene Positionen ab 96c verkaufen |
+| `AUTO_CLOSE_LOST_PRICE` | 0.00 | Unter diesem Preis als verloren markieren (0=aus) |
 
-### Fill-Verifizierung & P&L-Tracking
-
-Der Bot misst nach jedem Kauf/Verkauf den echten USDC- und Token-Balance-Delta.
-Dadurch wird der tatsaechliche Fill-Preis (inkl. Slippage + Fees) in der DB gespeichert.
-
-**DB-Spalten:** `actual_entry_price`, `actual_size`, `shares_held`, `usdc_received`
-
-**WICHTIG:** Die Standard-DB-Felder (`entry_price`, `size`) enthalten den geplanten Preis.
-Fuer echte P&L-Berechnung immer `actual_entry_price` verwenden (Fallback auf `entry_price` wenn NULL).
-
-**Drag-Info:** Polymarket Fees sind 0-10% (Esports: 10%, NHL/Politik: 0%). Plus Slippage.
-Echte Kosten pro Trade: 12-20% des investierten Betrags.
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `FILL_VERIFY_DELAY_SECS` | 2 | Sekunden nach Kauf bevor Fill geprueft wird |
-| `MIN_FILL_AMOUNT` | 0.10 | Minimum USDC-Aenderung um als gefuellt zu gelten |
-
-### Pending-Buy-Queue
-
-Trades unter einem Preis-Schwellenwert warten lassen. Standard: aus.
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `BUY_THRESHOLD` | 0.0 | Unter diesem Preis warten (0=aus) |
-| `PENDING_BUY_MIN_SECS` | 210 | Mindestens X Sekunden warten |
-| `PENDING_BUY_MAX_SECS` | 900 | Nach X Sekunden verwerfen |
-
-### Feature-Schalter
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `COPY_SELLS` | true | Verkaeufe der Trader mitmachen? |
-| `POSITION_DIFF_ENABLED` | true | Position-Diff Fallback-Scan aktiviert? |
-| `IDLE_REPLACE_ENABLED` | false | Inaktive Trader automatisch ersetzen? |
-| `IDLE_TRIGGER_SECS` | 1200 | Ab X Sekunden Inaktivitaet ersetzen (20 Min) |
-| `IDLE_REPLACE_COOLDOWN` | 1800 | Cooldown nach Trader-Ersetzung (30 Min) |
-
-### Scan-Throttling
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `MAX_TRADES_PER_SCAN` | 3 | Max neue Trades pro 5-Sekunden-Scan |
-| `RECENT_TRADES_LIMIT` | 50 | Trades pro Wallet pro Scan abrufen |
-
-### Circuit Breaker
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `CB_THRESHOLD` | 8 | Nach X API-Fehlern hintereinander: Pause |
-| `CB_PAUSE_SECS` | 60 | X Sekunden Pause |
-
-### API-Tuning
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `API_TIMEOUT` | 10 | Allgemeiner Request-Timeout in Sekunden |
-| `API_MAX_RETRIES` | 3 | Wiederholungsversuche pro Request |
-| `GAMMA_API_TIMEOUT` | 5 | Gamma API Timeout (Event-Abfragen) |
-| `DATA_API_TIMEOUT` | 15 | Data API Timeout (Positionen/Trades) |
-| `WS_RECONNECT_SECS` | 10 | WebSocket Reconnect-Verzoegerung |
-| `LIVE_PRICE_MIN` | 0.05 | Min Live-Preis um akzeptiert zu werden |
-| `LIVE_PRICE_MAX_DEVIATION` | 0.50 | Max Abweichung vom Trader-Preis (50%) |
-
-### Position-Tracking
-
-| Einstellung | Standard | Erklaerung |
-|-------------|----------|------------|
-| `MIN_POSITION_SIZE_FILTER` | 0.50 | Min Positionsgroesse fuer Scans |
-| `MISS_COUNT_TO_CLOSE` | 180 | Nach X fehlgeschlagenen Pruefungen Position schliessen (0=aus) |
-| `RECENTLY_CLOSED_SECS` | 600 | Kuerzlich geschlossene Trades X Sekunden cachen |
+Alle weiteren Einstellungen sind in `settings.example.env` dokumentiert.
 
 ---
 
@@ -670,44 +407,75 @@ Trades unter einem Preis-Schwellenwert warten lassen. Standard: aus.
 
 ```
 main.py                      → Scheduler + Flask + Startup
-├── bot/copy_trader.py       → Kern: Scan, Filter, Hedge-Wait, Fast-Sell, Sizing
-├── bot/order_executor.py    → CLOB Orders (Kauf/Verkauf) mit Retry + Verification
+├── bot/copy_trader.py       → Kern: Scan, Filter, Hedge-Wait, Fast-Sell, Sizing, Buy-Lock
+├── bot/order_executor.py    → CLOB Orders (Kauf/Verkauf) mit Retry + Fill-Verification
 ├── bot/wallet_scanner.py    → Activity Feed, Positions API
 ├── bot/ws_price_tracker.py  → WebSocket Echtzeit-Preise
 ├── bot/ai_report.py         → Performance-Report Generator
-├── database/db.py           → Alle Datenbank-Operationen (SQLite + WAL)
+├── database/db.py           → Datenbank-Operationen (SQLite + WAL), Migration mit Verification
 ├── database/models.py       → Datenbank-Schema
-├── config.py                → Laedt secrets.env → settings.env (mit Fallbacks)
+├── config.py                → Laedt secrets.env → settings.env (kein .env Fallback)
+├── monitor_pnl.py           → P&L-Accuracy-Monitor (systemd Service)
 ├── redeem_positions.py      → Gewinne einloesen via Builder Relayer
 └── dashboard/
-    ├── app.py               → Flask App, SSE Stream, REST APIs
+    ├── app.py               → Flask App, SSE Stream, REST APIs, 24h Trader-Stats
     └── templates/
-        ├── dashboard.html   → Haupt-Dashboard
+        ├── dashboard.html   → Haupt-Dashboard mit Live-Trader-Karten
         ├── index.html       → Einstellungs-Seite
         └── history.html     → Handelshistorie
 ```
 
-### Wie laedt der Bot die Config?
+### 5 Buy-Pfade — Gleiche Filter ueberall
 
-```python
-# config.py laedt in dieser Reihenfolge:
-1. secrets.env      → Private Keys, API-Credentials
-2. settings.env     → Bot-Einstellungen
-3. .env             → Fallback (Legacy, fuer Abwaertskompatibilitaet)
-```
+| Pfad | Beschreibung |
+|------|-------------|
+| Activity Scan | Hauptpfad: /trades API alle 5 Sekunden |
+| Position-Diff | Fallback: findet Trades die der Activity-Feed verpasst hat |
+| Event-Wait | Queued Trades fuer Events die noch nicht angefangen haben |
+| Hedge-Wait | Wartet X Sekunden ob Trader Gegenseite kauft (Hedge-Erkennung) |
+| Pending-Buy | Wartet bis Preis ueber Threshold steigt (standardmaessig aus) |
 
-Werte aus frueheren Dateien werden NICHT ueberschrieben. Also: wenn etwas in `secrets.env` steht, wird der Wert aus `settings.env` ignoriert.
+Alle Pfade haben dieselben Filter, Size-Caps und den Buy-Lock.
 
 ---
 
-## Risiken
+## Risiken und Kosten
+
+### Drag (der groesste Feind)
+
+Polymarket Fees sind 0-10% je nach Markt. Die meisten Esports-Maerkte haben **10% Fee**. Plus Slippage. Pro Roundtrip (Kauf + Verkauf) verlierst du **12-20%** des investierten Betrags an Kosten — egal ob der Trade gewinnt oder verliert.
+
+**Beispiel:** Du investierst $10 bei 50c. Wenn du gewinnst, bekommst du ~$18 statt $20 (10% Fee). Wenn du verlierst, sind die $10 weg plus du hast beim Kauf schon 2c Slippage gezahlt.
+
+**Konsequenz:** Ein Trader braucht **deutlich ueber 55% Win-Rate** um nach Drag profitabel zu sein. Bei 50/50 verlierst du garantiert durch die Gebuehren.
+
+### Weitere Risiken
 
 - **Slippage** — 5 Sekunden Verzoegerung heisst du bekommst einen schlechteren Preis als der Trader
-- **Gebuehren** — Polymarket nimmt 2% (200 Basispunkte) pro Trade
-- **Verluste** — Auch die besten Trader verlieren manchmal. Vergangene Performance garantiert nichts.
-- **Liquiditaet** — Kleine Maerkte haben nicht genug Volumen fuer deine Orders
-- **Binaere Ergebnisse** — Positionen gehen auf $0 oder $1. Es gibt kein "ein bisschen verloren"
+- **Verluste** — Auch die besten Trader verlieren manchmal. Vergangene Performance garantiert nichts
+- **Binaere Ergebnisse** — Positionen gehen auf $0 oder $1. Kein "ein bisschen verloren"
 - **API-Ausfaelle** — Polymarket kann down sein. Circuit Breaker schuetzt teilweise
+- **Skalierung** — Trader die mit $5000 profitabel sind, funktionieren nicht automatisch mit unseren $5-Kopien (Proportionen stimmen nicht)
+
+---
+
+## Deploy (Server ohne Git)
+
+Der Server hat keinen GitHub-Account. Deploy per SCP:
+
+```bash
+scp <datei> walter@10.0.0.20:/home/walter/polymarketscanner/<datei>
+ssh walter@10.0.0.20 "sudo systemctl restart polybot"
+```
+
+Fuer Dateien in Unterverzeichnissen den vollen Pfad angeben:
+
+```bash
+scp bot/copy_trader.py walter@10.0.0.20:/home/walter/polymarketscanner/bot/
+scp dashboard/app.py walter@10.0.0.20:/home/walter/polymarketscanner/dashboard/
+```
+
+Immer `settings.example.env` mit dem Server syncen damit neue Einstellungen dokumentiert sind.
 
 ---
 
