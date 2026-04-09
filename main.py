@@ -70,7 +70,7 @@ def auto_generate_report():
         report = generate_report()
         logger.info("[REPORT] Auto-generated performance report (%d chars)", len(report))
     except Exception as e:
-        logger.debug("Auto-report error: %s", e)
+        logger.warning("Auto-report error: %s", e)
 
 
 def update_prices():
@@ -225,8 +225,8 @@ def update_prices():
                                 with get_connection() as _conn:
                                     _conn.execute(
                                         "UPDATE copy_trades SET status='closed', pnl_realized=?, current_price=?, closed_at=?, usdc_received=? "
-                                        "WHERE condition_id=? AND status='open'",
-                                        (_pnl, _cp, _now2, _usdc_recv, _cid))
+                                        "WHERE condition_id=? AND side=? AND status='open'",
+                                        (_pnl, _cp, _now2, _usdc_recv, _cid, _pos_side))
                             except Exception as _e:
                                 logger.warning("[AUTO-SELL] DB update failed: %s", _e)
         except Exception as _e:
@@ -257,7 +257,7 @@ def update_prices():
                 })
                 logger.info("Snapshot saved: $%.2f (PnL $%.2f)", total, pnl)
             except Exception as e:
-                logger.debug("Snapshot error: %s", e)
+                logger.warning("Snapshot error: %s", e)
     except Exception as e:
         logger.exception("Error updating prices: %s", e)
 
@@ -406,7 +406,7 @@ def main():
                 logger.warning("CLOB Verbindungstest fehlgeschlagen — Bot startet trotzdem.")
         except Exception as e:
             logger.warning("Wallet-Check uebersprungen: %s", e)
-    logger.info("Mode: %s | Startkapital: $%d", "LIVE" if LIVE_MODE else "PAPER", STARTING_BALANCE)
+    logger.info("Mode: %s | Startkapital: $%.0f", "LIVE" if LIVE_MODE else "PAPER", STARTING_BALANCE)
 
     from database.db import log_activity
 

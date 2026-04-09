@@ -203,8 +203,8 @@ class PriceTracker:
                 events = [events]
             for ev in events:
                 self._handle_event(ev)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("WS message parse error: %s", e)
 
     def _handle_event(self, ev):
         etype = ev.get("event_type", "")

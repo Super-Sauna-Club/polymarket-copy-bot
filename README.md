@@ -119,7 +119,7 @@ Conviction = Trader-Wette / Trader-Durchschnitt (begrenzt auf RATIO_MIN bis RATI
 
 ### Thread-Safe Buy-Lock
 
-Alle 4 Buy-Pfade sind mit einem `_buy_lock` geschuetzt. Verhindert dass zwei Scan-Zyklen gleichzeitig denselben Markt kaufen.
+Alle 5 Buy-Pfade sind mit einem `_buy_lock` geschuetzt. Verhindert dass zwei Scan-Zyklen gleichzeitig denselben Markt kaufen.
 
 ### Sell-before-Close
 
@@ -202,17 +202,20 @@ Die Standard-Felder (`entry_price`, `size`) enthalten den geplanten Preis. Fuer 
 
 ### Drag (versteckte Kosten)
 
-**WICHTIG:** Die DB-P&L ist NICHT die echte P&L. Polymarket Fees + Slippage fressen 10-20% pro Roundtrip.
+Polymarket Fees + Slippage kosten 10-20% pro Roundtrip. Der Bot erfasst diese Kosten korrekt:
 
-```
-Echte P&L ≈ DB_P&L - (Volumen × 10.3%)
-```
+- **Kauf:** `actual_size` = echtes USDC-Delta (Wallet vorher - nachher), inkl. Fees + Slippage
+- **Verkauf:** `usdc_received` = echtes USDC-Delta, inkl. Exit-Fees
+- **Resolved:** Keine Exit-Fee bei Redemption, Entry-Fee in `actual_entry_price` enthalten
+- **DB-P&L = Echte P&L** fuer verkaufte und resolved Positionen
 
 | Kostenart | Betrag | Erklaerung |
 |-----------|--------|------------|
 | Fees | 0-10% | Esports/Sport: 10% (1000bps). NHL/Politik: 0% |
 | Slippage | 2-5c | BUY_SLIPPAGE_LEVELS startet bei +2c |
 | Gesamt | 12-20% | Pro Roundtrip (Kauf + Verkauf) |
+
+**Konsequenz:** Unrealized P&L im Dashboard enthaelt noch keine Exit-Fee — erst bei Verkauf wird die echte P&L berechnet.
 
 ### P&L-Monitor
 
