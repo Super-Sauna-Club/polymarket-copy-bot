@@ -118,16 +118,18 @@ const cats={
   'MAX_COPIES_PER_MARKET':'filter','MAX_PER_EVENT':'filter','MAX_PER_MATCH':'filter',
   'MAX_SPREAD':'filter','NO_REBUY_MINUTES':'filter',
   'CATEGORY_BLACKLIST_MAP':'filter','MIN_CONVICTION_RATIO':'filter','MIN_CONVICTION_RATIO_MAP':'filter',
-  'MAX_HOURS_BEFORE_EVENT':'filter','ENTRY_TRADE_SEC':'filter',
+  'MAX_HOURS_BEFORE_EVENT':'filter','ENTRY_TRADE_SEC':'filter','MAX_FEE_BPS':'filter',
   'MAX_EXPOSURE_PER_TRADER':'risk','TRADER_EXPOSURE_MAP':'risk','MAX_OPEN_POSITIONS':'risk','CASH_FLOOR':'risk',
   'STOP_LOSS_PCT':'risk','TAKE_PROFIT_PCT':'risk','TAKE_PROFIT_MAP':'risk',
   'AUTO_SELL_PRICE':'risk','AUTO_CLOSE_WON_PRICE':'risk','AUTO_CLOSE_LOST_PRICE':'risk',
+  'TRAILING_STOP_ENABLED':'risk','TRAILING_STOP_MARGIN':'risk','TRAILING_STOP_ACTIVATE':'risk',
   'HEDGE_WAIT_SECS':'hedge','HEDGE_WAIT_TRADERS':'hedge',
   'BUY_SLIPPAGE_LEVELS':'exec','SELL_SLIPPAGE_LEVELS':'exec','SELL_VERIFY_THRESHOLD':'exec',
-  'COPY_SELLS':'exec','POSITION_DIFF_ENABLED':'exec'
+  'COPY_SELLS':'exec','POSITION_DIFF_ENABLED':'exec',
+  'AI_ANALYZER':'ai','BLOCKED_TRADE_LOGGING':'ai','OUTCOME_TRACKER':'ai'
 };
-const catLabels={core:'Core',size:'Position Sizing',filter:'Trade Filters',risk:'Risk Management',hedge:'Hedge Detection',exec:'Order Execution'};
-const catCls={core:'cat-core',size:'cat-size',filter:'cat-filter',risk:'cat-risk',hedge:'cat-hedge',exec:'cat-hedge'};
+const catLabels={core:'Core',size:'Position Sizing',filter:'Trade Filters',risk:'Risk Management',hedge:'Hedge Detection',exec:'Order Execution',ai:'AI Analysis'};
+const catCls={core:'cat-core',size:'cat-size',filter:'cat-filter',risk:'cat-risk',hedge:'cat-hedge',exec:'cat-hedge',ai:'cat-core'};
 
 fetch('/api/settings').then(r=>r.json()).then(d=>{
   let lastCat='';

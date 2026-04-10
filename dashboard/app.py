@@ -571,9 +571,17 @@ def api_settings():
         # --- Fill Verification ---
         {"key": "FILL_VERIFY_DELAY_SECS", "value": _sec(config.FILL_VERIFY_DELAY_SECS), "desc": "Delay before checking fill amount"},
         {"key": "MIN_FILL_AMOUNT", "value": _dlr(config.MIN_FILL_AMOUNT), "desc": "Min USDC change for valid fill"},
+        # --- Trailing Stop ---
+        {"key": "TRAILING_STOP_ENABLED", "value": _onoff(config.TRAILING_STOP_ENABLED), "desc": "Sell when position drops from peak"},
+        {"key": "TRAILING_STOP_MARGIN", "value": str(int(config.TRAILING_STOP_MARGIN * 100)) + "c", "desc": "Sell when price drops Xc below peak"},
+        {"key": "TRAILING_STOP_ACTIVATE", "value": _pct(config.TRAILING_STOP_ACTIVATE), "desc": "Only activate after X% gain over entry"},
         # --- Position Tracking ---
         {"key": "MISS_COUNT_TO_CLOSE", "value": str(config.MISS_COUNT_TO_CLOSE) if config.MISS_COUNT_TO_CLOSE > 0 else "OFF", "desc": "Close stale positions after N misses"},
         {"key": "EVENT_WAIT_MAX_SECS", "value": str(config.EVENT_WAIT_MAX_SECS // 3600) + "h", "desc": "Max queued trade age"},
+        # --- AI Analysis ---
+        {"key": "AI_ANALYZER", "value": "ON" if config.ANTHROPIC_API_KEY else "OFF (no key)", "desc": "Claude AI parameter optimization (every 6h)"},
+        {"key": "BLOCKED_TRADE_LOGGING", "value": "ON", "desc": "Log all filtered trades for outcome analysis"},
+        {"key": "OUTCOME_TRACKER", "value": "ON (every 30min)", "desc": "Check what blocked trades would have earned"},
     ]
     traders = []
     for w in followed:

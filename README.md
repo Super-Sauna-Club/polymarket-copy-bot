@@ -69,6 +69,7 @@ Weil selbst Profis manchmal Mist machen. Deshalb hat der Bot ein ganzes System a
 - **Stale-Position-Erkennung** — Schliesst Positionen die aus der Trader-Wallet verschwunden sind
 - **Live Dashboard** — Echtzeit mit Equity-Kurve, 24h-Trader-Performance, Exposure-Meter, Sound-System
 - **Circuit Breaker** — Pausiert nach 8 API-Fehlern fuer 60 Sekunden
+- **AI Analysis Pipeline** — Loggt alle geblockten Trades, trackt Outcomes ("was waere gewesen?"), Claude analysiert und empfiehlt Parameter-Aenderungen
 
 ---
 
@@ -246,6 +247,49 @@ Eine Website auf deinem Server die in Echtzeit zeigt was passiert:
 
 ---
 
+## AI Analysis Pipeline
+
+Der Bot hat ein eingebautes System das lernt welche Filter zu aggressiv oder zu lasch sind.
+
+### So funktioniert es
+
+```
+Alle 5s:  Bot scannt → BUY oder SKIP (geblockt + Grund in DB gespeichert)
+Alle 30m: Outcome Tracker → checkt was geblockte Trades verdient haetten
+Alle 6h:  Claude analysiert → empfiehlt Parameter-Aenderungen (optional)
+```
+
+### 1. Blocked Trade Logging (immer aktiv)
+
+Jeder Trade der von einem Filter geblockt wird, wird in die `blocked_trades` Tabelle geschrieben:
+- Welcher Trader, welcher Markt, welcher Preis
+- Welcher Filter hat geblockt (category_blacklist, exposure_limit, price_range, etc.)
+- Welcher Buy-Pfad (activity, diff, event_wait, hedge_wait)
+
+### 2. Outcome Tracker (alle 30 Minuten)
+
+Checkt per Polymarket API was aus den geblockten Trades geworden ist:
+- Resolved Maerkte: sofortige Auswertung (Gewinner/Verlierer)
+- Live Maerkte: tentative Auswertung nach 4 Stunden
+
+### 3. Claude AI Analyzer (alle 6 Stunden, optional)
+
+Braucht `ANTHROPIC_API_KEY` in `secrets.env`. Schickt geblockte + ausgefuehrte Trades an Claude und bekommt:
+- Welche Filter zu aggressiv sind (blocken profitable Trades)
+- Welche Filter zu lasch sind (lassen Verlierer durch)
+- Konkrete Parameter-Vorschlaege mit Confidence-Score
+
+### API Endpoints
+
+| Endpoint | Beschreibung |
+|----------|-------------|
+| `GET /api/ai/blocked-stats?hours=48` | Statistiken: wie viele geblockt, pro Grund, Win-% |
+| `GET /api/ai/blocked-trades?hours=48` | Rohdaten aller geblockten Trades |
+| `GET /api/ai/latest` | Neueste Claude-Analyse mit Empfehlungen |
+| `POST /api/ai/analyze` | Manuell Analyse triggern (braucht Auth + API Key) |
+
+---
+
 ## Installation
 
 ### 1. Code herunterladen
@@ -415,13 +459,15 @@ main.py                      → Scheduler + Flask + Startup
 ├── bot/wallet_scanner.py    → Activity Feed, Positions API
 ├── bot/ws_price_tracker.py  → WebSocket Echtzeit-Preise
 ├── bot/ai_report.py         → Performance-Report Generator
+├── bot/ai_analyzer.py       → Claude AI Analyse: geblockte vs ausgefuehrte Trades → Empfehlungen
+├── bot/outcome_tracker.py   → Checkt was geblockte Trades verdient haetten (Polymarket API)
 ├── database/db.py           → Datenbank-Operationen (SQLite + WAL), Migration mit Verification
-├── database/models.py       → Datenbank-Schema
+├── database/models.py       → Datenbank-Schema (inkl. blocked_trades, ai_recommendations)
 ├── config.py                → Laedt secrets.env → settings.env (kein .env Fallback)
 ├── monitor_pnl.py           → P&L-Accuracy-Monitor (systemd Service)
 ├── redeem_positions.py      → Gewinne einloesen via Builder Relayer
 └── dashboard/
-    ├── app.py               → Flask App, SSE Stream, REST APIs, 24h Trader-Stats
+    ├── app.py               → Flask App, SSE Stream, REST APIs (inkl. /api/ai/*)
     └── templates/
         ├── dashboard.html   → Haupt-Dashboard mit Live-Trader-Karten
         ├── index.html       → Einstellungs-Seite
