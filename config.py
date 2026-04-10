@@ -217,3 +217,11 @@ LOG_PATH = os.path.join(os.path.dirname(__file__), "logs", "scanner.log")
 
 # Reports
 REPORTS_DIR = os.path.join(os.path.dirname(__file__), "reports")
+
+# --- Trailing Stop ---
+# Wenn eine Position im Plus war und wieder auf Entry zurueckfaellt → verkaufen
+# TRAILING_STOP_MARGIN: Puffer unter Entry (z.B. 0.02 = verkaufe 2c unter Entry)
+TRAILING_STOP_ENABLED = os.getenv('TRAILING_STOP_ENABLED', 'true').lower() in ('true', '1', 'yes', 'on')
+TRAILING_STOP_MARGIN = float(os.getenv('TRAILING_STOP_MARGIN', '0.10'))
+# Min peak gain before trailing activates (e.g. 0.03 = price must have been 3c above entry)
+TRAILING_STOP_ACTIVATE = float(os.getenv('TRAILING_STOP_ACTIVATE', '0.20'))

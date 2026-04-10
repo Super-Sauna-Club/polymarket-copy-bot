@@ -218,8 +218,9 @@ def get_all_copy_trades(limit=2000):
 def update_copy_trade_price(trade_id: int, current_price: float, pnl_unrealized: float):
     with get_connection() as conn:
         conn.execute(
-            "UPDATE copy_trades SET current_price=?, pnl_unrealized=?, miss_count=0 WHERE id=?",
-            (current_price, pnl_unrealized, trade_id)
+            "UPDATE copy_trades SET current_price=?, pnl_unrealized=?, miss_count=0, "
+            "peak_price = MAX(COALESCE(peak_price, 0), ?) WHERE id=?",
+            (current_price, pnl_unrealized, current_price, trade_id)
         )
 
 

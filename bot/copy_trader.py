@@ -1963,6 +1963,32 @@ def update_copy_positions():
                                                     "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:35], pnl), round(pnl, 2))
                                     continue
 
+                            # Trailing Stop: once position was 20%+ up, trail sell point below peak
+                            # Sell point = peak - MARGIN (follows peak upward, never downward)
+                            # Only activates after position was genuinely 20%+ above entry
+                            if config.TRAILING_STOP_ENABLED and _ep > 0:
+                                _peak = trade.get("peak_price") or effective_price
+                                _peak_gain = (_peak - _ep) / _ep
+                                _sell_at = _peak - config.TRAILING_STOP_MARGIN
+                                # Ensure sell point is at least at entry (never sell at a loss via trailing)
+                                _sell_at = max(_sell_at, _ep)
+                                if _peak_gain >= config.TRAILING_STOP_ACTIVATE and effective_price <= _sell_at:
+                                    _ts_resp = None
+                                    if LIVE_MODE and trade_cid:
+                                        _ts_resp = sell_shares(trade_cid, trade["side"], effective_price)
+                                        if not _ts_resp:
+                                            logger.warning("[TRAILING-STOP] Sell failed, keeping position open: %s", trade["market_question"][:40])
+                                            continue
+                                    if not db.close_copy_trade(trade["id"], pnl):
+                                        continue
+                                    if _ts_resp:
+                                        _correct_sell_pnl(trade, _ts_resp, trade["id"])
+                                    logger.info("[TRAILING-STOP] #%d closed — peak was %.0fc (+%.0f%%), now %.0fc: P&L=$%.2f | %s",
+                                                trade["id"], _peak * 100, _peak_gain * 100, effective_price * 100, pnl, trade["market_question"][:40])
+                                    db.log_activity("sell", "WIN" if pnl >= 0 else "LOSS", "Trailing stop triggered",
+                                                    "#%d %s — peak %.0fc, sold %.0fc, P&L $%+.2f" % (trade["id"], trade["market_question"][:35], _peak * 100, effective_price * 100, pnl), round(pnl, 2))
+                                    continue
+
                             # Take-Profit: per-trader override via TAKE_PROFIT_MAP
                             # Custom value fully replaces global (0=disabled for that trader)
                             # AUTO_SELL_PRICE (96c) catches everything regardless of TP
