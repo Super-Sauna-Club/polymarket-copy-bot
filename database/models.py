@@ -167,9 +167,41 @@ CREATE TABLE IF NOT EXISTS ai_reports (
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS blocked_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    trader TEXT NOT NULL,
+    market_question TEXT NOT NULL,
+    condition_id TEXT DEFAULT '',
+    side TEXT DEFAULT '',
+    trader_price REAL DEFAULT 0,
+    block_reason TEXT NOT NULL,
+    block_detail TEXT DEFAULT '',
+    buy_path TEXT DEFAULT '',
+    outcome_price REAL,
+    would_have_won INTEGER,
+    checked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ai_recommendations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    analysis_text TEXT NOT NULL,
+    recommendations_json TEXT DEFAULT '[]',
+    blocked_count INTEGER DEFAULT 0,
+    executed_count INTEGER DEFAULT 0,
+    would_have_won_pct REAL,
+    status TEXT DEFAULT 'pending',
+    applied_at TEXT,
+    dismissed_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_copy_trades_wallet ON copy_trades(wallet_address);
 CREATE INDEX IF NOT EXISTS idx_copy_trades_condition ON copy_trades(condition_id);
 CREATE INDEX IF NOT EXISTS idx_copy_trades_status ON copy_trades(status);
 CREATE INDEX IF NOT EXISTS idx_snapshots_wallet ON trader_position_snapshots(wallet_address);
 CREATE INDEX IF NOT EXISTS idx_closed_pos_wallet ON trader_closed_positions(wallet_address, condition_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_trades_time ON blocked_trades(created_at);
+CREATE INDEX IF NOT EXISTS idx_blocked_trades_condition ON blocked_trades(condition_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_trades_reason ON blocked_trades(block_reason);
 """

@@ -73,6 +73,30 @@ def auto_generate_report():
         logger.warning("Auto-report error: %s", e)
 
 
+def track_blocked_outcomes():
+    """Check outcomes of blocked trades (every 30 min)."""
+    from bot.outcome_tracker import track_outcomes
+    try:
+        checked = track_outcomes()
+        if checked > 0:
+            logger.info("[OUTCOME] Tracked %d blocked trade outcomes", checked)
+    except Exception as e:
+        logger.warning("Outcome tracker error: %s", e)
+
+
+def ai_analyze():
+    """Run Claude AI analysis on blocked vs executed trades (every 6h)."""
+    from bot.ai_analyzer import analyze_and_recommend
+    try:
+        result = analyze_and_recommend(hours=48)
+        if result.get("error"):
+            logger.warning("[AI-ANALYZE] %s", result["error"])
+        elif result.get("recommendations"):
+            logger.info("[AI-ANALYZE] %d recommendations generated", len(result["recommendations"]))
+    except Exception as e:
+        logger.warning("AI analyze error: %s", e)
+
+
 def update_prices():
     """Update copy trade prices (every 30s), auto-sell wins, save snapshot every 5 min."""
     global _update_counter
@@ -504,8 +528,29 @@ def main():
         id="auto_report",
         next_run_time=datetime.now() + timedelta(minutes=2),
     )
+    # Outcome tracker: check what would have happened with blocked trades (every 30 min)
+    scheduler.add_job(
+        track_blocked_outcomes,
+        "interval",
+        minutes=30,
+        id="outcome_tracker",
+        next_run_time=datetime.now() + timedelta(minutes=5),
+    )
+    # AI Analysis: Claude analyzes blocked vs executed trades (every 6 hours)
+    if config.ANTHROPIC_API_KEY:
+        scheduler.add_job(
+            ai_analyze,
+            "interval",
+            hours=6,
+            id="ai_analyze",
+            next_run_time=datetime.now() + timedelta(minutes=30),
+        )
+        logger.info("AI Analyzer enabled (every 6h, first run in 30min)")
+    else:
+        logger.info("AI Analyzer disabled (no ANTHROPIC_API_KEY)")
     scheduler.start()
-    logger.info("Scheduler started (copy scan every %ds, prices every 30s).", config.COPY_SCAN_INTERVAL)
+    logger.info("Scheduler started (copy scan every %ds, prices every 30s, outcome every 30min).",
+                config.COPY_SCAN_INTERVAL)
 
     # Start Flask dashboard
     logger.info("Starting dashboard on http://%s:%d", config.DASHBOARD_HOST, config.DASHBOARD_PORT)

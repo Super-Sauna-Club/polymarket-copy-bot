@@ -787,3 +787,136 @@ def get_reports(limit=10):
             "SELECT * FROM ai_reports ORDER BY created_at DESC LIMIT ?",
             (limit,)
         ).fetchall()
+
+
+# --- Blocked Trades ---
+
+def log_blocked_trade(trader: str, market_question: str, condition_id: str,
+                      side: str, trader_price: float, block_reason: str,
+                      block_detail: str = "", buy_path: str = ""):
+    """Log a trade that was blocked by a filter."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO blocked_trades (trader, market_question, condition_id, side, "
+            "trader_price, block_reason, block_detail, buy_path) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (trader, market_question[:200], condition_id, side, trader_price,
+             block_reason, block_detail[:500], buy_path)
+        )
+
+
+def get_blocked_trades_since(hours: int = 24, limit: int = 2000) -> list:
+    """Get blocked trades from the last N hours."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM blocked_trades WHERE created_at > datetime('now', '-%d hours', 'localtime') "
+            "ORDER BY created_at DESC LIMIT ?" % hours, (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_blocked_trades_unchecked(limit: int = 500) -> list:
+    """Get blocked trades that haven't had their outcome checked yet."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM blocked_trades WHERE outcome_price IS NULL "
+            "AND condition_id != '' "
+            "ORDER BY created_at ASC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_blocked_trade_outcome(trade_id: int, outcome_price: float, would_have_won: int):
+    """Update a blocked trade with its outcome."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE blocked_trades SET outcome_price=?, would_have_won=?, "
+            "checked_at=datetime('now','localtime') WHERE id=?",
+            (outcome_price, would_have_won, trade_id)
+        )
+
+
+def get_blocked_trade_stats(hours: int = 24) -> dict:
+    """Get aggregated stats on blocked trades."""
+    with get_connection() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) as cnt FROM blocked_trades "
+            "WHERE created_at > datetime('now', '-%d hours', 'localtime')" % hours
+        ).fetchone()["cnt"]
+        by_reason = conn.execute(
+            "SELECT block_reason, COUNT(*) as cnt FROM blocked_trades "
+            "WHERE created_at > datetime('now', '-%d hours', 'localtime') "
+            "GROUP BY block_reason ORDER BY cnt DESC" % hours
+        ).fetchall()
+        checked = conn.execute(
+            "SELECT COUNT(*) as cnt, "
+            "SUM(CASE WHEN would_have_won=1 THEN 1 ELSE 0 END) as winners "
+            "FROM blocked_trades "
+            "WHERE created_at > datetime('now', '-%d hours', 'localtime') "
+            "AND would_have_won IS NOT NULL" % hours
+        ).fetchone()
+        by_trader = conn.execute(
+            "SELECT trader, COUNT(*) as cnt, "
+            "SUM(CASE WHEN would_have_won=1 THEN 1 ELSE 0 END) as winners, "
+            "SUM(CASE WHEN would_have_won=0 THEN 1 ELSE 0 END) as losers "
+            "FROM blocked_trades "
+            "WHERE created_at > datetime('now', '-%d hours', 'localtime') "
+            "AND would_have_won IS NOT NULL "
+            "GROUP BY trader" % hours
+        ).fetchall()
+        return {
+            "total": total,
+            "by_reason": {r["block_reason"]: r["cnt"] for r in by_reason},
+            "checked": checked["cnt"] or 0,
+            "would_have_won": checked["winners"] or 0,
+            "by_trader": {r["trader"]: {"total": r["cnt"], "winners": r["winners"] or 0, "losers": r["losers"] or 0} for r in by_trader},
+        }
+
+
+# --- AI Recommendations ---
+
+def save_ai_recommendation(analysis_text: str, recommendations_json: str,
+                           blocked_count: int, executed_count: int,
+                           would_have_won_pct: float = None):
+    """Save a new AI recommendation."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO ai_recommendations (analysis_text, recommendations_json, "
+            "blocked_count, executed_count, would_have_won_pct) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (analysis_text, recommendations_json, blocked_count, executed_count, would_have_won_pct)
+        )
+
+
+def get_latest_recommendation():
+    """Get the most recent AI recommendation."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM ai_recommendations ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_recommendations(limit: int = 10):
+    """Get recent AI recommendations."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM ai_recommendations ORDER BY created_at DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_recommendation_status(rec_id: int, status: str):
+    """Mark a recommendation as applied or dismissed."""
+    with get_connection() as conn:
+        if status == "applied":
+            conn.execute(
+                "UPDATE ai_recommendations SET status='applied', applied_at=datetime('now','localtime') WHERE id=?",
+                (rec_id,)
+            )
+        elif status == "dismissed":
+            conn.execute(
+                "UPDATE ai_recommendations SET status='dismissed', dismissed_at=datetime('now','localtime') WHERE id=?",
+                (rec_id,)
+            )

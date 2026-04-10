@@ -83,6 +83,15 @@ _cb_lock = __import__("threading").Lock()
 _buy_lock = __import__("threading").Lock()
 
 
+def _log_block(trader: str, question: str, cid: str, side: str,
+               price: float, reason: str, detail: str = "", path: str = ""):
+    """Log a blocked trade to the database for AI analysis."""
+    try:
+        db.log_blocked_trade(trader, question, cid, side, price, reason, detail, path)
+    except Exception:
+        pass  # never let logging break the bot
+
+
 # --- P&L helpers: use actual fill data when available, fallback to planned ---
 
 def _get_entry_price(trade: dict) -> float:
@@ -544,6 +553,8 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 continue
 
             # === SAME FILTERS AS ACTIVITY SCAN ===
+            _q = pos["market_question"]
+            _s = pos.get("side", "")
             # No-rebuy: don't re-enter a market we recently closed
             if cid and config.NO_REBUY_MINUTES > 0:
                 try:
@@ -554,26 +565,36 @@ def _position_diff_scan(address: str, username: str, balance: float,
                             "AND closed_at > datetime('now', '-' || ? || ' minutes', 'localtime')", (cid, str(config.NO_REBUY_MINUTES))
                         ).fetchone()
                         if _was_closed_diff:
+                            _log_block(username, _q, cid, _s, entry_price_raw, "no_rebuy",
+                                       "closed within %dmin" % config.NO_REBUY_MINUTES, "diff")
                             continue
                 except Exception as _nre_diff:
                     logger.warning("[NO_REBUY] DB check failed, skipping conservatively: %s", _nre_diff)
                     continue
 
             # Category blacklist
-            if _is_category_blocked(username, pos["market_question"]):
+            if _is_category_blocked(username, _q):
+                _log_block(username, _q, cid, _s, entry_price_raw, "category_blacklist",
+                           "category '%s' blocked" % _detect_category(_q), "diff")
                 continue
             # Price range filter (per-trader override via MIN/MAX_ENTRY_PRICE_MAP)
             _min_price = _MIN_ENTRY_PRICE_MAP.get(username.lower(), config.MIN_ENTRY_PRICE)
             _max_price = _MAX_ENTRY_PRICE_MAP.get(username.lower(), config.MAX_ENTRY_PRICE)
             if entry_price_raw < _min_price or entry_price_raw > _max_price:
+                _log_block(username, _q, cid, _s, entry_price_raw, "price_range",
+                           "%.0fc outside %.0f-%.0fc" % (entry_price_raw*100, _min_price*100, _max_price*100), "diff")
                 continue
 
             # Max copies per market
             if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+                _log_block(username, _q, cid, _s, entry_price_raw, "max_copies",
+                           "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "diff")
                 continue
 
             # Duplicate market check (another trader already has this market)
             if cid and db.is_market_already_open(cid, from_wallet=address):
+                _log_block(username, _q, cid, _s, entry_price_raw, "cross_trader_dupe",
+                           "market open from another trader", "diff")
                 continue
 
             # Hedge check: don't buy opposite side of an existing position
@@ -583,7 +604,9 @@ def _position_diff_scan(address: str, username: str, balance: float,
                     _existing_sides = {x.get("side", "") for x in _existing}
                     if pos["side"] not in _existing_sides:
                         logger.info("[DIFF] Hedge blocked (%s open, skipping %s): %s",
-                                    "/".join(_existing_sides), pos["side"], pos["market_question"][:40])
+                                    "/".join(_existing_sides), pos["side"], _q[:40])
+                        _log_block(username, _q, cid, _s, entry_price_raw, "hedge_blocked",
+                                   "%s open, skipping %s" % ("/".join(_existing_sides), _s), "diff")
                         continue
 
             # Max per event (DB query includes recently closed)
@@ -594,6 +617,8 @@ def _position_diff_scan(address: str, username: str, balance: float,
                     _evt_inv = db.get_invested_for_event(_evt)
                     _diff_evt_remaining = config.MAX_PER_EVENT - _evt_inv
                     if _diff_evt_remaining < config.MIN_TRADE_SIZE:
+                        _log_block(username, _q, cid, _s, entry_price_raw, "event_full",
+                                   "$%.0f/$%.0f invested" % (_evt_inv, config.MAX_PER_EVENT), "diff")
                         continue
 
             # Max per match (DB query includes recently closed)
@@ -605,7 +630,9 @@ def _position_diff_scan(address: str, username: str, balance: float,
                     _diff_remaining = config.MAX_PER_MATCH - _diff_match_inv
                     if _diff_remaining < config.MIN_TRADE_SIZE:
                         logger.info("[DIFF] Match full $%.0f/$%.0f, skipping: %s",
-                                    _diff_match_inv, config.MAX_PER_MATCH, pos["market_question"][:40])
+                                    _diff_match_inv, config.MAX_PER_MATCH, _q[:40])
+                        _log_block(username, _q, cid, _s, entry_price_raw, "match_full",
+                                   "$%.0f/$%.0f invested" % (_diff_match_inv, config.MAX_PER_MATCH), "diff")
                         continue
                     # Merge event + match remaining (take the stricter one)
                     if _diff_evt_remaining is not None:
@@ -620,7 +647,9 @@ def _position_diff_scan(address: str, username: str, balance: float,
             _diff_exp_remaining = _max_exp - _t_exp
             if _diff_exp_remaining < config.MIN_TRADE_SIZE:
                 logger.info("[DIFF] Trader exposure $%.0f >= max $%.0f, skipping: %s",
-                            _t_exp, _max_exp, pos["market_question"][:40])
+                            _t_exp, _max_exp, _q[:40])
+                _log_block(username, _q, cid, _s, entry_price_raw, "exposure_limit",
+                           "$%.0f >= $%.0f max" % (_t_exp, _max_exp), "diff")
                 continue
 
             # Market-close guard
@@ -644,7 +673,9 @@ def _position_diff_scan(address: str, username: str, balance: float,
                                 _diff_hours = (_diff_start - _dt.now(_tz.utc)).total_seconds() / 3600
                                 if _diff_hours > config.MAX_HOURS_BEFORE_EVENT:
                                     logger.info("[DIFF] Event in %.1fh > %.1fh max, skipping: %s",
-                                                _diff_hours, config.MAX_HOURS_BEFORE_EVENT, pos["market_question"][:40])
+                                                _diff_hours, config.MAX_HOURS_BEFORE_EVENT, _q[:40])
+                                    _log_block(username, _q, cid, _s, entry_price_raw, "event_timing",
+                                               "event in %.1fh > %.1fh max" % (_diff_hours, config.MAX_HOURS_BEFORE_EVENT), "diff")
                                     continue
                     except Exception:
                         pass
@@ -917,10 +948,15 @@ def copy_followed_wallets():
                     _max_drift = config.QUEUE_DRIFT_FAVORITE
 
                 _drift_pct = (_live_price - _orig_price) / _orig_price if _orig_price > 0 else 0
+                _ew_qn = td["market_question"]
+                _ew_sd = td.get("side", "")
+                _ew_un = td.get("wallet_username", "")
                 if _drift_pct > _max_drift:
                     logger.info("[EVENT-WAIT] SKIP drift %.0f%% > %.0f%% max (%.0fc->%.0fc): %s",
                                 _drift_pct * 100, _max_drift * 100,
-                                _orig_price * 100, _live_price * 100, td["market_question"][:40])
+                                _orig_price * 100, _live_price * 100, _ew_qn[:40])
+                    _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _live_price,
+                               "queue_drift", "%.0f%% > %.0f%% max" % (_drift_pct*100, _max_drift*100), "event_wait")
                     _ew_expired.append(_ew_cid)
                     continue
 
@@ -938,6 +974,8 @@ def copy_followed_wallets():
                                 "AND closed_at > datetime('now', '-' || ? || ' minutes', 'localtime')", (_ew_cid, str(config.NO_REBUY_MINUTES))
                             ).fetchone()
                             if _was_closed_ew:
+                                _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
+                                           "no_rebuy", "closed within %dmin" % config.NO_REBUY_MINUTES, "event_wait")
                                 _ew_expired.append(_ew_cid)
                                 continue
                     except Exception as _nre_ew:
@@ -946,17 +984,23 @@ def copy_followed_wallets():
                         continue
 
                 # Category blacklist
-                if _is_category_blocked(td["wallet_username"], td["market_question"]):
+                if _is_category_blocked(td["wallet_username"], _ew_qn):
+                    _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
+                               "category_blacklist", "category '%s' blocked" % _detect_category(_ew_qn), "event_wait")
                     _ew_expired.append(_ew_cid)
                     continue
 
                 # MAX_COPIES check
                 if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= config.MAX_COPIES_PER_MARKET:
+                    _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
+                               "max_copies", "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "event_wait")
                     _ew_expired.append(_ew_cid)
                     continue
 
                 # Cross-trader duplicate check
                 if _ew_cid and db.is_market_already_open(_ew_cid, from_wallet=td["wallet_address"]):
+                    _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
+                               "cross_trader_dupe", "market open from another trader", "event_wait")
                     _ew_expired.append(_ew_cid)
                     continue
 
@@ -969,7 +1013,9 @@ def copy_followed_wallets():
                         _ew_budget = config.MAX_PER_MATCH - _ew_match_inv
                         if _ew_budget < MIN_TRADE_SIZE:
                             logger.info("[EVENT-WAIT] Match full $%.0f/$%.0f, skipping: %s",
-                                        _ew_match_inv, config.MAX_PER_MATCH, td["market_question"][:40])
+                                        _ew_match_inv, config.MAX_PER_MATCH, _ew_qn[:40])
+                            _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
+                                       "match_full", "$%.0f/$%.0f invested" % (_ew_match_inv, config.MAX_PER_MATCH), "event_wait")
                             _ew_expired.append(_ew_cid)
                             continue
 
@@ -981,7 +1027,9 @@ def copy_followed_wallets():
                         _ew_evt_rem = config.MAX_PER_EVENT - _ew_evt_inv
                         if _ew_evt_rem < MIN_TRADE_SIZE:
                             logger.info("[EVENT-WAIT] Event full $%.0f/$%.0f, skipping: %s",
-                                        _ew_evt_inv, config.MAX_PER_EVENT, td["market_question"][:40])
+                                        _ew_evt_inv, config.MAX_PER_EVENT, _ew_qn[:40])
+                            _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
+                                       "event_full", "$%.0f/$%.0f invested" % (_ew_evt_inv, config.MAX_PER_EVENT), "event_wait")
                             _ew_expired.append(_ew_cid)
                             continue
                         _ew_budget = min(_ew_budget, _ew_evt_rem) if _ew_budget is not None else _ew_evt_rem
@@ -993,7 +1041,9 @@ def copy_followed_wallets():
                 _ew_exp_rem = _ew_max_exp - _ew_t_inv
                 if _ew_exp_rem < MIN_TRADE_SIZE:
                     logger.info("[EVENT-WAIT] Trader exposure $%.0f >= max $%.0f, skipping: %s",
-                                _ew_t_inv, _ew_max_exp, td["market_question"][:40])
+                                _ew_t_inv, _ew_max_exp, _ew_qn[:40])
+                    _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
+                               "exposure_limit", "$%.0f >= $%.0f max" % (_ew_t_inv, _ew_max_exp), "event_wait")
                     _ew_expired.append(_ew_cid)
                     continue
 
@@ -1063,10 +1113,14 @@ def copy_followed_wallets():
                     logger.info("[HEDGE-WAIT] No hedge after %ds → executing: %s %s",
                                 wait, side, td["question"][:40])
                     _orig_hw_price = td["entry_price"]
+                    _hw_qn = td["question"]
+                    _hw_sd = side
+                    _hw_un = td["username"]
+                    _hw_cid = td["cid"]
                     # Drift check: get live price and reject if moved too far
                     entry_price = _orig_hw_price
-                    if td["cid"] and price_tracker.is_connected:
-                        _hw_live = price_tracker.get_price(td["cid"], side)
+                    if _hw_cid and price_tracker.is_connected:
+                        _hw_live = price_tracker.get_price(_hw_cid, side)
                         if _hw_live and _hw_live > 0:
                             entry_price = _hw_live
                     if _orig_hw_price > 0:
@@ -1082,31 +1136,41 @@ def copy_followed_wallets():
                         if _hw_drift > _hw_max_drift:
                             logger.info("[HEDGE-WAIT] SKIP drift %.0f%% > %.0f%% max (%.0fc->%.0fc): %s",
                                         _hw_drift * 100, _hw_max_drift * 100,
-                                        _orig_hw_price * 100, entry_price * 100, td["question"][:40])
+                                        _orig_hw_price * 100, entry_price * 100, _hw_qn[:40])
+                            _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                       "queue_drift", "%.0f%% > %.0f%% max" % (_hw_drift*100, _hw_max_drift*100), "hedge_wait")
                             continue
                     # No-rebuy check
-                    if td["cid"] and config.NO_REBUY_MINUTES > 0:
+                    if _hw_cid and config.NO_REBUY_MINUTES > 0:
                         try:
                             from database.db import get_connection as _gc_hw
                             with _gc_hw() as _rc_hw:
                                 _was_closed_hw = _rc_hw.execute(
                                     "SELECT id FROM copy_trades WHERE condition_id=? AND status='closed' "
-                                    "AND closed_at > datetime('now', '-' || ? || ' minutes', 'localtime')", (td["cid"], str(config.NO_REBUY_MINUTES))
+                                    "AND closed_at > datetime('now', '-' || ? || ' minutes', 'localtime')", (_hw_cid, str(config.NO_REBUY_MINUTES))
                                 ).fetchone()
                                 if _was_closed_hw:
+                                    _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                               "no_rebuy", "closed within %dmin" % config.NO_REBUY_MINUTES, "hedge_wait")
                                     continue
                         except Exception as _nre_hw:
                             logger.warning("[NO_REBUY] DB check failed, skipping conservatively: %s", _nre_hw)
                             continue
                     # Category blacklist
-                    if _is_category_blocked(td["username"], td["question"]):
+                    if _is_category_blocked(_hw_un, _hw_qn):
+                        _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                   "category_blacklist", "category '%s' blocked" % _detect_category(_hw_qn), "hedge_wait")
                         continue
                     # MAX_COPIES check: activity scan may have already copied this market
-                    if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= config.MAX_COPIES_PER_MARKET:
-                        logger.info("[HEDGE-WAIT] Already copied (activity scan was faster), skipping: %s", td["question"][:40])
+                    if _hw_cid and db.count_copies_for_market(td["address"], _hw_cid) >= config.MAX_COPIES_PER_MARKET:
+                        logger.info("[HEDGE-WAIT] Already copied (activity scan was faster), skipping: %s", _hw_qn[:40])
+                        _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                   "max_copies", "already copied (activity faster)", "hedge_wait")
                         continue
                     # Cross-trader duplicate check
-                    if td["cid"] and db.is_market_already_open(td["cid"], from_wallet=td["address"]):
+                    if _hw_cid and db.is_market_already_open(_hw_cid, from_wallet=td["address"]):
+                        _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                   "cross_trader_dupe", "market open from another trader", "hedge_wait")
                         continue
                     # MAX_PER_MATCH check (with size cap)
                     _hw_budget = None
@@ -1116,13 +1180,17 @@ def copy_followed_wallets():
                             _hw_match_inv = db.get_invested_for_event(_hw_evt_slug)
                             _hw_budget = config.MAX_PER_MATCH - _hw_match_inv
                             if _hw_budget < MIN_TRADE_SIZE:
+                                _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                           "match_full", "$%.0f/$%.0f invested" % (_hw_match_inv, config.MAX_PER_MATCH), "hedge_wait")
                                 continue
                     # Check trader exposure limit (with size cap)
-                    _max_t = portfolio_value * _EXPOSURE_MAP.get(td["username"].lower(), config.MAX_EXPOSURE_PER_TRADER)
+                    _max_t = portfolio_value * _EXPOSURE_MAP.get(_hw_un.lower(), config.MAX_EXPOSURE_PER_TRADER)
                     _t_inv = db.get_trader_exposure(td["address"])
                     _hw_exp_rem = _max_t - _t_inv
                     if _hw_exp_rem < MIN_TRADE_SIZE:
-                        logger.info("[HEDGE-WAIT] Trader exposure $%.0f >= max $%.0f, skipping: %s", _t_inv, _max_t, td["question"][:40])
+                        logger.info("[HEDGE-WAIT] Trader exposure $%.0f >= max $%.0f, skipping: %s", _t_inv, _max_t, _hw_qn[:40])
+                        _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                   "exposure_limit", "$%.0f >= $%.0f max" % (_t_inv, _max_t), "hedge_wait")
                         continue
                     # Max per event check (with size cap)
                     if config.MAX_PER_EVENT > 0:
@@ -1132,7 +1200,9 @@ def copy_followed_wallets():
                             _hw_evt_rem = config.MAX_PER_EVENT - _hw_evt_inv
                             if _hw_evt_rem < MIN_TRADE_SIZE:
                                 logger.info("[HEDGE-WAIT] Event exposure $%.0f >= max $%.0f, skipping: %s",
-                                            _hw_evt_inv, config.MAX_PER_EVENT, td["question"][:40])
+                                            _hw_evt_inv, config.MAX_PER_EVENT, _hw_qn[:40])
+                                _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                           "event_full", "$%.0f/$%.0f invested" % (_hw_evt_inv, config.MAX_PER_EVENT), "hedge_wait")
                                 continue
                             _hw_budget = min(_hw_budget, _hw_evt_rem) if _hw_budget is not None else _hw_evt_rem
                     # Event timing check: skip if event > MAX_HOURS away
@@ -1151,7 +1221,9 @@ def copy_followed_wallets():
                                         _hw_hours = (_hw_start - _dt.now(_tz.utc)).total_seconds() / 3600
                                         if _hw_hours > config.MAX_HOURS_BEFORE_EVENT:
                                             logger.info("[HEDGE-WAIT] Event in %.1fh > %.1fh max, skipping: %s",
-                                                        _hw_hours, config.MAX_HOURS_BEFORE_EVENT, td["question"][:40])
+                                                        _hw_hours, config.MAX_HOURS_BEFORE_EVENT, _hw_qn[:40])
+                                            _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
+                                                       "event_timing", "event in %.1fh > %.1fh max" % (_hw_hours, config.MAX_HOURS_BEFORE_EVENT), "hedge_wait")
                                             continue
                             except Exception:
                                 pass
@@ -1349,6 +1421,8 @@ def copy_followed_wallets():
                         if _was_closed:
                             logger.info("[SKIP] Recently closed (no-rebuy %dmin): %s",
                                         config.NO_REBUY_MINUTES, question[:40])
+                            _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                                       "no_rebuy", "closed within %dmin" % config.NO_REBUY_MINUTES, "activity")
                             continue
                 except Exception as _nre:
                     logger.warning("[NO_REBUY] DB check failed, skipping trade conservatively: %s | %s", _nre, question[:40])
@@ -1359,6 +1433,8 @@ def copy_followed_wallets():
             if _is_category_blocked(username, question):
                 _cat = _detect_category(question)
                 logger.info("[FILTER] Category '%s' blocked for %s: %s", _cat, username, question[:40])
+                _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                           "category_blacklist", "category '%s' blocked" % _cat, "activity")
                 continue
 
             # 1) Min Trader USD: per-trader override or global default
@@ -1367,6 +1443,8 @@ def copy_followed_wallets():
             if dollar_value < _min_usd:
                 logger.info("[FILTER] Size $%.1f < $%.0f: %s",
                             dollar_value, _min_usd, question[:40])
+                _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                           "min_trader_usd", "$%.1f < $%.0f min" % (dollar_value, _min_usd), "activity")
                 continue
 
             # 2) Conviction ratio: skip low-conviction trades (arb noise filter)
@@ -1376,6 +1454,8 @@ def copy_followed_wallets():
                 if _conv < _min_conv:
                     logger.info("[FILTER] Conviction %.1fx < %.1fx min for %s: %s",
                                 _conv, _min_conv, username, question[:40])
+                    _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                               "conviction_ratio", "%.1fx < %.1fx min" % (_conv, _min_conv), "activity")
                     continue
 
             # 2b) Fee check: log fee info, skip if MAX_FEE_BPS is set and exceeded
@@ -1387,6 +1467,8 @@ def copy_followed_wallets():
                         logger.info("[FEE] %dbps (%.1f%%) on: %s", _fee, _fee/100, question[:40])
                     if config.MAX_FEE_BPS > 0 and _fee > config.MAX_FEE_BPS:
                         logger.info("[FILTER] Fee %dbps > max %dbps, skipping: %s", _fee, config.MAX_FEE_BPS, question[:40])
+                        _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                                   "max_fee", "%dbps > %dbps max" % (_fee, config.MAX_FEE_BPS), "activity")
                         continue
                 except Exception:
                     pass  # fee lookup failed, don't block trade
@@ -1399,18 +1481,24 @@ def copy_followed_wallets():
                 logger.info("[FILTER] Preis %.0fc ausserhalb Range (%.0f-%.0fc): %s",
                             trader_price * 100, _min_price * 100,
                             _max_price * 100, question[:40])
+                _log_block(username, question, cid, t.get("side", ""), trader_price,
+                           "price_range", "%.0fc outside %.0f-%.0fc" % (trader_price*100, _min_price*100, _max_price*100), "activity")
                 continue
 
             # 3) Max Kopien pro Markt: nicht X-mal denselben Markt kopieren
             if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
                 logger.info("[FILTER] Max copies (%d) for market: %s",
                             config.MAX_COPIES_PER_MARKET, question[:40])
+                _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                           "max_copies", "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "activity")
                 continue
 
             # === STANDARD-FILTER ===
             # Duplikat-Markt-Check: nicht denselben Markt von 2 Tradern kopieren
             if cid and db.is_market_already_open(cid, from_wallet=address):
                 logger.info("[SKIP] Markt bereits offen (anderer Trader): %s", question[:40])
+                _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                           "cross_trader_dupe", "market open from another trader", "activity")
                 continue
 
             # Hedge-Detection: wenn wir schon eine Seite offen haben, Gegenseite blocken
@@ -1422,6 +1510,8 @@ def copy_followed_wallets():
                     if t["side"] not in existing_sides:
                         logger.info("[SKIP] Hedge blocked (%s already open, skipping %s): %s",
                                     "/".join(existing_sides), t["side"], question[:40])
+                        _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
+                                   "hedge_blocked", "%s open, skipping %s" % ("/".join(existing_sides), t["side"]), "activity")
                         continue
 
             # Hedge-Wait: hold trade and check if trader buys opposite side
@@ -1472,6 +1562,8 @@ def copy_followed_wallets():
             if trade_age > ENTRY_TRADE_SEC:
                 logger.info("[SKIP] Alter Trade (%ds > %ds): %s",
                             trade_age, ENTRY_TRADE_SEC, question[:40])
+                _log_block(username, question, cid, t.get("side", ""), trader_price,
+                           "stale_trade", "%ds > %ds max" % (trade_age, ENTRY_TRADE_SEC), "activity")
                 continue
 
             if trader_price <= 0 or trader_price >= 1:
@@ -1503,6 +1595,8 @@ def copy_followed_wallets():
                 secs_left = end_ts - _time.time()
                 if secs_left < TRADE_SEC_FROM_RESOLVE:
                     logger.info("[SKIP] Markt schliesst in %.0fs: %s", secs_left, question[:40])
+                    _log_block(username, question, cid, t.get("side", ""), trader_price,
+                               "market_closing", "closes in %.0fs" % secs_left, "activity")
                     continue
 
 
@@ -1512,6 +1606,8 @@ def copy_followed_wallets():
                 if spread is not None and spread > MAX_SPREAD:
                     logger.info("[SKIP] Spread zu gross (%.1f%% > %.0f%%): %s",
                                 spread * 100, MAX_SPREAD * 100, question[:40])
+                    _log_block(username, question, cid, t.get("side", ""), trader_price,
+                               "spread", "%.1f%% > %.0f%% max" % (spread*100, MAX_SPREAD*100), "activity")
                     continue
 
             # Pending-Buy-Queue: wenn Preis unter BUY_THRESHOLD → warten statt sofort kaufen
@@ -1595,6 +1691,8 @@ def copy_followed_wallets():
                     if _evt_remaining < MIN_TRADE_SIZE:
                         logger.info("[SKIP] Event full $%.0f/$%.0f: %s",
                                     _evt_invested, config.MAX_PER_EVENT, question[:40])
+                        _log_block(username, question, cid, t.get("side", ""), trader_price,
+                                   "event_full", "$%.0f/$%.0f invested" % (_evt_invested, config.MAX_PER_EVENT), "activity")
                         continue
 
             # Max $ per match (groups Map 1 + Map 2 + BO3 as one match)
@@ -1616,6 +1714,8 @@ def copy_followed_wallets():
                     if _match_remaining < MIN_TRADE_SIZE:
                         logger.info("[SKIP] Match full $%.0f/$%.0f: %s",
                                     _match_invested, config.MAX_PER_MATCH, question[:40])
+                        _log_block(username, question, cid, t.get("side", ""), trader_price,
+                                   "match_full", "$%.0f/$%.0f invested" % (_match_invested, config.MAX_PER_MATCH), "activity")
                         continue
                     if _evt_remaining is not None:
                         _evt_remaining = min(_evt_remaining, _match_remaining)
@@ -1633,6 +1733,8 @@ def copy_followed_wallets():
             if trader_invested >= max_per_trader:
                 logger.info("[SKIP] Trader exposure $%.0f >= max $%.0f (%.0f%%): %s",
                             trader_invested, max_per_trader, _trader_pct * 100, question[:40])
+                _log_block(username, question, cid, t.get("side", ""), trader_price,
+                           "exposure_limit", "$%.0f >= $%.0f max (%.0f%%)" % (trader_invested, max_per_trader, _trader_pct*100), "activity")
                 continue
 
             # Proportionaler Trader-Multiplikator: dieser Trade vs. Trader-Durchschnitt
@@ -1648,6 +1750,8 @@ def copy_followed_wallets():
                 if _existing_on_market >= MAX_POSITION_SIZE:
                     logger.info("[SKIP] Position cap $%.0f >= max $%.0f: %s",
                                 _existing_on_market, MAX_POSITION_SIZE, question[:40])
+                    _log_block(username, question, cid, t.get("side", ""), trader_price,
+                               "position_cap", "$%.0f >= $%.0f max" % (_existing_on_market, MAX_POSITION_SIZE), "activity")
                     continue
                 _remaining_cap = MAX_POSITION_SIZE - _existing_on_market
                 if size > _remaining_cap:
@@ -1674,6 +1778,8 @@ def copy_followed_wallets():
             if cash_left < _load_dynamic_floor():
                 logger.info("[SKIP] Cash-Floor erreicht (Cash $%.2f < Floor) — ueberspringe: %s",
                             cash_left, question[:40])
+                _log_block(username, question, cid, t.get("side", ""), trader_price,
+                           "cash_floor", "cash $%.2f < floor" % cash_left, "activity")
                 continue
 
 

@@ -1148,3 +1148,76 @@ def api_copy_history():
             "pnl": round(total_pnl, 2),
         }
     })
+
+
+# --- AI Analysis Endpoints ---
+
+@app.route("/api/ai/blocked-stats")
+def api_blocked_stats():
+    """Get blocked trade statistics."""
+    hours = int(request.args.get("hours", 48))
+    stats = db.get_blocked_trade_stats(hours=hours)
+    return jsonify(stats)
+
+
+@app.route("/api/ai/blocked-trades")
+def api_blocked_trades():
+    """Get recent blocked trades."""
+    hours = int(request.args.get("hours", 48))
+    limit = int(request.args.get("limit", 200))
+    trades = db.get_blocked_trades_since(hours=hours, limit=limit)
+    return jsonify(trades)
+
+
+@app.route("/api/ai/recommendations")
+def api_ai_recommendations():
+    """Get AI recommendations."""
+    limit = int(request.args.get("limit", 5))
+    recs = db.get_recommendations(limit=limit)
+    return jsonify(recs)
+
+
+@app.route("/api/ai/latest")
+def api_ai_latest():
+    """Get latest AI recommendation."""
+    rec = db.get_latest_recommendation()
+    if rec:
+        try:
+            rec["recommendations"] = json.loads(rec.get("recommendations_json", "[]"))
+        except Exception:
+            rec["recommendations"] = []
+    return jsonify(rec or {})
+
+
+@app.route("/api/ai/analyze", methods=["POST"])
+def api_ai_analyze():
+    """Trigger AI analysis manually."""
+    if not _check_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    if not config.ANTHROPIC_API_KEY:
+        return jsonify({"error": "ANTHROPIC_API_KEY nicht gesetzt — trage ihn in secrets.env ein"}), 400
+    try:
+        from bot.ai_analyzer import analyze_and_recommend
+        result = analyze_and_recommend(hours=48)
+        return jsonify(result)
+    except Exception as e:
+        logger.error("AI analyze error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/recommendation/<int:rec_id>/apply", methods=["POST"])
+def api_ai_apply(rec_id):
+    """Mark a recommendation as applied."""
+    if not _check_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    db.update_recommendation_status(rec_id, "applied")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ai/recommendation/<int:rec_id>/dismiss", methods=["POST"])
+def api_ai_dismiss(rec_id):
+    """Mark a recommendation as dismissed."""
+    if not _check_auth():
+        return jsonify({"error": "unauthorized"}), 401
+    db.update_recommendation_status(rec_id, "dismissed")
+    return jsonify({"ok": True})
