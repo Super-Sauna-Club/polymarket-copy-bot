@@ -741,6 +741,11 @@ def autonomous_scan():
     from bot.autonomous_signals import scan_momentum_signals, update_autonomous_positions
     try:
         scan_momentum_signals()
+        try:
+            from bot.autonomous_signals import scan_ai_divergence_signals
+            scan_ai_divergence_signals()
+        except Exception:
+            pass
         update_autonomous_positions()
     except Exception as e:
         logger.exception('Error in autonomous scan: %s', e)

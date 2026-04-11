@@ -726,6 +726,12 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
                     continue
                 if LIVE_MODE and cid:
+                    try:
+                        from bot.liquidity_check import check_liquidity
+                        if not check_liquidity(cid, pos["side"], size):
+                            continue
+                    except Exception:
+                        pass
                     order_resp = buy_shares(cid, pos["side"], size, entry_price)
                     if not order_resp:
                         logger.warning("[DIFF] Order fehlgeschlagen — ueberspringe: %s", pos["market_question"][:40])
@@ -1853,6 +1859,15 @@ def copy_followed_wallets():
                         logger.warning("[LIVE] Nicht genug USDC ($%.2f < $%.2f): %s",
                                        real_balance, size, question[:40])
                         continue
+                    # Liquidity check before buying
+                    try:
+                        from bot.liquidity_check import check_liquidity
+                        if not check_liquidity(cid, t["side"], size):
+                            _log_block(trader_name, question, cid, t["side"], entry_price,
+                                       "low_liquidity", "Orderbook too thin for $%.2f" % size, "liquidity")
+                            continue
+                    except Exception:
+                        pass  # dont block on liquidity check errors
                     order_resp = buy_shares(cid, t["side"], size, entry_price)
                     if not order_resp:
                         logger.warning("[LIVE] Order fehlgeschlagen — ueberspringe: %s", question[:40])
