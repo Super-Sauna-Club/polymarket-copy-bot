@@ -906,8 +906,9 @@ def copy_followed_wallets():
     try:
         from bot.order_executor import get_wallet_balance
         cash = get_wallet_balance()
-    except Exception:
-        cash = 0
+    except Exception as _wb_err:
+        logger.warning("[SCAN] Wallet balance error — skipping scan: %s", _wb_err)
+        return 0
     balance = cash
     total_invested = 0
     # Cache open trades for this scan (convert Row→dict so .get() works everywhere)
