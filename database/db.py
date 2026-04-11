@@ -1340,7 +1340,7 @@ def get_equity_curve() -> list:
             "GROUP BY DATE(closed_at) ORDER BY date"
         ).fetchall()
         result = []
-        cumulative = config.STARTING_BALANCE
+        cumulative = 0  # PnL only, no starting balance offset
         for r in rows:
             cumulative += (r["daily_pnl"] or 0)
             result.append({"date": r["date"], "value": round(cumulative, 2)})
