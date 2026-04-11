@@ -383,6 +383,7 @@ def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
                     # "delayed" = queued, may or may not fill. Do NOT retry.
                     time.sleep(config.DELAYED_SELL_VERIFY_SECS)
                     # Check if shares are gone (= sold)
+                    _shares2 = shares  # default in case verify fails
                     try:
                         _params2 = BalanceAllowanceParams(asset_type="CONDITIONAL", token_id=token_id)
                         _bal2 = client.get_balance_allowance(_params2)
