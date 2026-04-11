@@ -1074,8 +1074,26 @@ def api_copy_chart():
 
 @app.route("/api/equity-curve")
 def api_equity_curve():
-    """Eigener Equity-Curve Endpoint — berechnet aus copy_trades DB."""
+    """Eigener Equity-Curve Endpoint mit Perioden-Filter."""
+    from datetime import datetime, timedelta
+    period = request.args.get("period", "all")
     curve = db.get_equity_curve()
+    if not curve:
+        return jsonify({"labels": [], "values": []})
+    # Filter by period
+    now = datetime.now()
+    if period == "4h":
+        cutoff = (now - timedelta(hours=4)).strftime("%Y-%m-%d")
+    elif period == "1d":
+        cutoff = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    elif period == "1w":
+        cutoff = (now - timedelta(weeks=1)).strftime("%Y-%m-%d")
+    elif period == "1m":
+        cutoff = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    else:
+        cutoff = None
+    if cutoff:
+        curve = [p for p in curve if p["date"] >= cutoff]
     return jsonify({
         "labels": [p["date"] for p in curve],
         "values": [p["value"] for p in curve],
