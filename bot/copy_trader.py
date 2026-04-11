@@ -485,7 +485,8 @@ def _process_pending_buys(balance: float, total_invested: float) -> int:
             logger.info("[PENDING] Verworfen (timeout): %s", entry["trade_data"]["market_question"][:40])
             continue
 
-        if elapsed < PENDING_BUY_MIN_SECS:
+        _extra = entry.get("extra_wait", 0)
+        if elapsed < PENDING_BUY_MIN_SECS + _extra:
             continue  # Noch nicht reif
 
         # Aktuellen Preis prüfen
@@ -723,18 +724,22 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 "category": _detect_category(pos["market_question"]),
             }
             # === TRADE SCORER ===
-            _score_result = score_trade(
-                trader_name=username,
-                condition_id=cid,
-                side=pos["side"],
-                entry_price=entry_price,
-                market_question=pos["market_question"],
-                category=trade["category"],
-                event_slug=pos.get("event_slug", ""),
-                trader_size_usd=pos.get("size", 0),
-                spread=0.03,
-                hours_until_event=12,
-            )
+            try:
+                _score_result = score_trade(
+                    trader_name=username,
+                    condition_id=cid,
+                    side=pos["side"],
+                    entry_price=entry_price,
+                    market_question=pos["market_question"],
+                    category=trade["category"],
+                    event_slug=pos.get("event_slug", ""),
+                    trader_size_usd=pos.get("size", 0),
+                    spread=0.03,
+                    hours_until_event=12,
+                )
+            except Exception as _se:
+                logger.warning("[SCORE] Scorer error, defaulting to EXECUTE: %s", _se)
+                _score_result = {"action": "EXECUTE", "score": 50, "components": {}, "reason": "scorer_error"}
             if _score_result["action"] == "BLOCK":
                 _log_block(username, pos["market_question"], cid, pos["side"], entry_price,
                            "score_block", _score_result["reason"], "diff")
@@ -1882,18 +1887,22 @@ def copy_followed_wallets():
                                 username, trader_domain, trade_domain, question[:40])
 
             # === TRADE SCORER ===
-            _score_result = score_trade(
-                trader_name=username,
-                condition_id=cid,
-                side=t["side"],
-                entry_price=entry_price,
-                market_question=question,
-                category=trade["category"],
-                event_slug=t.get("event_slug", ""),
-                trader_size_usd=t.get("size", 0),
-                spread=0.03,
-                hours_until_event=12,
-            )
+            try:
+                _score_result = score_trade(
+                    trader_name=username,
+                    condition_id=cid,
+                    side=t["side"],
+                    entry_price=entry_price,
+                    market_question=question,
+                    category=trade["category"],
+                    event_slug=t.get("event_slug", ""),
+                    trader_size_usd=t.get("size", 0),
+                    spread=0.03,
+                    hours_until_event=12,
+                )
+            except Exception as _se:
+                logger.warning("[SCORE] Scorer error, defaulting to EXECUTE: %s", _se)
+                _score_result = {"action": "EXECUTE", "score": 50, "components": {}, "reason": "scorer_error"}
             if _score_result["action"] == "BLOCK":
                 _log_block(username, question, cid, t["side"], entry_price,
                            "score_block", _score_result["reason"], "activity")
