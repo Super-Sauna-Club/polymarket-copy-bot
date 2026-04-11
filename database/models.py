@@ -173,14 +173,35 @@ CREATE TABLE IF NOT EXISTS blocked_trades (
     trader TEXT NOT NULL,
     market_question TEXT NOT NULL,
     condition_id TEXT DEFAULT '',
+    asset TEXT DEFAULT '',
     side TEXT DEFAULT '',
     trader_price REAL DEFAULT 0,
     block_reason TEXT NOT NULL,
     block_detail TEXT DEFAULT '',
     buy_path TEXT DEFAULT '',
+    category TEXT DEFAULT '',
     outcome_price REAL,
     would_have_won INTEGER,
     checked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS trader_activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_address TEXT NOT NULL,
+    trader TEXT NOT NULL,
+    condition_id TEXT NOT NULL,
+    asset TEXT DEFAULT '',
+    trade_type TEXT NOT NULL,
+    side TEXT DEFAULT '',
+    price REAL DEFAULT 0,
+    usdc_size REAL DEFAULT 0,
+    market_question TEXT DEFAULT '',
+    market_slug TEXT DEFAULT '',
+    event_slug TEXT DEFAULT '',
+    category TEXT DEFAULT '',
+    timestamp INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(wallet_address, condition_id, trade_type, timestamp)
 );
 
 CREATE TABLE IF NOT EXISTS ai_recommendations (
@@ -204,4 +225,7 @@ CREATE INDEX IF NOT EXISTS idx_closed_pos_wallet ON trader_closed_positions(wall
 CREATE INDEX IF NOT EXISTS idx_blocked_trades_time ON blocked_trades(created_at);
 CREATE INDEX IF NOT EXISTS idx_blocked_trades_condition ON blocked_trades(condition_id);
 CREATE INDEX IF NOT EXISTS idx_blocked_trades_reason ON blocked_trades(block_reason);
+CREATE INDEX IF NOT EXISTS idx_trader_activity_wallet ON trader_activity(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_trader_activity_ts ON trader_activity(timestamp);
+CREATE INDEX IF NOT EXISTS idx_trader_activity_cid ON trader_activity(condition_id);
 """

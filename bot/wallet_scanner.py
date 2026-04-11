@@ -264,6 +264,7 @@ def fetch_wallet_recent_trades(address: str, limit: int = 50) -> list[dict]:
             result.append({
                 "transaction_hash": t.get("transactionHash", ""),
                 "condition_id": t.get("conditionId", ""),
+                "asset": t.get("asset", ""),  # ERC-1155 token ID (needed for CLOB price lookup)
                 "side": side,
                 "outcome_label": outcome_label,
                 "price": float(t.get("price") or 0),

@@ -23,6 +23,10 @@ def init_db():
             "ALTER TABLE copy_trades ADD COLUMN shares_held REAL",
             "ALTER TABLE copy_trades ADD COLUMN usdc_received REAL",
             "ALTER TABLE copy_trades ADD COLUMN peak_price REAL",
+            "ALTER TABLE copy_trades ADD COLUMN category TEXT DEFAULT ''",
+            "ALTER TABLE copy_trades ADD COLUMN fee_bps INTEGER",
+            "ALTER TABLE blocked_trades ADD COLUMN asset TEXT DEFAULT ''",
+            "ALTER TABLE blocked_trades ADD COLUMN category TEXT DEFAULT ''",
         ]:
             try:
                 conn.execute(migration)
@@ -178,16 +182,20 @@ def create_copy_trade(trade: dict):
     trade.setdefault("actual_size", None)
     trade.setdefault("shares_held", None)
     trade.setdefault("usdc_received", None)
+    trade.setdefault("category", "")
+    trade.setdefault("fee_bps", None)
     with get_connection() as conn:
         cursor = conn.execute("""
             INSERT INTO copy_trades (wallet_address, wallet_username, market_question,
                                       market_slug, side, entry_price, size, end_date,
                                       outcome_label, event_slug, condition_id,
-                                      actual_entry_price, actual_size, shares_held, usdc_received)
+                                      actual_entry_price, actual_size, shares_held, usdc_received,
+                                      category, fee_bps)
             VALUES (:wallet_address, :wallet_username, :market_question,
                     :market_slug, :side, :entry_price, :size, :end_date,
                     :outcome_label, :event_slug, :condition_id,
-                    :actual_entry_price, :actual_size, :shares_held, :usdc_received)
+                    :actual_entry_price, :actual_size, :shares_held, :usdc_received,
+                    :category, :fee_bps)
         """, trade)
         return cursor.lastrowid
 
@@ -793,15 +801,16 @@ def get_reports(limit=10):
 
 def log_blocked_trade(trader: str, market_question: str, condition_id: str,
                       side: str, trader_price: float, block_reason: str,
-                      block_detail: str = "", buy_path: str = ""):
+                      block_detail: str = "", buy_path: str = "",
+                      asset: str = "", category: str = ""):
     """Log a trade that was blocked by a filter."""
     with get_connection() as conn:
         conn.execute(
             "INSERT INTO blocked_trades (trader, market_question, condition_id, side, "
-            "trader_price, block_reason, block_detail, buy_path) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "trader_price, block_reason, block_detail, buy_path, asset, category) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (trader, market_question[:200], condition_id, side, trader_price,
-             block_reason, block_detail[:500], buy_path)
+             block_reason, block_detail[:500], buy_path, asset, category)
         )
 
 
@@ -905,6 +914,60 @@ def get_recommendations(limit: int = 10):
             (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+# --- Trader Activity History ---
+
+def store_trader_activity(activities: list[dict]):
+    """Bulk-store trader activity (BUY + SELL trades). Ignores duplicates."""
+    if not activities:
+        return 0
+    stored = 0
+    with get_connection() as conn:
+        for a in activities:
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO trader_activity "
+                    "(wallet_address, trader, condition_id, asset, trade_type, side, "
+                    "price, usdc_size, market_question, market_slug, event_slug, category, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (a["wallet_address"], a["trader"], a["condition_id"], a.get("asset", ""),
+                     a["trade_type"], a.get("side", ""), a.get("price", 0), a.get("usdc_size", 0),
+                     a.get("market_question", "")[:200], a.get("market_slug", ""),
+                     a.get("event_slug", ""), a.get("category", ""), a["timestamp"])
+                )
+                stored += 1
+            except Exception:
+                pass  # duplicate or constraint violation
+    return stored
+
+
+def get_trader_activity_stats(trader: str = None, hours: int = 24) -> list:
+    """Get aggregated trader activity stats by category and trade type."""
+    with get_connection() as conn:
+        sql = (
+            "SELECT trader, category, trade_type, COUNT(*) as cnt, "
+            "ROUND(SUM(usdc_size), 2) as total_usd, ROUND(AVG(price), 3) as avg_price "
+            "FROM trader_activity WHERE timestamp > strftime('%%s', 'now', '-%d hours') " % hours
+        )
+        if trader:
+            sql += "AND trader=? "
+            sql += "GROUP BY trader, category, trade_type ORDER BY total_usd DESC"
+            rows = conn.execute(sql, (trader,)).fetchall()
+        else:
+            sql += "GROUP BY trader, category, trade_type ORDER BY total_usd DESC"
+            rows = conn.execute(sql).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_trader_last_activity_ts(wallet_address: str) -> int:
+    """Get the most recent trade timestamp stored for a trader."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT MAX(timestamp) as max_ts FROM trader_activity WHERE wallet_address=?",
+            (wallet_address,)
+        ).fetchone()
+        return row["max_ts"] or 0 if row else 0
 
 
 def update_recommendation_status(rec_id: int, status: str):

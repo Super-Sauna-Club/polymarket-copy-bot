@@ -84,10 +84,13 @@ _buy_lock = __import__("threading").Lock()
 
 
 def _log_block(trader: str, question: str, cid: str, side: str,
-               price: float, reason: str, detail: str = "", path: str = ""):
+               price: float, reason: str, detail: str = "", path: str = "",
+               asset: str = "", category: str = ""):
     """Log a blocked trade to the database for AI analysis."""
     try:
-        db.log_blocked_trade(trader, question, cid, side, price, reason, detail, path)
+        cat = category or _detect_category(question)
+        db.log_blocked_trade(trader, question, cid, side, price, reason, detail, path,
+                             asset=asset, category=cat)
     except Exception:
         pass  # never let logging break the bot
 
@@ -716,6 +719,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 "end_date": pos.get("end_date", ""),
                 "outcome_label": pos.get("outcome_label", ""),
                 "condition_id": cid,
+                "category": _detect_category(pos["market_question"]),
             }
             # LIVE MODE: Echte Order platzieren
             with _buy_lock:
@@ -1253,6 +1257,7 @@ def copy_followed_wallets():
                         "end_date": td["trade_data"].get("end_date", ""),
                         "outcome_label": td["trade_data"].get("outcome_label", ""),
                         "condition_id": td["cid"],
+                        "category": _detect_category(td["question"]),
                     }
                     with _buy_lock:
                         if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= config.MAX_COPIES_PER_MARKET:
@@ -1315,6 +1320,28 @@ def copy_followed_wallets():
         if not recent_trades:
             logger.info("[SCAN] %s: keine Trades von API", username)
             continue
+
+        # Store ALL trader activity (BUY + SELL) for historical analysis
+        try:
+            _activity_rows = [{
+                "wallet_address": address,
+                "trader": username,
+                "condition_id": t.get("condition_id", ""),
+                "asset": t.get("asset", ""),
+                "trade_type": t.get("trade_type", ""),
+                "side": t.get("side", ""),
+                "price": t.get("price", 0),
+                "usdc_size": t.get("usdc_size", 0),
+                "market_question": t.get("market_question", ""),
+                "market_slug": t.get("market_slug", ""),
+                "event_slug": t.get("event_slug", ""),
+                "category": _detect_category(t.get("market_question", "")),
+                "timestamp": t.get("timestamp", 0),
+            } for t in recent_trades if t.get("condition_id") and t.get("timestamp", 0) > 0]
+            if _activity_rows:
+                db.store_trader_activity(_activity_rows)
+        except Exception:
+            pass  # never let activity logging break the bot
 
         # Durchschnittliche Trade-Größe des Traders (für proportionales Sizing)
         # Per-trader override via AVG_TRADER_SIZE_MAP, else calculate from recent, else global default
@@ -1463,6 +1490,7 @@ def copy_followed_wallets():
                 try:
                     from bot.order_executor import get_fee_rate
                     _fee = get_fee_rate(cid, t["side"])
+                    t["_fee_bps"] = _fee  # store for later use in trade dict
                     if _fee > 0:
                         logger.info("[FEE] %dbps (%.1f%%) on: %s", _fee, _fee/100, question[:40])
                     if config.MAX_FEE_BPS > 0 and _fee > config.MAX_FEE_BPS:
@@ -1627,6 +1655,7 @@ def copy_followed_wallets():
                         "end_date": t.get("end_date", ""),
                         "outcome_label": t.get("outcome_label", ""),
                         "condition_id": cid,
+                        "category": _detect_category(question),
                     },
                 }
                 logger.info("[PENDING] Queued (%.0fc < BUY_THRESHOLD %.0fc): %s",
@@ -1669,6 +1698,7 @@ def copy_followed_wallets():
                                                     "end_date": t.get("end_date", ""),
                                                     "outcome_label": t.get("outcome_label", ""),
                                                     "condition_id": cid,
+                                                    "category": _detect_category(question),
                                                 },
                                                 "event_start_ts": _start.timestamp(),
                                                 "queued_at": _time.time(),
@@ -1795,6 +1825,8 @@ def copy_followed_wallets():
                 "end_date": t.get("end_date", ""),
                 "outcome_label": t.get("outcome_label", ""),
                 "condition_id": cid,
+                "category": _detect_category(question),
+                "fee_bps": t.get("_fee_bps"),
             }
 
             # Domain-Check: warnen wenn Trade ausserhalb Trader-Spezialisierung
