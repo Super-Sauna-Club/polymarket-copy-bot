@@ -827,8 +827,8 @@ function _showBigWinJackpot(t){
   const dur=16000;
   const ov=$('bigWinOv');
   $('bwGif').src=_rnd(_bigWinGifs);
-  $('bwMarket').textContent=(t.market||'?').substring(0,60);
-  $('bwDetail').innerHTML='@ '+(t.price||0)+'\u00A2 \u00B7 via <span class="hl">'+(t.trader||'?')+'</span>';
+  $('bwMarket').textContent=esc(t.market||'?').substring(0,60);
+  $('bwDetail').innerHTML='@ '+(t.price||0)+'\u00A2 \u00B7 via <span class="hl">'+esc(t.trader||'?')+'</span>';
   $('bwPnl').textContent='+$0.00';
   ov.style.display='flex';ov.classList.remove('fade-out');
   void ov.offsetWidth;ov.classList.add('active');
@@ -912,7 +912,7 @@ function _showCloseAlert(t){
   o.innerHTML=`<div class="al-ban${(!w?' big-loss':'')}" style="border-color:${w?'var(--green)':'var(--red)'}; display:flex;align-items:center;text-align:left">
     <div style="flex:1">
     <div class="al-lbl" style="color:${w?'var(--green)':'var(--red)'}">${w?'\u2705 POSITION CLOSED \u2014 WIN':'\u274C '+lossLbl}</div>
-    <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
+    <div class="al-ttl">${esc(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl" style="color:${w?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}$${(t.pnl||0).toFixed(2)}</span> @ ${t.price||0}\u00A2 \u00B7 via <span class="hl">${t.trader||'?'}</span></div>
     </div>${gifHtml}</div>`;
   if(w&&sfxWin){playMoney()}
@@ -986,7 +986,7 @@ function dot(){
 function _showBuyAlert(t){
   const o=$('alOv');o.style.display='flex';
   o.innerHTML=`<div class="al-ban"><div class="al-lbl">\u26A1 New Trade Incoming</div>
-    <div class="al-ttl">${(t.market||'?').substring(0,50)}</div>
+    <div class="al-ttl">${esc(t.market||'?').substring(0,50)}</div>
     <div class="al-det"><span class="hl">${t.side||'?'}</span> @ ${t.price||0}\u00A2 \u00B7 $${fm(t.size)} \u00B7 via <span class="hl">${t.trader||'?'}</span>${t.live?' \u2014 LIVE':''}</div></div>`;
   _alertIsWin=false;_alertIsBigWin=false;
   if(_alertTimer)clearTimeout(_alertTimer);
@@ -1334,6 +1334,7 @@ setInterval(loadReport,60000);
 
 // Performance Report
 function fmtReport(t){
+  t=esc(t);
   return t
     .replace(/\n\n/g,'<div style="height:10px"></div>')
     .replace(/\n/g,'<br>')
