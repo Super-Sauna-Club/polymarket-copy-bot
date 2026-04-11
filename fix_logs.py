@@ -1,9 +1,11 @@
 """Fix activity log entries from existing trade data."""
 from database.db import init_db, get_connection
 
-init_db()
 
-with get_connection() as conn:
+def main():
+    init_db()
+
+    with get_connection() as conn:
     conn.execute("DELETE FROM activity_log")
 
     all_t = conn.execute("SELECT * FROM copy_trades ORDER BY created_at ASC").fetchall()
@@ -41,3 +43,8 @@ with get_connection() as conn:
     print("Trades: %d (open=%d, closed=%d, wins=%d)" % (total, opn, closed, w))
     print("Realized P&L: $%.2f" % pnl)
     print("Activity log: %d entries" % logs)
+
+
+
+if __name__ == "__main__":
+    main()
