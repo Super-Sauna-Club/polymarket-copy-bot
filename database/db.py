@@ -1331,7 +1331,7 @@ def get_equity_curve() -> list:
         rows = conn.execute(
             "SELECT DATE(closed_at) as date, "
             "SUM(pnl_realized) as daily_pnl "
-            "FROM copy_trades WHERE status = " + sq + "closed" + sq + " AND closed_at IS NOT NULL "
+            "FROM copy_trades WHERE status = 'closed' AND closed_at IS NOT NULL "
             "GROUP BY DATE(closed_at) ORDER BY date"
         ).fetchall()
         result = []

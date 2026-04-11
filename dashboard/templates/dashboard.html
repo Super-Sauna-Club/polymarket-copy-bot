@@ -1256,7 +1256,7 @@ function renderExposure(){
 let CP='1d';
 function chart(period){
   if(period)CP=period;
-  fetch('/api/copy/chart?period='+CP).then(r=>r.json()).then(d=>{
+  fetch('/api/equity-curve').then(r=>r.json()).then(d=>{
   const c=$('chart');if(!c||!d.labels.length)return;
   const lb=d.labels.map(l=>{const x=new Date(l+'Z');
     if(CP==='4h'||CP==='1d')return x.toLocaleTimeString('de-AT',{timeZone:'Europe/Vienna',hour:'2-digit',minute:'2-digit'});
