@@ -678,6 +678,8 @@ def main():
     scheduler.add_job(smart_rebalance, 'cron', day_of_week='mon', hour=4, minute=30,
                       id='smart_rebalance',
                       next_run_time=datetime.now() + timedelta(seconds=150))
+    scheduler.add_job(brain_engine, 'interval', hours=2, id='brain_engine',
+                      next_run_time=datetime.now() + timedelta(minutes=5))
     scheduler.start()
     logger.info("Scheduler started (copy scan every %ds, prices every 30s, outcome every 30min).",
                 config.COPY_SCAN_INTERVAL)
@@ -741,6 +743,11 @@ def autonomous_scan():
     from bot.autonomous_signals import scan_momentum_signals, update_autonomous_positions
     try:
         scan_momentum_signals()
+        try:
+            from bot.autonomous_signals import scan_ai_divergence_signals
+            scan_ai_divergence_signals()
+        except Exception:
+            pass
         update_autonomous_positions()
     except Exception as e:
         logger.exception('Error in autonomous scan: %s', e)
@@ -813,6 +820,15 @@ def smart_rebalance():
         rebalance()
     except Exception as e:
         logger.exception('Error in smart rebalance: %s', e)
+
+
+def brain_engine():
+    """Brain Engine — self-diagnosis, auto-fix, lifecycle management (every 2h)."""
+    from bot.brain import run_brain
+    try:
+        run_brain()
+    except Exception as e:
+        logger.exception("Error in brain engine: %s", e)
 
 if __name__ == "__main__":
     main()

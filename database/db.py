@@ -1193,7 +1193,7 @@ def get_trade_scores_with_outcomes(days: int = 7) -> list:
         rows = conn.execute(
             "SELECT ts.*, ct.pnl_realized FROM trade_scores ts "
             "LEFT JOIN copy_trades ct ON ts.trade_id = ct.id "
-            "WHERE ts.created_at >= datetime(" + sq + "now" + sq + ", " + sq + "-%d days" + sq + ", " + sq + "localtime" + sq + ") "
+            "WHERE ts.created_at >= datetime('now', '-%d days', 'localtime') "
             "ORDER BY ts.created_at DESC" % days
         ).fetchall()
         return [dict(r) for r in rows]
@@ -1203,10 +1203,10 @@ def get_score_range_performance() -> list:
         rows = conn.execute(
             "SELECT "
             "CASE "
-            "  WHEN ts.score_total < 40 THEN " + sq + "0-39" + sq + " "
-            "  WHEN ts.score_total < 60 THEN " + sq + "40-59" + sq + " "
-            "  WHEN ts.score_total < 80 THEN " + sq + "60-79" + sq + " "
-            "  ELSE " + sq + "80-100" + sq + " "
+            "  WHEN ts.score_total < 40 THEN '0-39' "
+            "  WHEN ts.score_total < 60 THEN '40-59' "
+            "  WHEN ts.score_total < 80 THEN '60-79' "
+            "  ELSE '80-100' "
             "END as score_range, "
             "COUNT(*) as total, "
             "SUM(CASE WHEN ct.pnl_realized > 0 THEN 1 ELSE 0 END) as wins, "
@@ -1214,7 +1214,7 @@ def get_score_range_performance() -> list:
             "ROUND(SUM(COALESCE(ct.pnl_realized, 0)), 2) as total_pnl "
             "FROM trade_scores ts "
             "LEFT JOIN copy_trades ct ON ts.trade_id = ct.id "
-            "WHERE ts.trade_id IS NOT NULL AND ct.status = " + sq + "closed" + sq + " "
+            "WHERE ts.trade_id IS NOT NULL AND ct.status = 'closed' "
             "GROUP BY score_range ORDER BY score_range"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -1244,7 +1244,7 @@ def upsert_lifecycle_trader(address: str, username: str, status: str, source: st
         if existing:
             conn.execute(
                 "UPDATE trader_lifecycle SET status = ?, username = ?, "
-                "status_changed_at = datetime(" + sq + "now" + sq + "," + sq + "localtime" + sq + ") WHERE address = ?",
+                "status_changed_at = datetime('now','localtime') WHERE address = ?",
                 (status, username, address)
             )
         else:
@@ -1273,7 +1273,7 @@ def update_lifecycle_status(address: str, status: str, notes: str = ""):
         if status == "PAUSED":
             pause_increment = ", pause_count = pause_count + 1"
         conn.execute(
-            "UPDATE trader_lifecycle SET status = ?, status_changed_at = datetime(" + sq + "now" + sq + "," + sq + "localtime" + sq + "), "
+            "UPDATE trader_lifecycle SET status = ?, status_changed_at = datetime('now','localtime'), "
             "notes = ?" + pause_increment + " WHERE address = ?",
             (status, _json.dumps(old_notes), address)
         )
@@ -1314,7 +1314,7 @@ def log_autonomous_daily(date_str: str, mode: str, signal_type: str, trades: int
 
 def get_autonomous_performance(days: int = 14, mode: str = None) -> list:
     with get_connection() as conn:
-        q = "SELECT * FROM autonomous_performance WHERE date >= date(" + sq + "now" + sq + ", " + sq + "-%d days" + sq + ", " + sq + "localtime" + sq + ")" % days
+        q = "SELECT * FROM autonomous_performance WHERE date >= date('now', '-%d days', 'localtime')" % days
         params = []
         if mode:
             q += " AND mode = ?"
