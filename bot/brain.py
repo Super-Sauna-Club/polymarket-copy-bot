@@ -51,7 +51,7 @@ def _classify_losses():
         logger.info("[BRAIN] No losses in last 7d")
         return
     losses = [dict(l) for l in losses]
-    classifications = {"BAD_TRADER": [], "BAD_CATEGORY": [], "BAD_TIMING": [],
+    classifications = {"BAD_TRADER": [], "BAD_CATEGORY": [], "UNCLASSIFIED": [],
                        "BAD_PRICE": [], "BAD_SIZING": []}
     for loss in losses:
         trader = loss.get("wallet_username", "")
@@ -78,7 +78,7 @@ def _classify_losses():
         if entry < 0.25 or entry > 0.80:
             classifications["BAD_PRICE"].append(loss)
             continue
-        classifications["BAD_TIMING"].append(loss)
+        classifications["UNCLASSIFIED"].append(loss)
 
     total_loss = sum(l.get("pnl_realized", 0) for l in losses)
     impacts = {}
@@ -122,7 +122,9 @@ def _check_trader_health():
             "AND created_at >= datetime('now', '-30 days', 'localtime')"
         ).fetchall()
     active_traders = [t["wallet_username"] for t in traders if t["wallet_username"]]
-    followed_raw = config.FOLLOWED_TRADERS
+    _content = _read_settings()
+    _ft_match = re.search(r'^FOLLOWED_TRADERS=(.*)$', _content, re.MULTILINE)
+    followed_raw = _ft_match.group(1) if _ft_match else ""
     live_count = len([x for x in followed_raw.split(",") if x.strip()]) if followed_raw else 0
     for trader in active_traders:
         stats_7d = db.get_trader_rolling_pnl(trader, 7)
@@ -242,7 +244,10 @@ def _check_autonomous_performance():
 
 
 def _is_autonomous_paper() -> bool:
-    return os.getenv("AUTONOMOUS_PAPER_MODE", "true").lower() in ("true", "1", "yes")
+    content = _read_settings()
+    match = re.search(r'^AUTONOMOUS_PAPER_MODE=(.*)$', content, re.MULTILINE)
+    val = match.group(1).strip().lower() if match else "true"
+    return val in ("true", "1", "yes")
 
 
 def _set_autonomous_mode(mode: str):
@@ -283,7 +288,6 @@ def _tighten_price_range(trader: str, reason: str):
         return
     min_map[trader] = new_min
     max_map[trader] = new_max
-    content = _read_settings()
     map_str = ",".join("%s:%s" % (k, v) for k, v in sorted(min_map.items()))
     pattern = r'^(MIN_ENTRY_PRICE_MAP=).*$'
     if re.search(pattern, content, re.MULTILINE):
