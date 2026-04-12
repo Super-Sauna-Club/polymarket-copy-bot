@@ -1,3 +1,5 @@
+# Version
+BOT_VERSION = "2.0.0"
 import os
 import sys
 from dotenv import load_dotenv

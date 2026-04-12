@@ -393,7 +393,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
   <header class="hd fi">
     <div class="hd-left">
       <img src="/static/logo.png" alt="SSC" style="height:36px">
-      <div style="margin-right:auto"><div class="logo">Poly Copybot</div><div style="font-size:.8rem;color:var(--text-dim);letter-spacing:.12em;font-weight:300">by Super Sauna Club</div></div>
+      <div style="margin-right:auto"><div class="logo">Poly Copybot</div><div style="font-size:.8rem;color:var(--text-dim);letter-spacing:.12em;font-weight:300">by Super Sauna Club <span id="botVer" style="opacity:0.5"></span></div></div>
     </div>
     <div class="hd-center">
       <div class="sauna-scene" id="saunaScene">
@@ -1120,6 +1120,7 @@ function ticker(){const el=$('ticker');
     el.innerHTML=it.join('')+it.join('')}}
 
 function render(){if(!D)return;const s=D.summary,sb=D.starting_balance||200;
+  if(s.bot_version){const _bv=$('botVer');if(_bv)_bv.textContent='v'+s.bot_version}
   function rnd(v){return Math.round(v*100)/100}
   const w=s.wallet_usdc||0;
   const av=s.active_value||0;

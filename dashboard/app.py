@@ -491,6 +491,7 @@ def api_live_data():
 
     summary = {
         "total_value": round(total_value, 2),
+        "bot_version": config.BOT_VERSION,
         "wallet_usdc": wallet,
         "cash_balance": wallet,
         "total_invested": round(open_value, 2),
