@@ -143,10 +143,18 @@ def _check_trader_health():
             "AND created_at >= datetime('now', '-30 days', 'localtime')"
         ).fetchall()
     active_traders = [t["wallet_username"] for t in traders if t["wallet_username"]]
-    _content = _read_settings()
-    _ft_match = re.search(r'^FOLLOWED_TRADERS=(.*)$', _content, re.MULTILINE)
-    followed_raw = _ft_match.group(1) if _ft_match else ""
-    live_count = len([x for x in followed_raw.split(",") if x.strip()]) if followed_raw else 0
+
+    def _current_live_count() -> int:
+        """Re-read FOLLOWED_TRADERS from disk so pauses within this loop
+        are reflected immediately. Prevents dropping below MIN_LIVE_TRADERS
+        under a multi-pause cycle."""
+        _content = _read_settings()
+        _ft_match = re.search(r'^FOLLOWED_TRADERS=(.*)$', _content, re.MULTILINE)
+        raw = _ft_match.group(1).strip() if _ft_match else ""
+        if not raw:
+            return 0
+        return len([x for x in raw.split(",") if x.strip()])
+
     for trader in active_traders:
         stats_7d = db.get_trader_rolling_pnl(trader, 7)
         pnl_7d = stats_7d.get("total_pnl", 0) or 0
@@ -173,7 +181,7 @@ def _check_trader_health():
         elif streak >= 5:
             should_pause = True
             reason = "%d consecutive losses" % streak
-        if should_pause and live_count > MIN_LIVE_TRADERS:
+        if should_pause and _current_live_count() > MIN_LIVE_TRADERS:
             logger.info("[BRAIN] PAUSE %s: %s", trader, reason)
             db.log_brain_decision("PAUSE_TRADER", trader, reason,
                                   json.dumps({"pnl_7d": pnl_7d, "streak": streak}),
