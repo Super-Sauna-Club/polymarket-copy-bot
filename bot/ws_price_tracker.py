@@ -34,6 +34,8 @@ class PriceTracker:
         self._running = False
         self._keep_running = False
         self._pending_tokens = []  # tokens to subscribe on next reconnect
+        self._consecutive_failures = 0  # for exponential backoff
+        self._last_successful_event_ts = 0  # reset failure counter on successful event
 
     # ------------------------------------------------------------------
     # Public API
@@ -236,6 +238,7 @@ class PriceTracker:
             events = json.loads(message)
             if not isinstance(events, list):
                 events = [events]
+            self._last_successful_event_ts = time.time()
             for ev in events:
                 self._handle_event(ev)
         except Exception as e:
@@ -302,11 +305,16 @@ class PriceTracker:
                     self._asks[asset_id] = float(ask)
 
     def _on_error(self, ws, error):
-        logger.warning("WS: Error: %s", error)
+        # Routine connection drops are noise — log at DEBUG.
+        # Only surface ERRORs if we've had many consecutive failures.
+        if self._consecutive_failures >= 5:
+            logger.warning("WS: Error (attempt %d): %s", self._consecutive_failures, error)
+        else:
+            logger.debug("WS: Error: %s", error)
 
     def _on_close(self, ws, close_status_code, close_msg):
         self._running = False
-        logger.info("WS: Connection closed (code=%s).", close_status_code)
+        logger.debug("WS: Connection closed (code=%s).", close_status_code)
 
     def _ping_loop(self):
         """Send PING every 10s to keep connection alive."""
@@ -324,8 +332,35 @@ class PriceTracker:
     # Internal: reconnect loop
     # ------------------------------------------------------------------
 
+    def _has_work_to_do(self) -> bool:
+        """Return True if there are positions worth watching via WS.
+        Avoids constant reconnect loops when there are no open trades.
+        """
+        with self._lock:
+            if self._condition_map or self._pending_tokens:
+                return True
+        # Fall back to DB — query open copy_trades directly
+        try:
+            from database import db as _db
+            with _db.get_connection() as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM copy_trades WHERE status='open' AND condition_id != ''"
+                ).fetchone()
+                return (row[0] if row else 0) > 0
+        except Exception:
+            return True  # on DB error, assume yes (don't break the reconnect loop)
+
     def _run_loop(self):
+        from config import WS_RECONNECT_SECS
         while self._keep_running:
+            # Skip connect attempts if there's nothing to subscribe to — saves
+            # the server from being pinged constantly when the bot has no open
+            # positions. Check every ~30s whether work has appeared.
+            if not self._has_work_to_do():
+                logger.debug("WS: no active subscriptions, sleeping 30s before retry")
+                time.sleep(30)
+                continue
+
             try:
                 self._ws = websocket.WebSocketApp(
                     CLOB_WS_URL,
@@ -336,12 +371,26 @@ class PriceTracker:
                 )
                 self._ws.run_forever()
             except Exception as e:
-                logger.warning("WS: Unexpected error in run_forever: %s", e)
+                logger.debug("WS: Unexpected error in run_forever: %s", e)
 
-            if self._keep_running:
-                from config import WS_RECONNECT_SECS
-                logger.info("WS: Reconnecting in %ds...", WS_RECONNECT_SECS)
-                time.sleep(WS_RECONNECT_SECS)
+            if not self._keep_running:
+                break
+
+            # Did we receive any data during this session? If yes, reset backoff.
+            if self._last_successful_event_ts > time.time() - 60:
+                self._consecutive_failures = 0
+            else:
+                self._consecutive_failures += 1
+
+            # Exponential backoff capped at 60s. Avoids hammering a rate-limited
+            # server — 10s → 20s → 40s → 60s → 60s → ...
+            backoff = min(WS_RECONNECT_SECS * (2 ** min(self._consecutive_failures, 3)), 60)
+            if self._consecutive_failures >= 3:
+                logger.info("WS: Reconnecting in %ds (consecutive failures=%d)",
+                            backoff, self._consecutive_failures)
+            else:
+                logger.debug("WS: Reconnecting in %ds", backoff)
+            time.sleep(backoff)
 
 
 # Global singleton — imported by copy_trader and main
