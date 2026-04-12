@@ -155,15 +155,16 @@ def _check_trader_health():
             should_pause = True
             reason = "%d consecutive losses" % streak
         if should_pause and live_count > MIN_LIVE_TRADERS:
-            logger.info("[BRAIN] PAUSE %s: %s", trader, reason)
+            logger.info("[BRAIN] Would pause %s: %s (DISABLED — settings managed manually)", trader, reason)
             db.log_brain_decision("PAUSE_TRADER", trader, reason,
                                   json.dumps({"pnl_7d": pnl_7d, "streak": streak}),
-                                  "Prevent further losses from underperformer")
-            try:
-                from bot.trader_lifecycle import pause_trader
-                pause_trader(trader, reason)
-            except Exception as e:
-                logger.warning("[BRAIN] Failed to pause %s: %s", trader, e)
+                                  "Logged only — auto-pause disabled")
+            # DISABLED: settings managed manually
+            # try:
+            #     from bot.trader_lifecycle import pause_trader
+            #     pause_trader(trader, reason)
+            # except Exception as e:
+            #     logger.warning("[BRAIN] Failed to pause %s: %s", trader, e)
         elif pnl_7d > 5 and cnt_7d >= 5:
             wr = wins_7d / cnt_7d * 100 if cnt_7d > 0 else 0
             if wr > 60:

@@ -60,8 +60,8 @@ def pause_trader(trader_name: str, reason: str):
         db.upsert_lifecycle_trader(address, trader_name, "LIVE_FOLLOW", "manual")
     db.update_lifecycle_status(address, "PAUSED", reason)
     db.set_lifecycle_pause_until(address, pause_until)
-    _remove_followed_trader(address, trader_name)
-    logger.info("[LIFECYCLE] PAUSED %s for %dh: %s", trader_name, hours, reason)
+    # _remove_followed_trader(address, trader_name)  # DISABLED: settings managed manually
+    logger.info("[LIFECYCLE] PAUSED %s for %dh (DB only, not removed from settings): %s", trader_name, hours, reason)
     try:
         from dashboard.app import broadcast_event
         broadcast_event("brain_decision", {
@@ -248,6 +248,8 @@ def _add_followed_trader(address: str, username: str):
 
 
 def _remove_followed_trader(address: str, username: str):
+    logger.info("[LIFECYCLE] Auto-remove disabled — settings managed manually: %s", username or address[:12])
+    return  # DISABLED: settings managed manually
     content = _read_settings()
     match = re.search(r'^FOLLOWED_TRADERS=(.*)$', content, re.MULTILINE)
     if not match:
