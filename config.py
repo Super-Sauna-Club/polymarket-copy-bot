@@ -41,6 +41,7 @@ BUILDER_PASSPHRASE = os.getenv("BUILDER_PASSPHRASE", "")
 
 # --- Copybot Core ---
 LIVE_MODE = os.getenv("LIVE_MODE", "true").lower() in ("true", "1", "yes")
+ML_ENABLED = os.getenv("ML_ENABLED", "true").lower() in ("true", "1", "yes")
 STARTING_BALANCE = float(os.getenv("STARTING_BALANCE", "320"))
 COPY_SCAN_INTERVAL = int(os.getenv("COPY_SCAN_INTERVAL", "5"))
 
