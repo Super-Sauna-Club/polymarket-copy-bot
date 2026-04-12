@@ -99,21 +99,32 @@ def _classify_losses():
 
 
 def _execute_loss_actions(classifications: dict, impacts: dict):
+    # BAD_CATEGORY: collapse to unique (trader, category) pairs so we write
+    # one brain_decisions row and one settings update per UNIQUE rule, not
+    # one per affected loss. Previously 5 identical losses wrote 5 rows.
+    cat_pairs = set()
     for loss in classifications.get("BAD_CATEGORY", []):
         trader = loss.get("wallet_username", "")
         category = loss.get("category", "")
         if trader and category:
-            _add_category_blacklist(trader, category,
-                                   "Brain: %s WR < 40%% in %s" % (trader, category))
+            cat_pairs.add((trader, category))
+    for trader, category in sorted(cat_pairs):
+        _add_category_blacklist(trader, category,
+                               "Brain: %s WR < 40%% in %s" % (trader, category))
+
+    # BAD_PRICE: still needs at least 3 losses to trigger, but tighten each
+    # trader only once per cycle regardless of how many losses they had.
     price_by_trader = {}
     for loss in classifications.get("BAD_PRICE", []):
         trader = loss.get("wallet_username", "")
         if trader:
             price_by_trader.setdefault(trader, []).append(loss)
+    tightened = set()
     for trader, trader_losses in price_by_trader.items():
-        if len(trader_losses) >= 3:
+        if len(trader_losses) >= 3 and trader not in tightened:
             _tighten_price_range(trader,
                                 "Brain: %d BAD_PRICE losses for %s" % (len(trader_losses), trader))
+            tightened.add(trader)
 
 
 def _check_trader_health():
@@ -267,6 +278,9 @@ def _add_category_blacklist(trader: str, category: str, reason: str):
         if ":" in entry:
             t, cats = entry.split(":", 1)
             bl_map[t.strip()] = set(cats.split("|"))
+    # Early out: already blacklisted -> no write, no log, no spam.
+    if category in bl_map.get(trader, set()):
+        return
     bl_map.setdefault(trader, set()).add(category)
     parts = []
     for t, cats in sorted(bl_map.items()):
