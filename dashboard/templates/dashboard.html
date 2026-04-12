@@ -1474,7 +1474,7 @@ function buildPreview(raw){
 }
 function loadReport(){
   // Live trader stats from DB (24h default)
-  fetch('/api/copy/trader-stats?hours=24').then(r=>r.json()).then(stats=>{
+  fetch('/api/copy/trader-stats?hours=24',{headers:{'X-Dashboard-Key':localStorage.getItem('dashSecret')||''}}).then(r=>r.json()).then(stats=>{
     if(!stats||!stats.length){$('reportText').innerHTML='<span style="color:var(--text-dim)">Keine Trades in den letzten 24h</span>';return}
     $('reportTime').textContent='live \u00B7 last 24h';
     $('reportText').innerHTML=stats.map(p=>{

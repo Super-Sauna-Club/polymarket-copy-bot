@@ -186,6 +186,23 @@ def _add_followed_trader(address: str, username: str):
     new_val = ("%s,%s" % (current, entry)).strip(",")
     pattern = r'^(FOLLOWED_TRADERS=).*$'
     content = re.sub(pattern, r'\g<1>' + new_val, content, flags=re.MULTILINE)
+
+    # Auto-add starter settings for new trader
+    name = username or address[:12]
+    _maps = {
+        "BET_SIZE_MAP": (name, "0.02"),
+        "TRADER_EXPOSURE_MAP": (name, "0.05"),
+        "AVG_TRADER_SIZE_MAP": (name, "20"),
+    }
+    for map_key, (trader_id, default_val) in _maps.items():
+        m = re.search(r'^(%s=)(.*)$' % map_key, content, re.MULTILINE)
+        if m:
+            current_map = m.group(2).strip()
+            if trader_id.lower() not in current_map.lower():
+                new_map = ("%s,%s:%s" % (current_map, trader_id, default_val)).strip(",")
+                content = re.sub(r'^(%s=).*$' % map_key, r'\g<1>' + new_map, content, flags=re.MULTILINE)
+                logger.info("[LIFECYCLE] Auto-settings: %s +%s:%s", map_key, trader_id, default_val)
+
     _write_settings(content)
     logger.info("[LIFECYCLE] Added %s to FOLLOWED_TRADERS", username or address[:12])
 
