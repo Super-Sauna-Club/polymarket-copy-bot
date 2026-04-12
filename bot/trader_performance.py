@@ -10,8 +10,8 @@ from database import db
 
 logger = logging.getLogger(__name__)
 
-THROTTLE_PNL_7D = -10.0
-PAUSE_PNL_7D = -20.0
+THROTTLE_PNL_7D = -20.0
+PAUSE_PNL_7D = -40.0
 UNPAUSE_PNL_7D = 0.0
 
 
