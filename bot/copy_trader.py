@@ -2234,6 +2234,12 @@ def update_copy_positions():
                             db.log_activity("resolved", "WIN" if pnl > 0 else "LOSS",
                                             "Position %s" % ("won" if pnl > 0 else "lost"),
                                             "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:40], pnl), pnl)
+                            try:
+                                db.update_trade_score_outcome(
+                                    trade_cid, trade.get("wallet_username","") or "", round(pnl, 2)
+                                )
+                            except Exception:
+                                pass
                             continue
 
                         # Still open → update price (WebSocket first, then Gamma REST)
@@ -2273,6 +2279,12 @@ def update_copy_positions():
                                                 trade["id"], loss_pct * 100, pnl, trade["market_question"][:40])
                                     db.log_activity("sell", "LOSS", "Stop-loss triggered",
                                                     "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:35], pnl), round(pnl, 2))
+                                    try:
+                                        db.update_trade_score_outcome(
+                                            trade_cid, trade.get("wallet_username","") or "", round(pnl, 2)
+                                        )
+                                    except Exception:
+                                        pass
                                     continue
 
                             # Trailing Stop: once position was 20%+ up, trail sell point below peak.
@@ -2305,6 +2317,12 @@ def update_copy_positions():
                                                 trade["id"], _peak * 100, _peak_gain * 100, effective_price * 100, pnl, trade["market_question"][:40])
                                     db.log_activity("sell", "WIN" if pnl >= 0 else "LOSS", "Trailing stop triggered",
                                                     "#%d %s — peak %.0fc, sold %.0fc, P&L $%+.2f" % (trade["id"], trade["market_question"][:35], _peak * 100, effective_price * 100, pnl), round(pnl, 2))
+                                    try:
+                                        db.update_trade_score_outcome(
+                                            trade_cid, trade.get("wallet_username","") or "", round(pnl, 2)
+                                        )
+                                    except Exception:
+                                        pass
                                     continue
 
                             # Take-Profit: per-trader override via TAKE_PROFIT_MAP

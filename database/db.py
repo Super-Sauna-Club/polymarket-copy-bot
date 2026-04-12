@@ -1262,6 +1262,58 @@ def get_score_range_performance() -> list:
         return [dict(r) for r in rows]
 
 
+def update_trade_score_outcome(condition_id: str, trader_name: str, pnl: float,
+                               since_minutes: int = 120) -> int:
+    """Write outcome_pnl onto the newest matching trade_scores row.
+
+    Match: condition_id + trader_name, within last `since_minutes` minutes,
+    where outcome_pnl IS NULL (don't overwrite). Returns rowcount updated.
+    """
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE trade_scores SET outcome_pnl = ? "
+            "WHERE id = ("
+            "    SELECT id FROM trade_scores "
+            "    WHERE condition_id = ? AND trader_name = ? "
+            "      AND outcome_pnl IS NULL "
+            "      AND created_at >= datetime('now','-' || ? || ' minutes','localtime') "
+            "    ORDER BY id DESC LIMIT 1"
+            ")",
+            (pnl, condition_id, trader_name, since_minutes)
+        )
+        return cur.rowcount
+
+
+def backfill_trade_score_outcomes(days: int = 30) -> int:
+    """Join trade_scores with closed copy_trades and fill missing outcome_pnl.
+
+    Called periodically by outcome_tracker.track_outcomes. Scans the last
+    `days` days of trade_scores rows with NULL outcome_pnl and fills them
+    from the matching (condition_id, trader) copy_trades row's pnl_realized.
+    Returns count updated.
+    """
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE trade_scores SET outcome_pnl = ("
+            "    SELECT ct.pnl_realized FROM copy_trades ct "
+            "    WHERE ct.condition_id = trade_scores.condition_id "
+            "      AND ct.wallet_username = trade_scores.trader_name "
+            "      AND ct.status = 'closed' AND ct.pnl_realized IS NOT NULL "
+            "    ORDER BY ct.id DESC LIMIT 1"
+            ") "
+            "WHERE outcome_pnl IS NULL "
+            "  AND created_at >= datetime('now','-' || ? || ' days','localtime') "
+            "  AND EXISTS ("
+            "    SELECT 1 FROM copy_trades ct2 "
+            "    WHERE ct2.condition_id = trade_scores.condition_id "
+            "      AND ct2.wallet_username = trade_scores.trader_name "
+            "      AND ct2.status = 'closed' AND ct2.pnl_realized IS NOT NULL"
+            "  )",
+            (days,)
+        )
+        return cur.rowcount
+
+
 # === Trader Lifecycle Helpers ===
 
 def get_lifecycle_trader(address: str) -> dict:

@@ -137,6 +137,12 @@ def check_trader_exits():
                         pnl
                     )
                     try:
+                        db.update_trade_score_outcome(
+                            cid, username, round(pnl, 2)
+                        )
+                    except Exception:
+                        pass
+                    try:
                         from dashboard.app import broadcast_event
                         broadcast_event("smart_sell", {
                             "trader": username,

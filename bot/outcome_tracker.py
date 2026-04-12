@@ -119,6 +119,14 @@ def track_outcomes():
     Only checks trades older than 2 hours (give markets time to develop).
     Marks resolved markets definitively, live markets tentatively (if >4h old).
     """
+    # Backfill: fill trade_scores.outcome_pnl from closed copy_trades
+    try:
+        n = db.backfill_trade_score_outcomes(days=30)
+        if n > 0:
+            logger.info("[OUTCOME] Backfilled %d trade_scores.outcome_pnl rows", n)
+    except Exception as e:
+        logger.debug("[OUTCOME] backfill error: %s", e)
+
     unchecked = db.get_blocked_trades_unchecked(limit=100)
     if not unchecked:
         return 0
