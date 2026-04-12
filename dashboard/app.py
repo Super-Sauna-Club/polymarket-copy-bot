@@ -1246,6 +1246,7 @@ def _find_stream(market_question: str) -> dict:
 
 
 @app.route("/api/stream/find")
+def api_stream_find():
     """Find livestream URL for a market question."""
     question = request.args.get("q", "")
     if not question:
@@ -1309,6 +1310,7 @@ def api_copy_history():
 # --- AI Analysis Endpoints ---
 
 @app.route("/api/ai/blocked-stats")
+def api_blocked_stats():
     """Get blocked trade statistics."""
     hours = int(request.args.get("hours", 48))
     stats = db.get_blocked_trade_stats(hours=hours)
@@ -1316,6 +1318,7 @@ def api_copy_history():
 
 
 @app.route("/api/ai/blocked-trades")
+def api_blocked_trades():
     """Get recent blocked trades."""
     hours = int(request.args.get("hours", 48))
     limit = int(request.args.get("limit", 200))
@@ -1324,6 +1327,7 @@ def api_copy_history():
 
 
 @app.route("/api/ai/recommendations")
+def api_ai_recommendations():
     """Get AI recommendations."""
     limit = int(request.args.get("limit", 5))
     recs = db.get_recommendations(limit=limit)
@@ -1551,6 +1555,7 @@ _TRADER_SPECIALS = {
 
 
 @app.route("/api/fun/trash-talk")
+def api_trash_talk():
     """Generate AI trash talk for recent trades."""
     talks = []
     with db.get_connection() as conn:
@@ -1595,6 +1600,7 @@ _TRADER_SPECIALS = {
 
 
 @app.route("/api/fun/trader-cards")
+def api_trader_cards():
     """Trader trading card data with stats, titles, specials."""
     cards = []
     with db.get_connection() as conn:
@@ -1656,6 +1662,7 @@ _TRADER_SPECIALS = {
 
 
 @app.route("/api/fun/ticker")
+def api_ticker():
     """Live ticker tape data — last 20 events."""
     events = []
     with db.get_connection() as conn:
@@ -1675,6 +1682,7 @@ _TRADER_SPECIALS = {
 
 
 @app.route("/api/fun/daily-pnl")
+def api_daily_pnl():
     """Daily P&L for konfetti check + calendar heatmap."""
     with db.get_connection() as conn:
         rows = conn.execute(
@@ -1688,6 +1696,7 @@ _TRADER_SPECIALS = {
 
 
 @app.route("/api/upgrade/clv")
+def api_clv():
     """CLV tracking stats."""
     from bot.clv_tracker import get_clv_by_trader, update_clv_for_closed_trades
     try:
@@ -1705,6 +1714,7 @@ def reports_gazette():
 
 
 @app.route("/api/fun/daily-reports")
+def api_daily_reports():
     """Latest daily reports for gazette."""
     import json as _json
     with db.get_connection() as conn:
