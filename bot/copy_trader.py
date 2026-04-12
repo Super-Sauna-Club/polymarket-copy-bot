@@ -258,6 +258,10 @@ def _reload_maps():
     _MIN_TRADER_USD_MAP = _parse_float_map(vals.get("MIN_TRADER_USD_MAP", ""), "MIN_TRADER_USD_MAP")
     _MIN_CONVICTION_MAP = _parse_float_map(vals.get("MIN_CONVICTION_RATIO_MAP", ""), "MIN_CONVICTION_RATIO_MAP")
 
+    # Refresh config.FOLLOWED_TRADERS so additions/removals via
+    # trader_lifecycle take effect without a process restart.
+    config.FOLLOWED_TRADERS = vals.get("FOLLOWED_TRADERS", "") or ""
+
     # Reload category blacklist
     _CATEGORY_BLACKLIST.clear()
     for entry in (vals.get("CATEGORY_BLACKLIST_MAP", "") or "").split(","):
