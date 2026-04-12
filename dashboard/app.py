@@ -1312,8 +1312,6 @@ def api_copy_history():
 @app.route("/api/ai/blocked-stats")
 def api_blocked_stats():
     """Get blocked trade statistics."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
     hours = int(request.args.get("hours", 48))
     stats = db.get_blocked_trade_stats(hours=hours)
     return jsonify(stats)
@@ -1322,8 +1320,6 @@ def api_blocked_stats():
 @app.route("/api/ai/blocked-trades")
 def api_blocked_trades():
     """Get recent blocked trades."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
     hours = int(request.args.get("hours", 48))
     limit = int(request.args.get("limit", 200))
     trades = db.get_blocked_trades_since(hours=hours, limit=limit)
@@ -1333,8 +1329,6 @@ def api_blocked_trades():
 @app.route("/api/ai/recommendations")
 def api_ai_recommendations():
     """Get AI recommendations."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
     limit = int(request.args.get("limit", 5))
     recs = db.get_recommendations(limit=limit)
     return jsonify(recs)
