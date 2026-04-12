@@ -45,8 +45,8 @@ def check_liquidity(condition_id, side, our_size):
         asks = book.asks or []
         total_ask_depth = 0
         for level in asks:
-            price = float(level.price or 0)
-            size = float(level.size or 0)
+            price = float(_get_attr_or_key(level, "price", 0) or 0)
+            size = float(_get_attr_or_key(level, "size", 0) or 0)
             total_ask_depth += price * size
 
         if total_ask_depth < MIN_BOOK_DEPTH_USD:
