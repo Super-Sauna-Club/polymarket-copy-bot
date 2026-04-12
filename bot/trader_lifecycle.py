@@ -164,6 +164,45 @@ def _check_kick_criteria():
                                       "30d PnL $%.2f" % pnl_30d, "", "Permanently removed")
 
 
+# NEUTRAL tier defaults — used to seed all per-trader maps when a new
+# trader gets promoted PAPER->LIVE. Without these, the new trader would
+# fall back to global defaults until auto_tuner first sees a trade from
+# them (~2h delay + restart). With these, they start at NEUTRAL tier
+# and the auto_tuner can adjust upward/downward as data accumulates.
+_NEUTRAL_DEFAULTS = {
+    "BET_SIZE_MAP": "0.03",
+    "TRADER_EXPOSURE_MAP": "0.10",
+    "MIN_ENTRY_PRICE_MAP": "0.38",
+    "MAX_ENTRY_PRICE_MAP": "0.75",
+    "MIN_TRADER_USD_MAP": "5",
+    "TAKE_PROFIT_MAP": "2.0",
+    "MAX_COPIES_PER_MARKET_MAP": "1",
+    "HEDGE_WAIT_TRADERS": "60",
+}
+
+
+def _seed_tier_defaults(content: str, name: str) -> str:
+    """For each per-trader map, add 'name:value' if name not already present.
+    Returns updated content. Does not write to disk.
+    """
+    for map_key, default_val in _NEUTRAL_DEFAULTS.items():
+        m = re.search(r'^(' + re.escape(map_key) + r'=)(.*)$', content, re.MULTILINE)
+        if not m:
+            continue
+        current = m.group(2).strip()
+        # Already in map? skip
+        if re.search(r'(^|,)\s*' + re.escape(name) + r'\s*:', current):
+            continue
+        new_entry = "%s:%s" % (name, default_val)
+        if current:
+            new_val = current + "," + new_entry
+        else:
+            new_val = new_entry
+        content = re.sub(r'^(' + re.escape(map_key) + r'=).*$',
+                         r'\g<1>' + new_val, content, flags=re.MULTILINE)
+    return content
+
+
 def _add_followed_trader(address: str, username: str):
     content = _read_settings()
     match = re.search(r'^FOLLOWED_TRADERS=(.*)$', content, re.MULTILINE)
@@ -174,8 +213,13 @@ def _add_followed_trader(address: str, username: str):
     new_val = ("%s,%s" % (current, entry)).strip(",")
     pattern = r'^(FOLLOWED_TRADERS=).*$'
     content = re.sub(pattern, r'\g<1>' + new_val, content, flags=re.MULTILINE)
+    # Seed NEUTRAL tier defaults in all per-trader maps so the new trader
+    # doesn't fall through to global defaults during the cold-start window.
+    if username:
+        content = _seed_tier_defaults(content, username)
     _write_settings(content)
-    logger.info("[LIFECYCLE] Added %s to FOLLOWED_TRADERS", username or address[:12])
+    logger.info("[LIFECYCLE] Added %s to FOLLOWED_TRADERS + seeded NEUTRAL tier defaults",
+                username or address[:12])
 
 
 def _remove_followed_trader(address: str, username: str):
