@@ -113,7 +113,7 @@ def update_adaptive_stop_loss():
             "WHERE wallet_username != '' AND status = 'closed'"
         ).fetchall()
 
-    SETTINGS_PATH = '/root/polymarket-copy-bot/settings.env'
+    SETTINGS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'settings.env')
 
     for trader_row in traders:
         trader = trader_row["wallet_username"]
