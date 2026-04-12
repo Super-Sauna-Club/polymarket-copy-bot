@@ -1727,7 +1727,10 @@ def copy_followed_wallets():
                 entry = entry.strip()
                 if ":" in entry:
                     parts = entry.split(":", 1)
-                    _hw_map[parts[0].strip().lower()] = int(parts[1].strip())
+                    try:
+                        _hw_map[parts[0].strip().lower()] = int(float(parts[1].strip()))
+                    except ValueError:
+                        pass
                 elif entry:
                     _hw_map[entry.lower()] = config.HEDGE_WAIT_SECS
             trader_name_lower = (wallet["username"] or "").lower()
