@@ -38,6 +38,11 @@ def run_brain():
             check_transitions()
         except Exception as e:
             logger.warning("[BRAIN] Lifecycle error: %s", e)
+        try:
+            _revert_obsolete_blacklists()
+            _revert_obsolete_tightens()
+        except Exception as e:
+            logger.warning("[BRAIN] Revert helpers error: %s", e)
         logger.info("[BRAIN] === Brain Engine complete ===")
     except Exception as e:
         logger.exception("[BRAIN] Fatal error: %s", e)
@@ -335,6 +340,143 @@ def _tighten_price_range(trader: str, reason: str):
                           "Reduce exposure to extreme price entries")
     logger.info("[BRAIN] Tightened %s: %.0f-%.0fc -> %.0f-%.0fc",
                 trader, old_min*100, old_max*100, new_min*100, new_max*100)
+
+
+def _revert_obsolete_blacklists():
+    """Review CATEGORY_BLACKLIST_MAP and remove entries where the underlying
+    condition no longer holds.
+
+    A blacklist was originally added when trader+category had WR<40% over
+    5+ closed trades. If 7d data now shows 3+ trades with WR>=50% and
+    total_pnl>=0, the blacklist is obsolete and we remove it. Returns
+    the number of reverts performed.
+    """
+    content = _read_settings()
+    match = re.search(r'^CATEGORY_BLACKLIST_MAP=(.*)$', content, re.MULTILINE)
+    if not match:
+        return 0
+    current = match.group(1)
+    if not current.strip():
+        return 0
+    bl_map = {}
+    for entry in current.split(","):
+        entry = entry.strip()
+        if ":" in entry:
+            t, cats = entry.split(":", 1)
+            bl_map[t.strip()] = set(cats.split("|"))
+    if not bl_map:
+        return 0
+
+    reverts = 0
+    with db.get_connection() as conn:
+        for trader in list(bl_map.keys()):
+            cats = bl_map[trader]
+            for cat in list(cats):
+                row = conn.execute(
+                    "SELECT COUNT(*) as cnt, "
+                    "SUM(CASE WHEN pnl_realized > 0 THEN 1 ELSE 0 END) as wins, "
+                    "SUM(COALESCE(pnl_realized, 0)) as pnl "
+                    "FROM copy_trades "
+                    "WHERE wallet_username = ? AND category = ? "
+                    "  AND status = 'closed' AND pnl_realized IS NOT NULL "
+                    "  AND closed_at >= datetime('now','-7 days','localtime')",
+                    (trader, cat)
+                ).fetchone()
+                cnt = row["cnt"] or 0
+                wins = row["wins"] or 0
+                pnl = row["pnl"] or 0
+                if cnt >= 3 and wins / cnt >= 0.50 and pnl >= 0:
+                    cats.discard(cat)
+                    db.log_brain_decision(
+                        "REVERT_BLACKLIST", "%s/%s" % (trader, cat),
+                        "7d: %d trades, %d wins, $%.2f PnL — condition cleared" % (cnt, wins, pnl),
+                        "", "Allow trader to trade this category again"
+                    )
+                    logger.info("[BRAIN] Reverted blacklist %s/%s", trader, cat)
+                    reverts += 1
+            if not cats:
+                del bl_map[trader]
+
+    if reverts > 0:
+        parts = []
+        for t, cats in sorted(bl_map.items()):
+            if cats:
+                parts.append("%s:%s" % (t, "|".join(sorted(cats))))
+        new_val = ",".join(parts)
+        _update_setting("CATEGORY_BLACKLIST_MAP", new_val)
+
+    return reverts
+
+
+def _revert_obsolete_tightens():
+    """Relax MIN/MAX_ENTRY_PRICE_MAP for traders whose 7d PnL is back in
+    positive territory.
+
+    Walks each trader's current min/max one step (0.05) toward the tier
+    default — never in one big jump. Returns the number of relaxations.
+    """
+    from bot.auto_tuner import _load_tiers, _classify_trader
+    tiers = _load_tiers()
+    content = _read_settings()
+    min_map = _parse_map(content, "MIN_ENTRY_PRICE_MAP")
+    max_map = _parse_map(content, "MAX_ENTRY_PRICE_MAP")
+    if not min_map and not max_map:
+        return 0
+
+    relaxes = 0
+    for trader in set(list(min_map.keys()) + list(max_map.keys())):
+        stats_7d = db.get_trader_rolling_pnl(trader, 7)
+        pnl_7d = stats_7d.get("total_pnl", 0) or 0
+        cnt_7d = stats_7d.get("cnt", 0) or 0
+        wins_7d = stats_7d.get("wins", 0) or 0
+        wr_7d = (wins_7d / cnt_7d * 100) if cnt_7d > 0 else 0
+        if pnl_7d <= 0 or cnt_7d < 3:
+            continue
+
+        stats_30d = db.get_trader_rolling_pnl(trader, 30)
+        pnl_30d = stats_30d.get("total_pnl", 0) or 0
+        cnt_30d = stats_30d.get("cnt", 0) or 0
+        wr_30d = (stats_30d.get("wins", 0) / cnt_30d * 100) if cnt_30d > 0 else 50
+
+        tier_name = _classify_trader(pnl_7d, wr_7d, cnt_7d, pnl_30d, wr_30d)
+        tier_cfg = tiers.get(tier_name, {})
+        tier_min = tier_cfg.get("min_entry")
+        tier_max = tier_cfg.get("max_entry")
+        if tier_min is None or tier_max is None:
+            continue
+
+        old_min = min_map.get(trader, tier_min)
+        old_max = max_map.get(trader, tier_max)
+        new_min = round(max(old_min - 0.05, tier_min), 2)
+        new_max = round(min(old_max + 0.05, tier_max), 2)
+        if new_min >= new_max:
+            continue
+        if new_min == old_min and new_max == old_max:
+            continue
+        min_map[trader] = new_min
+        max_map[trader] = new_max
+        db.log_brain_decision(
+            "RELAX_FILTER", trader,
+            "7d pnl=$%.2f wr=%.0f%% tier=%s" % (pnl_7d, wr_7d, tier_name),
+            "",
+            "Loosen price range toward tier default"
+        )
+        logger.info("[BRAIN] Relaxed %s price range: %.0f-%.0fc -> %.0f-%.0fc",
+                    trader, old_min * 100, old_max * 100, new_min * 100, new_max * 100)
+        relaxes += 1
+
+    if relaxes > 0:
+        map_str = ",".join("%s:%s" % (k, v) for k, v in sorted(min_map.items()))
+        pattern = r'^(MIN_ENTRY_PRICE_MAP=).*$'
+        if re.search(pattern, content, re.MULTILINE):
+            content = re.sub(pattern, r'\g<1>' + map_str, content, flags=re.MULTILINE)
+        map_str2 = ",".join("%s:%s" % (k, v) for k, v in sorted(max_map.items()))
+        pattern2 = r'^(MAX_ENTRY_PRICE_MAP=).*$'
+        if re.search(pattern2, content, re.MULTILINE):
+            content = re.sub(pattern2, r'\g<1>' + map_str2, content, flags=re.MULTILINE)
+        _write_settings(content)
+
+    return relaxes
 
 
 def _read_settings() -> str:
