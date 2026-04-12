@@ -177,7 +177,7 @@ function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').repl
     <div class="sec-hd">Trader Power Levels <span class="badge badge-live">LIVE</span></div>
     <table>
       <thead><tr>
-        <th></th><th>Trader</th><th>Power</th><th>Streak</th><th>7d WR</th>
+        <th></th><th>Trader</th><th>Copied</th><th>Power</th><th>Streak</th><th>1d WR</th><th>1d P&L</th><th>7d WR</th>
         <th>7d P&L</th><th>Kelly</th><th>Status</th>
       </tr></thead>
       <tbody id="tTraders"></tbody>
@@ -352,11 +352,15 @@ async function refresh(){
       if(streak>maxStreak) maxStreak=streak;
       const isOnFire=streak>=3;
       const kelly=pnl>0?fmt(0.063*wr/50,2)+'x':'0.5x';
+      const pnl1d=t.pnl_1d||0;const wr1d=t.winrate_1d||0;const copied=t.copied_trades||0;
       return `<tr${isOnFire?' class="on-fire"':''}>
         <td>${dot}</td>
         <td style="color:var(--gold);font-weight:600">${t.trader_name} ${isOnFire?'&#x1F525;':''}</td>
+        <td style="font-size:.7rem;font-weight:600">${copied}</td>
         <td><span class="power-level ${pl.cls}">${pl.power}</span> <span style="font-size:.55rem;color:var(--text-dim)">${pl.tier}</span></td>
         <td>${streak>0?'&#x1F525;'.repeat(Math.min(streak,5)):'--'}</td>
+        <td style="color:${wr1d>=60?'var(--green)':wr1d>=40?'var(--gold)':'var(--red)'}">${t.trades_1d>0?fmt(wr1d,1)+'%':'--'}</td>
+        <td class="${pnlClass(pnl1d)}">$${fmt(pnl1d)}</td>
         <td>${fmt(wr,1)}%</td>
         <td class="${pnlClass(pnl)}">$${fmt(pnl)}</td>
         <td style="font-size:.65rem">${kelly}</td>
