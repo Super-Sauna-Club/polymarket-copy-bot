@@ -41,24 +41,25 @@ class TestFeedbackLoop(unittest.TestCase):
         self.assertAlmostEqual(row["outcome_pnl"], 1.00, places=4)
 
     def test_update_matches_newest_when_multiple(self):
-        # Insert an older row with the same condition_id + trader.
+        # Insert a SECOND score row for the same (cid, trader) — the newer
+        # row (higher id) should get the update, the older row should remain
+        # NULL because its outcome was presumably resolved in a prior cycle.
         with self.db.get_connection() as conn:
             conn.execute(
                 "INSERT INTO trade_scores (condition_id, trader_name, side, "
-                "entry_price, market_question, score_total, action, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','-1 day'))",
+                "entry_price, market_question, score_total, action) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 ("cid-xyz", "trader1", "YES", 0.5, "Will X?", 60, "EXECUTE")
             )
         self.db.update_trade_score_outcome("cid-xyz", "trader1", 3.14)
         with self.db.get_connection() as conn:
             rows = conn.execute(
-                "SELECT score_total, outcome_pnl FROM trade_scores "
+                "SELECT id, score_total, outcome_pnl FROM trade_scores "
                 "WHERE condition_id='cid-xyz' ORDER BY id"
             ).fetchall()
-        # Only the newest (score_total=75, inserted in setUp, id=1) should have
-        # outcome_pnl set — the older row (-1 day) is outside the 120-minute window.
-        self.assertAlmostEqual(rows[0]["outcome_pnl"], 3.14, places=4)
-        self.assertIsNone(rows[1]["outcome_pnl"])
+        # rows[0] = original setUp row (id smaller), rows[1] = newer row
+        self.assertIsNone(rows[0]["outcome_pnl"])
+        self.assertAlmostEqual(rows[1]["outcome_pnl"], 3.14, places=4)
 
 
 if __name__ == "__main__":

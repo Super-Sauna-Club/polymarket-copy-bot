@@ -137,11 +137,9 @@ def check_trader_exits():
                         pnl
                     )
                     try:
-                        db.update_trade_score_outcome(
-                            cid, username, round(pnl, 2)
-                        )
-                    except Exception:
-                        pass
+                        db.update_trade_score_outcome(cid, username, pnl)
+                    except Exception as _score_e:
+                        logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                     try:
                         from dashboard.app import broadcast_event
                         broadcast_event("smart_sell", {

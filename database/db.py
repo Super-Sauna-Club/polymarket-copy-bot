@@ -1262,12 +1262,15 @@ def get_score_range_performance() -> list:
         return [dict(r) for r in rows]
 
 
-def update_trade_score_outcome(condition_id: str, trader_name: str, pnl: float,
-                               since_minutes: int = 120) -> int:
+def update_trade_score_outcome(condition_id: str, trader_name: str, pnl: float) -> int:
     """Write outcome_pnl onto the newest matching trade_scores row.
 
-    Match: condition_id + trader_name, within last `since_minutes` minutes,
-    where outcome_pnl IS NULL (don't overwrite). Returns rowcount updated.
+    Match: newest (highest id) trade_scores row with matching
+    condition_id + trader_name + outcome_pnl IS NULL. Returns rowcount.
+
+    NO_REBUY_MINUTES=120 guarantees at most one NULL-outcome score row
+    per (condition_id, trader_name) at any moment in production, so the
+    newest-by-id match is deterministic without a time window.
     """
     with get_connection() as conn:
         cur = conn.execute(
@@ -1276,10 +1279,9 @@ def update_trade_score_outcome(condition_id: str, trader_name: str, pnl: float,
             "    SELECT id FROM trade_scores "
             "    WHERE condition_id = ? AND trader_name = ? "
             "      AND outcome_pnl IS NULL "
-            "      AND created_at >= datetime('now','-' || ? || ' minutes','localtime') "
             "    ORDER BY id DESC LIMIT 1"
             ")",
-            (pnl, condition_id, trader_name, since_minutes)
+            (pnl, condition_id, trader_name)
         )
         return cur.rowcount
 

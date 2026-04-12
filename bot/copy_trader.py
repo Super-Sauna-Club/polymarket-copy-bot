@@ -2236,10 +2236,10 @@ def update_copy_positions():
                                             "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:40], pnl), pnl)
                             try:
                                 db.update_trade_score_outcome(
-                                    trade_cid, trade.get("wallet_username","") or "", round(pnl, 2)
+                                    trade_cid, trade.get("wallet_username","") or "", pnl
                                 )
-                            except Exception:
-                                pass
+                            except Exception as _score_e:
+                                logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                             continue
 
                         # Still open → update price (WebSocket first, then Gamma REST)
@@ -2281,10 +2281,10 @@ def update_copy_positions():
                                                     "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:35], pnl), round(pnl, 2))
                                     try:
                                         db.update_trade_score_outcome(
-                                            trade_cid, trade.get("wallet_username","") or "", round(pnl, 2)
+                                            trade_cid, trade.get("wallet_username","") or "", pnl
                                         )
-                                    except Exception:
-                                        pass
+                                    except Exception as _score_e:
+                                        logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                                     continue
 
                             # Trailing Stop: once position was 20%+ up, trail sell point below peak.
@@ -2319,10 +2319,10 @@ def update_copy_positions():
                                                     "#%d %s — peak %.0fc, sold %.0fc, P&L $%+.2f" % (trade["id"], trade["market_question"][:35], _peak * 100, effective_price * 100, pnl), round(pnl, 2))
                                     try:
                                         db.update_trade_score_outcome(
-                                            trade_cid, trade.get("wallet_username","") or "", round(pnl, 2)
+                                            trade_cid, trade.get("wallet_username","") or "", pnl
                                         )
-                                    except Exception:
-                                        pass
+                                    except Exception as _score_e:
+                                        logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                                     continue
 
                             # Take-Profit: per-trader override via TAKE_PROFIT_MAP
