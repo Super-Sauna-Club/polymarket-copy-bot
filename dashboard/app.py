@@ -1405,7 +1405,7 @@ def api_trader_performance():
             ).fetchone()
             # Count total copied trades (all time from copy_trades)
             copied = conn.execute(
-                "SELECT COUNT(*) as cnt FROM copy_trades WHERE wallet_username = ?", (name,)
+                "SELECT COUNT(*) as cnt FROM copy_trades WHERE wallet_username = ? AND (actual_size > 0 OR shares_held > 0)", (name,)
             ).fetchone()
             d["copied_trades"] = copied["cnt"] if copied else 0
             # 1d rolling stats from copy_trades directly
@@ -1415,7 +1415,7 @@ def api_trader_performance():
                 "SUM(CASE WHEN pnl_realized < 0 THEN 1 ELSE 0 END) as losses, "
                 "COALESCE(SUM(pnl_realized), 0) as pnl "
                 "FROM copy_trades WHERE wallet_username = ? AND status = 'closed' "
-                "AND closed_at > datetime('now', '-1 day')", (name,)
+                "AND closed_at > datetime('now', '-1 day') AND (actual_size > 0 OR shares_held > 0)", (name,)
             ).fetchone()
             d["pnl_1d"] = round(day_stats["pnl"], 2) if day_stats else 0
             d["trades_1d"] = day_stats["cnt"] if day_stats else 0
