@@ -10,10 +10,7 @@
     <div class="container">
         <header>
             <h1>Wallet Detail</h1>
-            <div class="nav">
-                <a href="/">Dashboard</a>
-                <a href="/reports">Reports</a>
-            </div>
+            {% with active=None %}{% include '_nav.html' %}{% endwith %}
         </header>
 
         {% if wallet %}

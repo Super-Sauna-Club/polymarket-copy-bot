@@ -13,11 +13,7 @@
     <div class="container">
         <header>
             <div style="display:flex;align-items:center;gap:8px"><img src="/static/logo.png" alt="SSC" style="height:36px"><div><h1>Poly Copybot</h1><div style="font-size:.8rem;color:#5c5a6a;letter-spacing:.12em;font-weight:300">by Super Sauna Club</div></div></div>
-            <div class="nav">
-                <a href="/copy">Terminal</a>
-                <a href="/wallets">Settings</a>
-                <a href="/copy/history">History</a>
-            </div>
+            {% with active='copy' %}{% include '_nav.html' %}{% endwith %}
         </header>
 
         <!-- Trader Suche -->

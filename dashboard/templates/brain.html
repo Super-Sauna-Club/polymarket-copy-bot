@@ -132,11 +132,7 @@ tr:hover td{background:rgba(201,168,76,0.03)}
       <span class="heartbeat" id="heartIcon" style="font-size:1.2rem">&#x2764;</span>
       <span style="font-size:.65rem;color:var(--text-dim);font-family:var(--mono)" id="brainClock"></span>
     </div>
-    <nav class="nav">
-      <a href="/copy">Terminal</a>
-      <a href="/brain" class="act">Brain</a>
-      <a href="/wallets">Settings</a>
-    </nav>
+    {% with active='brain' %}{% include '_nav.html' %}{% endwith %}
   </div>
   <script>
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}setInterval(()=>{const d=new Date();document.getElementById('brainClock').textContent=d.toLocaleTimeString('de',{hour:'2-digit',minute:'2-digit',second:'2-digit'})},1000)</script>
