@@ -226,21 +226,14 @@ def _add_followed_trader(address: str, username: str):
     pattern = r'^(FOLLOWED_TRADERS=).*$'
     content = re.sub(pattern, r'\g<1>' + new_val, content, flags=re.MULTILINE)
 
-    # Auto-add starter settings for new trader
+    # PATCH-024: Use _seed_tier_defaults for complete NEUTRAL tier seeding
     name = username or address[:12]
-    _maps = {
-        "BET_SIZE_MAP": (name, "0.02"),
-        "TRADER_EXPOSURE_MAP": (name, "0.05"),
-        "AVG_TRADER_SIZE_MAP": (name, "20"),
-    }
-    for map_key, (trader_id, default_val) in _maps.items():
-        m = re.search(r'^(%s=)(.*)$' % map_key, content, re.MULTILINE)
-        if m:
-            current_map = m.group(2).strip()
-            if trader_id.lower() not in current_map.lower():
-                new_map = ("%s,%s:%s" % (current_map, trader_id, default_val)).strip(",")
-                content = re.sub(r'^(%s=).*$' % map_key, r'\g<1>' + new_map, content, flags=re.MULTILINE)
-                logger.info("[LIFECYCLE] Auto-settings: %s +%s:%s", map_key, trader_id, default_val)
+    content = _seed_tier_defaults(content, name)
+    # Also seed AVG_TRADER_SIZE_MAP (not in _NEUTRAL_DEFAULTS)
+    avg_m = re.search(r'^(AVG_TRADER_SIZE_MAP=)(.*)$', content, re.MULTILINE)
+    if avg_m and name.lower() not in avg_m.group(2).lower():
+        new_avg = ("%s,%s:20" % (avg_m.group(2).strip(), name)).strip(",")
+        content = re.sub(r'^(AVG_TRADER_SIZE_MAP=).*$', r'\g<1>' + new_avg, content, flags=re.MULTILINE)
 
     _write_settings(content)
     logger.info("[LIFECYCLE] Added %s to FOLLOWED_TRADERS + seeded NEUTRAL tier defaults",

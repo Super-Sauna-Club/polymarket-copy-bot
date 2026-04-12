@@ -418,7 +418,7 @@ def _revert_obsolete_tightens():
     """
     from bot.auto_tuner import _load_tiers, _classify_trader
     tiers = _load_tiers()
-    content = _read_settings()
+    content = _read_settings()  # PATCH-024: always re-read fresh to avoid stale data
     min_map = _parse_map(content, "MIN_ENTRY_PRICE_MAP")
     max_map = _parse_map(content, "MAX_ENTRY_PRICE_MAP")
     if not min_map and not max_map:
@@ -467,6 +467,8 @@ def _revert_obsolete_tightens():
         relaxes += 1
 
     if relaxes > 0:
+        # PATCH-024: Re-read settings fresh before writing to avoid overwriting mid-cycle changes
+        content = _read_settings()
         map_str = ",".join("%s:%s" % (k, v) for k, v in sorted(min_map.items()))
         pattern = r'^(MIN_ENTRY_PRICE_MAP=).*$'
         if re.search(pattern, content, re.MULTILINE):

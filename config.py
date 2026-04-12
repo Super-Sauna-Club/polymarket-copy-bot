@@ -232,3 +232,6 @@ TRAILING_STOP_ENABLED = os.getenv('TRAILING_STOP_ENABLED', 'true').lower() in ('
 TRAILING_STOP_MARGIN = float(os.getenv('TRAILING_STOP_MARGIN', '0.10'))
 # Min peak gain before trailing activates (e.g. 0.03 = price must have been 3c above entry)
 TRAILING_STOP_ACTIVATE = float(os.getenv('TRAILING_STOP_ACTIVATE', '0.20'))
+
+AUTONOMOUS_PAPER_MODE = os.getenv("AUTONOMOUS_PAPER_MODE", "true").lower() in ("true", "1", "yes")
+MAX_RESOLVE_HOURS = int(os.getenv("MAX_RESOLVE_HOURS", "24"))

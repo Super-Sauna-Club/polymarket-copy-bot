@@ -591,13 +591,14 @@ def _process_pending_buys(balance: float, total_invested: float) -> int:
         # LIVE_MODE: echte Order platzieren BEVOR DB-Record erstellt wird
         if LIVE_MODE and cid:
             try:
-                order_resp = buy_shares(cid, trade_data["side"], size, trade_data["entry_price"])
-                if not order_resp:
-                    logger.warning("[PENDING] Order failed, skipping: %s", trade_data["market_question"][:40])
-                    expired_keys.append(cid)
-                    continue
-                _apply_fill_details(trade_data, order_resp, size, trade_data["entry_price"])
-                size = trade_data["size"]
+                with _buy_lock:  # PATCH-024: prevent concurrent buy race
+                    order_resp = buy_shares(cid, trade_data["side"], size, trade_data["entry_price"])
+                    if not order_resp:
+                        logger.warning("[PENDING] Order failed, skipping: %s", trade_data["market_question"][:40])
+                        expired_keys.append(cid)
+                        continue
+                    _apply_fill_details(trade_data, order_resp, size, trade_data["entry_price"])
+                    size = trade_data["size"]
             except Exception as _pe:
                 logger.warning("[PENDING] Buy error: %s", _pe)
                 expired_keys.append(cid)
@@ -689,6 +690,9 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 continue
 
             # Duplicate market check (another trader already has this market)
+            # PATCH-024: skip side-unaware check if side is empty from API
+            if not _s:
+                _s = pos.get("outcome_label", "") or pos.get("outcome", "") or ""
             if cid and db.is_market_already_open(cid, from_wallet=address, side=_s):
                 _log_block(username, _q, cid, _s, entry_price_raw, "cross_trader_dupe",
                            "market open from another trader", "diff")
@@ -888,7 +892,11 @@ def _position_diff_scan(address: str, username: str, balance: float,
                     _apply_fill_details(trade, order_resp, size, entry_price)
                     size = trade["size"]
 
+            try:
                 trade_id = db.create_copy_trade(trade)
+            except Exception as _ie:
+                logger.warning("[DIFF] DB insert failed (duplicate?): %s", _ie)
+                continue
             if trade_id:
                 new_trades += 1
                 total_invested += size
