@@ -1007,9 +1007,10 @@ def copy_followed_wallets():
             logger.info("[SKIP] Max daily trades reached (%d/%d)", _today_ct, config.MAX_DAILY_TRADES)
             return 0
 
-    # WebSocket health check
+    # WebSocket health check — debug only; WS is idle-by-design when no open positions,
+    # and entry pricing uses HTTP anyway. Real problems are caught by reconnect logic.
     if not price_tracker.is_connected:
-        logger.warning("[WS] Price tracker disconnected — live prices unavailable, using fallbacks")
+        logger.debug("[WS] Price tracker disconnected — using HTTP fallbacks")
 
     logger.info("[SCAN] Checking %d wallets for new positions...", len(followed))
 
