@@ -52,7 +52,7 @@ def init_db():
 
 @contextmanager
 def get_connection():
-    conn = sqlite3.connect(config.DB_PATH)
+    conn = sqlite3.connect(config.DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -363,11 +363,16 @@ def close_copy_trade(trade_id: int, pnl_realized: float, close_price: float = No
 
 def reopen_copy_trade(trade_id: int):
     """Re-open a copy trade that was incorrectly closed."""
-    with get_connection() as conn:
-        conn.execute(
-            "UPDATE copy_trades SET status='open', pnl_realized=NULL, closed_at=NULL WHERE id=?",
-            (trade_id,)
-        )
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE copy_trades SET status='open', pnl_realized=NULL, closed_at=NULL WHERE id=?",
+                (trade_id,)
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("[REOPEN] UNIQUE constraint on trade %s: %s", trade_id, e)
+        return None
 
 
 def get_copy_trade_stats():
@@ -434,11 +439,12 @@ def count_copies_for_market(wallet_address: str, condition_id: str) -> int:
         return row["cnt"] if row else 0
 
 
-def is_market_already_open(condition_id: str, from_wallet: str = "") -> bool:
-    """Ist dieser Market bereits offen von einem ANDEREN Trader?
+def is_market_already_open(condition_id: str, from_wallet: str = "", side: str = "") -> bool:
+    """Ist dieser Market bereits offen von einem ANDEREN Trader (gleiche Seite)?
 
-    Same trader double-down → erlaubt (from_wallet ist ausgenommen)
-    Anderer Trader kauft dasselbe → geblockt (Duplikat)
+    Same trader double-down -> erlaubt (from_wallet ist ausgenommen)
+    Anderer Trader kauft exakt dieselbe Seite -> geblockt (Duplikat)
+    Anderer Trader kauft andere Seite (z.B. Over vs Under) -> erlaubt
     Also counts trades closed in the last 30 minutes (prevents rapid re-entry).
     """
     if not condition_id:
@@ -446,12 +452,27 @@ def is_market_already_open(condition_id: str, from_wallet: str = "") -> bool:
     _window = max(config.NO_REBUY_MINUTES, 30) if config.NO_REBUY_MINUTES > 0 else 30
     _window_mod = "-%d minutes" % int(_window)
     with get_connection() as conn:
-        if from_wallet:
+        if from_wallet and side:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM copy_trades WHERE condition_id=? "
+                "AND side=? "
+                "AND (status='open' OR (status='closed' AND closed_at > datetime('now', ?, 'localtime'))) "
+                "AND wallet_address!=?",
+                (condition_id, side, _window_mod, from_wallet)
+            ).fetchone()
+        elif from_wallet:
             row = conn.execute(
                 "SELECT COUNT(*) as cnt FROM copy_trades WHERE condition_id=? "
                 "AND (status='open' OR (status='closed' AND closed_at > datetime('now', ?, 'localtime'))) "
                 "AND wallet_address!=?",
                 (condition_id, _window_mod, from_wallet)
+            ).fetchone()
+        elif side:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM copy_trades WHERE condition_id=? "
+                "AND side=? "
+                "AND (status='open' OR (status='closed' AND closed_at > datetime('now', ?, 'localtime')))",
+                (condition_id, side, _window_mod)
             ).fetchone()
         else:
             row = conn.execute(
@@ -665,7 +686,7 @@ def get_or_create_scan_config(wallet_address: str) -> dict:
             "INSERT INTO trader_scan_config (wallet_address, last_position_count, target_scan_count, scans_completed, last_closed_count, last_trade_timestamp) VALUES (?, 0, 100, 0, 0, 0)",
             (wallet_address,)
         )
-        conn.commit()
+        # conn.commit()  # PATCH-023: removed, context manager handles commit
         return {"last_position_count": 0, "target_scan_count": 100, "scans_completed": 0, "last_closed_count": 0, "last_trade_timestamp": 0}
 
 
@@ -1335,9 +1356,23 @@ def get_lifecycle_traders_by_status(status: str) -> list:
 def upsert_lifecycle_trader(address: str, username: str, status: str, source: str = ""):
     with get_connection() as conn:
         existing = conn.execute(
-            "SELECT id FROM trader_lifecycle WHERE address = ?", (address,)
+            "SELECT id, status, status_changed_at FROM trader_lifecycle WHERE address = ?", (address,)
         ).fetchone()
         if existing:
+            # KICKED traders get 30 day cooldown before re-entry
+            if existing["status"] == "KICKED":
+                from datetime import datetime, timedelta
+                changed = datetime.fromisoformat(existing["status_changed_at"]) if existing["status_changed_at"] else datetime.now()
+                if (datetime.now() - changed).days < 49:
+                    return  # Still in cooldown, ignore
+                # Cooldown over — reset pause_count and let them back in
+                conn.execute(
+                    "UPDATE trader_lifecycle SET status = ?, username = ?, source = ?, "
+                    "pause_count = 0, paper_trades = 0, paper_pnl = 0, paper_wr = 0, "
+                    "status_changed_at = datetime('now','localtime') WHERE address = ?",
+                    (status, username, source, address)
+                )
+                return
             conn.execute(
                 "UPDATE trader_lifecycle SET status = ?, username = ?, "
                 "status_changed_at = datetime('now','localtime') WHERE address = ?",

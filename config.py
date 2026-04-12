@@ -75,6 +75,7 @@ MAX_ENTRY_PRICE_MAP = os.getenv("MAX_ENTRY_PRICE_MAP", "")
 MAX_SPREAD = float(os.getenv("MAX_SPREAD", "0.05"))
 MAX_FEE_BPS = int(os.getenv("MAX_FEE_BPS", "0"))  # Max fee in bps (0=disabled, 500=skip >5% fee). Achtung: Esports hat 10% Fee!
 MAX_COPIES_PER_MARKET = int(os.getenv("MAX_COPIES_PER_MARKET", "1"))
+MAX_COPIES_PER_MARKET_MAP = os.getenv("MAX_COPIES_PER_MARKET_MAP", "")
 # Per-trader category blacklist: "trader:cat1|cat2,trader:cat1" (categories: NBA,MLB,NHL,NFL,Tennis,Soccer,CS,LoL,Valorant,Dota,Geopolitics,Cricket)
 CATEGORY_BLACKLIST_MAP = os.getenv("CATEGORY_BLACKLIST_MAP", "")
 # Min conviction ratio: only copy trades where trader bets >= X times their average (0=disabled)
@@ -83,6 +84,7 @@ MIN_CONVICTION_RATIO = float(os.getenv("MIN_CONVICTION_RATIO", "0"))
 MIN_CONVICTION_RATIO_MAP = os.getenv("MIN_CONVICTION_RATIO_MAP", "")
 ENTRY_TRADE_SEC = int(os.getenv("ENTRY_TRADE_SEC", "300"))
 MAX_HOURS_BEFORE_EVENT = float(os.getenv("MAX_HOURS_BEFORE_EVENT", "0"))  # Only buy X hours before event starts (0=disabled)
+MAX_MARKET_HOURS = float(os.getenv("MAX_MARKET_HOURS", "0"))  # Only buy markets resolving within X hours (0=disabled)
 EVENT_WAIT_MIN_CASH = float(os.getenv("EVENT_WAIT_MIN_CASH", "0"))  # Only queue distant events when cash below $X (0=always queue)
 # Max price drift allowed when executing queued trades (per price range)
 QUEUE_DRIFT_LOTTERY = float(os.getenv("QUEUE_DRIFT_LOTTERY", "0.30"))   # <20c: 30%
@@ -230,3 +232,6 @@ TRAILING_STOP_ENABLED = os.getenv('TRAILING_STOP_ENABLED', 'true').lower() in ('
 TRAILING_STOP_MARGIN = float(os.getenv('TRAILING_STOP_MARGIN', '0.10'))
 # Min peak gain before trailing activates (e.g. 0.03 = price must have been 3c above entry)
 TRAILING_STOP_ACTIVATE = float(os.getenv('TRAILING_STOP_ACTIVATE', '0.20'))
+
+AUTONOMOUS_PAPER_MODE = os.getenv("AUTONOMOUS_PAPER_MODE", "true").lower() in ("true", "1", "yes")
+MAX_RESOLVE_HOURS = int(os.getenv("MAX_RESOLVE_HOURS", "24"))

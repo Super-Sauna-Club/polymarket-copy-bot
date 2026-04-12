@@ -15,15 +15,16 @@ logger = logging.getLogger(__name__)
 
 SETTINGS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'settings.env')
 
-PAPER_MIN_TRADES = 15
-PAPER_MIN_WR = 52.0
-PAPER_REHAB_MIN_TRADES = 20
-PAPER_REHAB_MIN_WR = 55.0
+PAPER_MIN_TRADES = 25
+PAPER_MIN_WR = 58.0
+PAPER_REHAB_MIN_TRADES = 25
+PAPER_REHAB_MIN_WR = 58.0
 MAX_PAUSE_COUNT = 2
-KICK_30D_PNL = -30.0
-OBSERVE_HOURS = 48
+KICK_30D_PNL = -50.0
+OBSERVE_HOURS = 24
 PAUSE_DURATIONS = {"streak": 24, "pnl_10": 48, "pnl_20": 72}
-REHAB_DAYS = 7
+REHAB_DAYS = 3
+PAPER_MAX_TRADES = 500  # Nach 500 Paper-Trades ohne Erfolg -> KICK
 
 
 def check_transitions():
@@ -47,9 +48,9 @@ def pause_trader(trader_name: str, reason: str):
     address = wallet["wallet_address"]
     stats = db.get_trader_rolling_pnl(trader_name, 7)
     pnl_7d = stats.get("total_pnl", 0) or 0
-    if pnl_7d < -20:
+    if pnl_7d < -30:
         hours = PAUSE_DURATIONS["pnl_20"]
-    elif pnl_7d < -10:
+    elif pnl_7d < -20:
         hours = PAUSE_DURATIONS["pnl_10"]
     else:
         hours = PAUSE_DURATIONS["streak"]
@@ -59,8 +60,8 @@ def pause_trader(trader_name: str, reason: str):
         db.upsert_lifecycle_trader(address, trader_name, "LIVE_FOLLOW", "manual")
     db.update_lifecycle_status(address, "PAUSED", reason)
     db.set_lifecycle_pause_until(address, pause_until)
-    _remove_followed_trader(address, trader_name)
-    logger.info("[LIFECYCLE] PAUSED %s for %dh: %s", trader_name, hours, reason)
+    # _remove_followed_trader(address, trader_name)  # DISABLED: settings managed manually
+    logger.info("[LIFECYCLE] PAUSED %s for %dh (DB only, not removed from settings): %s", trader_name, hours, reason)
     try:
         from dashboard.app import broadcast_event
         broadcast_event("brain_decision", {
@@ -108,6 +109,17 @@ def _check_paper_to_live():
                                   json.dumps({"paper_trades": paper_trades, "paper_wr": paper_wr,
                                               "paper_pnl": paper_pnl}),
                                   "New live trader added")
+        elif paper_trades >= PAPER_MAX_TRADES:
+            db.update_lifecycle_status(t["address"], "KICKED",
+                                      "Paper failed after %d trades: %.1f%% WR, $%.2f PnL" % (
+                                          paper_trades, paper_wr, paper_pnl))
+            logger.info("[LIFECYCLE] %s: KICKED (paper failed after %d trades, %.1f%% WR)",
+                        t.get("username", t["address"][:12]), paper_trades, paper_wr)
+            db.log_brain_decision("KICK_TRADER", t.get("username", t["address"][:12]),
+                                  "Paper failed after %d trades" % paper_trades,
+                                  json.dumps({"paper_trades": paper_trades, "paper_wr": paper_wr,
+                                              "paper_pnl": paper_pnl}),
+                                  "Removed: could not meet criteria in 500 trades")
 
 
 def _check_paused_to_rehab():
@@ -213,16 +225,24 @@ def _add_followed_trader(address: str, username: str):
     new_val = ("%s,%s" % (current, entry)).strip(",")
     pattern = r'^(FOLLOWED_TRADERS=).*$'
     content = re.sub(pattern, r'\g<1>' + new_val, content, flags=re.MULTILINE)
-    # Seed NEUTRAL tier defaults in all per-trader maps so the new trader
-    # doesn't fall through to global defaults during the cold-start window.
-    if username:
-        content = _seed_tier_defaults(content, username)
+
+    # PATCH-024: Use _seed_tier_defaults for complete NEUTRAL tier seeding
+    name = username or address[:12]
+    content = _seed_tier_defaults(content, name)
+    # Also seed AVG_TRADER_SIZE_MAP (not in _NEUTRAL_DEFAULTS)
+    avg_m = re.search(r'^(AVG_TRADER_SIZE_MAP=)(.*)$', content, re.MULTILINE)
+    if avg_m and name.lower() not in avg_m.group(2).lower():
+        new_avg = ("%s,%s:20" % (avg_m.group(2).strip(), name)).strip(",")
+        content = re.sub(r'^(AVG_TRADER_SIZE_MAP=).*$', r'\g<1>' + new_avg, content, flags=re.MULTILINE)
+
     _write_settings(content)
     logger.info("[LIFECYCLE] Added %s to FOLLOWED_TRADERS + seeded NEUTRAL tier defaults",
                 username or address[:12])
 
 
 def _remove_followed_trader(address: str, username: str):
+    logger.info("[LIFECYCLE] Auto-remove disabled — settings managed manually: %s", username or address[:12])
+    return  # DISABLED: settings managed manually
     content = _read_settings()
     match = re.search(r'^FOLLOWED_TRADERS=(.*)$', content, re.MULTILINE)
     if not match:

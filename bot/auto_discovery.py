@@ -7,11 +7,12 @@ import time
 import requests
 from database import db
 from bot.wallet_scanner import fetch_wallet_recent_trades
+import config
 
 logger = logging.getLogger(__name__)
 
 LEADERBOARD_URL = "https://data-api.polymarket.com/v1/leaderboard"
-MAX_CANDIDATES = 50
+MAX_CANDIDATES = 100
 PROMOTE_MIN_TRADES = 50
 PROMOTE_MIN_WINRATE = 55.0
 
@@ -21,8 +22,8 @@ _followed_addresses = set()
 POLYSCAN_API = "https://gzydspfquuaudqeztorw.supabase.co/functions/v1/agent-api"
 POLYSCAN_AGENT_ID = "maryyo-copybot"
 MIN_WHALE_WIN_RATE = 55.0   # Min WR to consider a whale
-MIN_WHALE_TRADES = 30       # Min trades for whale validation
-MIN_WHALE_PNL = 500         # Min PnL in USD
+MIN_WHALE_TRADES = 20       # Min trades for whale validation
+MIN_WHALE_PNL = 200         # Min PnL in USD
 
 
 def scan_polyscan_whales():
@@ -136,21 +137,29 @@ def _load_followed():
 
 
 def scan_leaderboard():
-    """Leaderboard scannen und neue Kandidaten finden."""
+    """Leaderboard scannen — multiple Zeitraeume fuer bessere Abdeckung."""
     _load_followed()
     try:
         all_leaders = []
-        for offset in range(0, 100, 50):
-            resp = requests.get(LEADERBOARD_URL, params={
-                "limit": 50, "offset": offset,
-                "timePeriod": "ALL", "orderBy": "PNL"
-            }, timeout=15)
-            resp.raise_for_status()
-            page = resp.json()
-            if not page:
-                break
-            all_leaders.extend(page)
+        seen_addresses = set()
+        # ALL-TIME + 30d + 7d + 1d — findet etablierte UND aufsteigende Trader
+        for period in ["ALL", "30d", "7d", "1d"]:
+            for offset in range(0, 100, 50):
+                resp = requests.get(LEADERBOARD_URL, params={
+                    "limit": 50, "offset": offset,
+                    "timePeriod": period, "orderBy": "PNL"
+                }, timeout=15)
+                resp.raise_for_status()
+                page = resp.json()
+                if not page:
+                    break
+                for entry in page:
+                    addr = (entry.get("proxyWallet") or entry.get("userAddress") or "").lower()
+                    if addr and addr not in seen_addresses:
+                        seen_addresses.add(addr)
+                        all_leaders.append(entry)
         leaders = all_leaders
+        logger.info("[DISCOVERY] Scanned 4 periods (ALL/30d/7d/1d), %d unique traders", len(leaders))
     except Exception as e:
         logger.error("[DISCOVERY] Leaderboard fetch failed: %s", e)
         return
@@ -188,36 +197,95 @@ def scan_leaderboard():
                 new_count, len(current_candidates))
 
 
+
+def _load_settings_filters():
+    """Load filters from settings.env for realistic paper simulation."""
+    filters = {
+        "min_entry_price": config.MIN_ENTRY_PRICE,
+        "max_entry_price": config.MAX_ENTRY_PRICE,
+        "bet_size_pct": config.BET_SIZE_PCT,
+        "min_trade_size": config.MIN_TRADE_SIZE,
+        "max_position_size": config.MAX_POSITION_SIZE,
+    }
+    try:
+        from bot.copy_trader import _detect_category
+        filters["detect_category"] = _detect_category
+    except ImportError:
+        filters["detect_category"] = None
+    return filters
+
+
+def _paper_price_ok(price, filters):
+    """Check if price is within our entry range."""
+    return filters["min_entry_price"] <= price <= filters["max_entry_price"]
+
+
+def _paper_bet_size(price, filters):
+    """Calculate realistic bet size like copy_trader does."""
+    portfolio = config.STARTING_BALANCE
+    try:
+        stats = db.get_copy_trade_stats()
+        portfolio = config.STARTING_BALANCE + stats.get("total_pnl", 0)
+    except Exception:
+        pass
+    size = portfolio * filters["bet_size_pct"]
+    size = max(filters["min_trade_size"], min(filters["max_position_size"], size))
+    return round(size, 2)
+
+
 def paper_follow_candidates():
-    """Paper-follow: beobachte Trades der Kandidaten ohne echtes Geld."""
-    # First close resolved paper trades
+    """Paper-follow: beobachte Trades der Kandidaten mit echten Filtern."""
     try:
         close_paper_trades()
     except Exception as e:
         logger.debug("[DISCOVERY] Paper close error: %s", e)
 
+    filters = _load_settings_filters()
     candidates = db.get_all_candidates("observing")
     for cand in candidates[:20]:
         address = cand["address"]
         try:
             trades = fetch_wallet_recent_trades(address, limit=10)
             for t in trades:
-                if t.get("trade_type", "").upper() == "BUY" and t.get("condition_id"):
-                    db.add_paper_trade(
-                        address, t["condition_id"],
-                        t.get("market_question", ""), t.get("side", ""),
-                        t.get("price", 0)
-                    )
+                if t.get("trade_type", "").upper() != "BUY" or not t.get("condition_id"):
+                    continue
+
+                price = t.get("price", 0)
+                question = t.get("market_question", "")
+
+                # Filter 1: Price range (same as copy_trader)
+                if not _paper_price_ok(price, filters):
+                    logger.debug("[PAPER] SKIP %s: price %.2f outside %.2f-%.2f",
+                                 address[:10], price, filters["min_entry_price"], filters["max_entry_price"])
+                    continue
+
+                # Filter 2: Category blacklist (global)
+                if filters.get("detect_category"):
+                    cat = filters["detect_category"](question)
+                    global_bl = getattr(config, "GLOBAL_CATEGORY_BLACKLIST", "")
+                    if global_bl and cat and cat.lower() in global_bl.lower():
+                        logger.debug("[PAPER] SKIP %s: category %s blacklisted", address[:10], cat)
+                        continue
+
+                bet_size = _paper_bet_size(price, filters)
+                shares = bet_size / price if price > 0 else 0
+
+                db.add_paper_trade(
+                    address, t["condition_id"],
+                    question, t.get("side", ""),
+                    price
+                )
+                logger.debug("[PAPER] Track %s: %s @ %.0fc ($%.2f -> %.1f shares)",
+                             address[:10], question[:30], price*100, bet_size, shares)
         except Exception as e:
             logger.debug("[DISCOVERY] Paper-follow error for %s: %s", address[:10], e)
 
 
 def close_paper_trades():
-    """Close paper trades: resolved markets OR older than 12h."""
+    """Close paper trades mit realistischer PnL-Berechnung (echte Bet-Sizes)."""
     from datetime import datetime, timedelta
 
     with db.get_connection() as conn:
-        # Get all open paper trades older than 12h
         cutoff = (datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M:%S")
         old_papers = conn.execute(
             "SELECT id, candidate_address, condition_id, side, entry_price, created_at "
@@ -230,26 +298,26 @@ def close_paper_trades():
 
     closed = 0
     from bot.ws_price_tracker import price_tracker
+    filters = _load_settings_filters()
 
     for p in old_papers:
         cid = p["condition_id"]
         entry = p["entry_price"] or 0.5
         side = (p["side"] or "YES").upper()
 
-        # Try to get current price
         price = price_tracker.get_price(cid, side)
-
         if price is None:
-            # No price available — estimate based on time passed (assume small loss)
-            price = entry * 0.95  # Assume 5% loss if no data
+            price = entry * 0.95
 
-        # Calculate P&L
+        # Realistic PnL: shares * price_change
+        bet_size = _paper_bet_size(entry, filters)
+        shares = bet_size / entry if entry > 0 else 0
+
         if side == "NO":
-            pnl = round((entry - price) * 1.0, 4)
+            pnl = round(shares * (entry - price), 4)
         else:
-            pnl = round((price - entry) * 1.0, 4)
+            pnl = round(shares * (price - entry), 4)
 
-        # Close it
         with db.get_connection() as conn:
             conn.execute(
                 "UPDATE paper_trades SET status = 'closed', current_price = ?, pnl = ?, "
@@ -257,7 +325,6 @@ def close_paper_trades():
                 (price, pnl, p["id"])
             )
 
-        # Update candidate stats
         with db.get_connection() as conn:
             if pnl > 0:
                 conn.execute(
@@ -275,7 +342,7 @@ def close_paper_trades():
         closed += 1
 
     if closed > 0:
-        logger.info("[DISCOVERY] Closed %d paper trades (4h+ old)", closed)
+        logger.info("[DISCOVERY] Closed %d paper trades (realistic PnL, 4h+ old)", closed)
 
 
 def check_promotions():

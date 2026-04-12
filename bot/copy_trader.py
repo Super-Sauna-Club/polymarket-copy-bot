@@ -211,6 +211,15 @@ def _get_current_balance() -> float:
 _BET_SIZE_MAP = _parse_float_map(config.BET_SIZE_MAP, "BET_SIZE_MAP")
 _TAKE_PROFIT_MAP = _parse_float_map(config.TAKE_PROFIT_MAP, "TAKE_PROFIT_MAP")
 _STOP_LOSS_MAP = _parse_float_map(config.STOP_LOSS_MAP, "STOP_LOSS_MAP")
+_MAX_COPIES_MAP = {k: int(float(v)) for k, v in _parse_float_map(config.MAX_COPIES_PER_MARKET_MAP, "MAX_COPIES_PER_MARKET_MAP").items()}
+
+def _get_max_copies(username: str) -> int:
+    """Per-trader MAX_COPIES_PER_MARKET lookup with global fallback."""
+    if username:
+        val = _MAX_COPIES_MAP.get(username.lower())
+        if val is not None:
+            return val
+    return config.MAX_COPIES_PER_MARKET
 _MIN_ENTRY_PRICE_MAP = _parse_float_map(config.MIN_ENTRY_PRICE_MAP, "MIN_ENTRY_PRICE_MAP")
 _MAX_ENTRY_PRICE_MAP = _parse_float_map(config.MAX_ENTRY_PRICE_MAP, "MAX_ENTRY_PRICE_MAP")
 _AVG_TRADER_SIZE_MAP = _parse_float_map(config.AVG_TRADER_SIZE_MAP, "AVG_TRADER_SIZE_MAP")
@@ -231,7 +240,7 @@ _last_settings_mtime = 0.0
 
 def _reload_maps():
     """Re-read per-trader maps from settings.env if file changed since last check."""
-    global _BET_SIZE_MAP, _TAKE_PROFIT_MAP, _STOP_LOSS_MAP, _MIN_ENTRY_PRICE_MAP
+    global _BET_SIZE_MAP, _TAKE_PROFIT_MAP, _STOP_LOSS_MAP, _MIN_ENTRY_PRICE_MAP, _MAX_COPIES_MAP
     global _MAX_ENTRY_PRICE_MAP, _AVG_TRADER_SIZE_MAP, _EXPOSURE_MAP, _MIN_TRADER_USD_MAP
     global _CATEGORY_BLACKLIST, _MIN_CONVICTION_MAP, _last_settings_mtime
 
@@ -251,6 +260,7 @@ def _reload_maps():
     _BET_SIZE_MAP = _parse_float_map(vals.get("BET_SIZE_MAP", ""), "BET_SIZE_MAP")
     _TAKE_PROFIT_MAP = _parse_float_map(vals.get("TAKE_PROFIT_MAP", ""), "TAKE_PROFIT_MAP")
     _STOP_LOSS_MAP = _parse_float_map(vals.get("STOP_LOSS_MAP", ""), "STOP_LOSS_MAP")
+    _MAX_COPIES_MAP = {k: int(float(v)) for k, v in _parse_float_map(vals.get("MAX_COPIES_PER_MARKET_MAP", ""), "MAX_COPIES_PER_MARKET_MAP").items()}
     _MIN_ENTRY_PRICE_MAP = _parse_float_map(vals.get("MIN_ENTRY_PRICE_MAP", ""), "MIN_ENTRY_PRICE_MAP")
     _MAX_ENTRY_PRICE_MAP = _parse_float_map(vals.get("MAX_ENTRY_PRICE_MAP", ""), "MAX_ENTRY_PRICE_MAP")
     _AVG_TRADER_SIZE_MAP = _parse_float_map(vals.get("AVG_TRADER_SIZE_MAP", ""), "AVG_TRADER_SIZE_MAP")
@@ -271,6 +281,11 @@ def _reload_maps():
             name = parts[0].strip().lower()
             cats = {c.strip().lower() for c in parts[1].split("|") if c.strip()}
             _CATEGORY_BLACKLIST[name] = cats
+
+    # PATCH-026: hot-reload HEDGE_WAIT_TRADERS
+    _hw_raw = vals.get("HEDGE_WAIT_TRADERS", "")
+    if _hw_raw:
+        config.HEDGE_WAIT_TRADERS = _hw_raw
 
     logger.info("[RELOAD] Settings maps refreshed (%d trader configs)", len(_BET_SIZE_MAP))
 
@@ -316,7 +331,12 @@ _CATEGORY_KEYWORDS = {
                "ligue 1", "champions league", "ucl", "europa league", "mls",
                "bayern", "barcelona", "madrid", "arsenal", "liverpool", "manchester",
                "chelsea", "tottenham", "juventus", "inter milan", "ac milan", "psg",
-               "freiburg", "dortmund", "southampton", "liga mx", "copa"],
+               "freiburg", "dortmund", "southampton", "liga mx", "copa",
+               "calcio", "genoa", "sassuolo", "napoli", "lazio", "roma", "fiorentina",
+               "torino", "bologna", "atalanta", "cagliari", "lecce", "parma", "empoli",
+               "udinese", "monza", "como", "venezia", "verona",
+               " fc ", " cfc",
+               "clean sheet", "nil-nil"],
     "cs": ["counter-strike", "cs2", "cs:", "csgo"],
     "lol": ["lol:", "league of legends"],
     "valorant": ["valorant", "val:"],
@@ -558,23 +578,44 @@ def _process_pending_buys(balance: float, total_invested: float) -> int:
             logger.info("[PENDING] Kein Cash mehr: %s", trade_data["market_question"][:40])
             continue
 
+        # PATCH-023: Add missing duplicate/cross-trader checks
+        _pb_addr = trade_data.get("wallet_address", "")
+        _pb_side = trade_data.get("side", "")
+        _pb_user = trade_data.get("wallet_username", "")
+        if cid and db.count_copies_for_market(_pb_addr, cid) >= _get_max_copies(_pb_user):
+            logger.info("[PENDING] Max copies reached, skipping: %s", trade_data["market_question"][:40])
+            expired_keys.append(cid)
+            continue
+        if cid and db.is_market_already_open(cid, from_wallet=_pb_addr, side=_pb_side):
+            logger.info("[PENDING] Market already open (same side), skipping: %s", trade_data["market_question"][:40])
+            expired_keys.append(cid)
+            continue
+
         trade_data["entry_price"] = round(min(current + ENTRY_SLIPPAGE, 0.97), 4)
         trade_data["size"] = size
         # LIVE_MODE: echte Order platzieren BEVOR DB-Record erstellt wird
         if LIVE_MODE and cid:
             try:
-                order_resp = buy_shares(cid, trade_data["side"], size, trade_data["entry_price"])
-                if not order_resp:
-                    logger.warning("[PENDING] Order failed, skipping: %s", trade_data["market_question"][:40])
-                    expired_keys.append(cid)
-                    continue
-                _apply_fill_details(trade_data, order_resp, size, trade_data["entry_price"])
-                size = trade_data["size"]
+                with _buy_lock:  # PATCH-025: lock covers buy + DB insert
+                    # Re-check under lock to prevent race
+                    if db.count_copies_for_market(_pb_addr, cid) >= _get_max_copies(_pb_user):
+                        logger.info("[PENDING] Max copies (re-check under lock), skipping: %s", trade_data["market_question"][:40])
+                        expired_keys.append(cid)
+                        continue
+                    order_resp = buy_shares(cid, trade_data["side"], size, trade_data["entry_price"])
+                    if not order_resp:
+                        logger.warning("[PENDING] Order failed, skipping: %s", trade_data["market_question"][:40])
+                        expired_keys.append(cid)
+                        continue
+                    _apply_fill_details(trade_data, order_resp, size, trade_data["entry_price"])
+                    size = trade_data["size"]
+                    trade_id = db.create_copy_trade(trade_data)  # Inside lock
             except Exception as _pe:
                 logger.warning("[PENDING] Buy error: %s", _pe)
                 expired_keys.append(cid)
                 continue
-        trade_id = db.create_copy_trade(trade_data)
+        else:
+            trade_id = db.create_copy_trade(trade_data)  # Paper mode
         if trade_id:
             fired += 1
             total_invested += size
@@ -655,13 +696,16 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 continue
 
             # Max copies per market
-            if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+            if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                 _log_block(username, _q, cid, _s, entry_price_raw, "max_copies",
-                           "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "diff")
+                           "max %d copies reached" % _get_max_copies(username), "diff")
                 continue
 
             # Duplicate market check (another trader already has this market)
-            if cid and db.is_market_already_open(cid, from_wallet=address):
+            # PATCH-024: skip side-unaware check if side is empty from API
+            if not _s:
+                _s = pos.get("outcome_label", "") or pos.get("outcome", "") or ""
+            if cid and db.is_market_already_open(cid, from_wallet=address, side=_s):
                 _log_block(username, _q, cid, _s, entry_price_raw, "cross_trader_dupe",
                            "market open from another trader", "diff")
                 continue
@@ -733,6 +777,13 @@ def _position_diff_scan(address: str, username: str, balance: float,
             end_ts = _parse_end_ts(pos.get("end_date", ""))
             if end_ts and (_time.time() - end_ts) > 0:
                 continue
+            # Max market duration: skip if market resolves too far in future
+            if config.MAX_MARKET_HOURS > 0 and end_ts:
+                _hours_until_end = (end_ts - _time.time()) / 3600
+                if _hours_until_end > config.MAX_MARKET_HOURS:
+                    _log_block(username, _q, cid, _s, entry_price_raw, "market_too_long",
+                               "resolves in %.0fh > %.0fh max" % (_hours_until_end, config.MAX_MARKET_HOURS), "diff")
+                    continue
 
             # Event timing: skip if event > MAX_HOURS_BEFORE_EVENT away
             if config.MAX_HOURS_BEFORE_EVENT > 0:
@@ -837,7 +888,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
                             username, _kelly_m, _score_result["score"], pos["market_question"][:40])
             # LIVE MODE: Echte Order platzieren
             with _buy_lock:
-                if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+                if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                     continue
                 if LIVE_MODE and cid:
                     try:
@@ -853,7 +904,11 @@ def _position_diff_scan(address: str, username: str, balance: float,
                     _apply_fill_details(trade, order_resp, size, entry_price)
                     size = trade["size"]
 
+            try:
                 trade_id = db.create_copy_trade(trade)
+            except Exception as _ie:
+                logger.warning("[DIFF] DB insert failed (duplicate?): %s", _ie)
+                continue
             if trade_id:
                 new_trades += 1
                 total_invested += size
@@ -1118,14 +1173,14 @@ def copy_followed_wallets():
                     continue
 
                 # MAX_COPIES check
-                if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= config.MAX_COPIES_PER_MARKET:
+                if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= _get_max_copies(_ew_un):
                     _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
-                               "max_copies", "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "event_wait")
+                               "max_copies", "max %d copies reached" % _get_max_copies(_ew_un), "event_wait")
                     _ew_expired.append(_ew_cid)
                     continue
 
                 # Cross-trader duplicate check
-                if _ew_cid and db.is_market_already_open(_ew_cid, from_wallet=td["wallet_address"]):
+                if _ew_cid and db.is_market_already_open(_ew_cid, from_wallet=td["wallet_address"], side=_ew_sd):
                     _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
                                "cross_trader_dupe", "market open from another trader", "event_wait")
                     _ew_expired.append(_ew_cid)
@@ -1189,7 +1244,7 @@ def copy_followed_wallets():
                         _ew_size = round(_ew_pos_rem, 2)
                 if _ew_size >= MIN_TRADE_SIZE and balance > _ew_size:
                     with _buy_lock:
-                        if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= config.MAX_COPIES_PER_MARKET:
+                        if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= _get_max_copies(td.get("wallet_username", "")):
                             _ew_expired.append(_ew_cid)
                             continue
                         if LIVE_MODE and _ew_cid:
@@ -1289,13 +1344,13 @@ def copy_followed_wallets():
                                    "category_blacklist", "category '%s' blocked" % _detect_category(_hw_qn), "hedge_wait")
                         continue
                     # MAX_COPIES check: activity scan may have already copied this market
-                    if _hw_cid and db.count_copies_for_market(td["address"], _hw_cid) >= config.MAX_COPIES_PER_MARKET:
+                    if _hw_cid and db.count_copies_for_market(td["address"], _hw_cid) >= _get_max_copies(_hw_un):
                         logger.info("[HEDGE-WAIT] Already copied (activity scan was faster), skipping: %s", _hw_qn[:40])
                         _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
                                    "max_copies", "already copied (activity faster)", "hedge_wait")
                         continue
                     # Cross-trader duplicate check
-                    if _hw_cid and db.is_market_already_open(_hw_cid, from_wallet=td["address"]):
+                    if _hw_cid and db.is_market_already_open(_hw_cid, from_wallet=td["address"], side=_hw_sd):
                         _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
                                    "cross_trader_dupe", "market open from another trader", "hedge_wait")
                         continue
@@ -1383,7 +1438,7 @@ def copy_followed_wallets():
                         "category": _detect_category(td["question"]),
                     }
                     with _buy_lock:
-                        if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= config.MAX_COPIES_PER_MARKET:
+                        if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= _get_max_copies():
                             continue
                         if LIVE_MODE and td["cid"]:
                             from bot.order_executor import get_wallet_balance as _gwb2
@@ -1420,7 +1475,7 @@ def copy_followed_wallets():
         _hq_first = list(_hq_entry["sides"].values())[0]
         _hq_addr = _hq_first.get("address", "")
         _hq_cid = _hq_first.get("cid", _hk)
-        if _hq_cid and db.count_copies_for_market(_hq_addr, _hq_cid) >= config.MAX_COPIES_PER_MARKET:
+        if _hq_cid and db.count_copies_for_market(_hq_addr, _hq_cid) >= _get_max_copies():
             logger.info("[HEDGE-WAIT] Removed from queue (already copied): %s", _hq_first.get("question", "")[:40])
             del _hedge_queue[_hk]
 
@@ -1637,17 +1692,17 @@ def copy_followed_wallets():
                 continue
 
             # 3) Max Kopien pro Markt: nicht X-mal denselben Markt kopieren
-            if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+            if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                 logger.info("[FILTER] Max copies (%d) for market: %s",
                             config.MAX_COPIES_PER_MARKET, question[:40])
                 _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
-                           "max_copies", "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "activity")
+                           "max_copies", "max %d copies reached" % _get_max_copies(username), "activity")
                 continue
 
             # === STANDARD-FILTER ===
             # Duplikat-Markt-Check: nicht denselben Markt von 2 Tradern kopieren
-            if cid and db.is_market_already_open(cid, from_wallet=address):
-                logger.info("[SKIP] Markt bereits offen (anderer Trader): %s", question[:40])
+            if cid and db.is_market_already_open(cid, from_wallet=address, side=t.get("side", "")):
+                logger.info("[SKIP] Markt bereits offen (gleiche Seite, anderer Trader): %s", question[:40])
                 _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
                            "cross_trader_dupe", "market open from another trader", "activity")
                 continue
@@ -1748,6 +1803,14 @@ def copy_followed_wallets():
                     logger.info("[SKIP] Markt schliesst in %.0fs: %s", secs_left, question[:40])
                     _log_block(username, question, cid, t.get("side", ""), trader_price,
                                "market_closing", "closes in %.0fs" % secs_left, "activity")
+                    continue
+
+            # Max market duration: skip if market resolves too far in future
+            if config.MAX_MARKET_HOURS > 0 and end_ts:
+                _hours_until_end = (end_ts - _time.time()) / 3600
+                if _hours_until_end > config.MAX_MARKET_HOURS:
+                    _log_block(username, question, cid, t.get("side", ""), trader_price, "market_too_long",
+                               "resolves in %.0fh > %.0fh max" % (_hours_until_end, config.MAX_MARKET_HOURS), "activity")
                     continue
 
 
@@ -2004,7 +2067,7 @@ def copy_followed_wallets():
             # Lock prevents race conditions between concurrent buy attempts
             with _buy_lock:
                 # Re-check limits under lock (another thread may have bought in the meantime)
-                if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+                if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                     logger.info("[LOCK] Max copies reached (concurrent): %s", question[:40])
                     continue
 

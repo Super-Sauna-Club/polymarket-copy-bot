@@ -42,7 +42,7 @@ def check_liquidity(condition_id, side, our_size):
             return True
 
         # Calculate depth on our buy side (asks = what we can buy)
-        asks = _get_attr_or_key(book, "asks", []) or []
+        asks = book.asks or []
         total_ask_depth = 0
         for level in asks:
             price = float(_get_attr_or_key(level, "price", 0) or 0)

@@ -10,8 +10,8 @@ from database import db
 
 logger = logging.getLogger(__name__)
 
-THROTTLE_PNL_7D = -10.0
-PAUSE_PNL_7D = -20.0
+THROTTLE_PNL_7D = -20.0
+PAUSE_PNL_7D = -40.0
 UNPAUSE_PNL_7D = 0.0
 
 
@@ -42,16 +42,11 @@ def update_all_trader_stats():
         pnl_7d = stats_7d.get("total_pnl", 0) or 0
         current = db.get_trader_status(trader)
 
+        # DISABLED: auto-throttle/pause — settings managed manually
         if pnl_7d <= PAUSE_PNL_7D:
-            if current["status"] != "paused":
-                db.set_trader_status(trader, "paused", 0.0,
-                                     "Auto-paused: 7d P&L $%.2f" % pnl_7d)
-                logger.warning("[PERF] %s PAUSED: 7d P&L $%.2f", trader, pnl_7d)
+            logger.info("[PERF] %s would be paused (7d PnL $%.2f) — DISABLED", trader, pnl_7d)
         elif pnl_7d <= THROTTLE_PNL_7D:
-            if current["status"] != "throttled":
-                db.set_trader_status(trader, "throttled", 0.5,
-                                     "Auto-throttled: 7d P&L $%.2f" % pnl_7d)
-                logger.warning("[PERF] %s THROTTLED: 7d P&L $%.2f", trader, pnl_7d)
+            logger.info("[PERF] %s would be throttled (7d PnL $%.2f) — DISABLED", trader, pnl_7d)
         elif pnl_7d >= UNPAUSE_PNL_7D and current["status"] in ("paused", "throttled"):
             db.set_trader_status(trader, "active", 1.0,
                                  "Auto-restored: 7d P&L $%.2f" % pnl_7d)

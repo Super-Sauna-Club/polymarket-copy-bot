@@ -185,6 +185,7 @@ def api_live_data():
 
     # Real open positions — fetch directly with currentValue/initialValue
     open_positions = []
+    all_raw = []
     try:
         all_raw = []
         _offset = 0
@@ -903,7 +904,7 @@ def api_close_trade(trade_id):
     # Get the trade from DB
     with get_connection() as conn:
         trade = conn.execute(
-            "SELECT id, condition_id, side, entry_price, size, market_question, wallet_username "
+            "SELECT id, condition_id, side, entry_price, size, market_question, wallet_username, actual_entry_price, actual_size "
             "FROM copy_trades WHERE id=? AND status='open'", (trade_id,)
         ).fetchone()
 
@@ -1257,7 +1258,7 @@ def api_stream_find():
 
 @app.route("/api/copy/history")
 def api_copy_history():
-    """Return positions, chart data, and stats filtered by period. Read-only GET, no auth."""
+    """Return positions, chart data, and stats filtered by period."""
     period = request.args.get("period", "week")
     date_from = request.args.get("from")
     date_to = request.args.get("to")
@@ -1386,20 +1387,49 @@ def api_ai_dismiss(rec_id):
 
 @app.route("/api/upgrade/trader-performance")
 def api_trader_performance():
-    """Performance aller Trader mit Status. Read-only GET, no auth (matches brain endpoints)."""
+    """Performance aller Trader mit Status + 1d Daten + kopierte Trades."""
     with db.get_connection() as conn:
         perf = conn.execute(
             "SELECT tp.*, ts.status as trader_status, ts.bet_multiplier, ts.reason "
             "FROM trader_performance tp "
             "LEFT JOIN trader_status ts ON tp.trader_name = ts.trader_name "
-            "WHERE tp.period = '7d' AND tp.trader_name != 'imported' AND tp.trader_name != 'test' AND tp.trades_count > 0 ORDER BY tp.total_pnl DESC"
+            "WHERE tp.period = '7d' AND tp.trader_name != 'imported' AND tp.trader_name != 'test' ORDER BY tp.total_pnl DESC"
         ).fetchall()
-    return jsonify({"traders": [dict(r) for r in perf]})
+        result = []
+        for row in perf:
+            d = dict(row)
+            name = d["trader_name"]
+            # 1d stats
+            day = conn.execute(
+                "SELECT trades_count, wins, losses, total_pnl, winrate FROM trader_performance "
+                "WHERE trader_name = ? AND period = '7d'", (name,)
+            ).fetchone()
+            # Count total copied trades (all time from copy_trades)
+            copied = conn.execute(
+                "SELECT COUNT(*) as cnt FROM copy_trades WHERE wallet_username = ? AND (actual_size > 0 OR shares_held > 0) AND created_at > datetime('now', '-30 days', 'localtime')", (name,)
+            ).fetchone()
+            d["copied_trades"] = copied["cnt"] if copied else 0
+            # 1d rolling stats from copy_trades directly
+            day_stats = conn.execute(
+                "SELECT COUNT(*) as cnt, "
+                "SUM(CASE WHEN pnl_realized > 0 THEN 1 ELSE 0 END) as wins, "
+                "SUM(CASE WHEN pnl_realized < 0 THEN 1 ELSE 0 END) as losses, "
+                "COALESCE(SUM(pnl_realized), 0) as pnl "
+                "FROM copy_trades WHERE wallet_username = ? AND status = 'closed' "
+                "AND closed_at > datetime('now', '-1 day') AND (actual_size > 0 OR shares_held > 0)", (name,)
+            ).fetchone()
+            d["pnl_1d"] = round(day_stats["pnl"], 2) if day_stats else 0
+            d["trades_1d"] = day_stats["cnt"] if day_stats else 0
+            d["wins_1d"] = day_stats["wins"] or 0 if day_stats else 0
+            d["losses_1d"] = day_stats["losses"] or 0 if day_stats else 0
+            d["winrate_1d"] = round(d["wins_1d"] / d["trades_1d"] * 100, 1) if d["trades_1d"] > 0 else 0
+            result.append(d)
+    return jsonify({"traders": result})
 
 
 @app.route("/api/upgrade/category-heatmap")
 def api_category_heatmap():
-    """Kategorie-Performance als Heatmap-Daten. Read-only GET, no auth."""
+    """Kategorie-Performance als Heatmap-Daten."""
     with db.get_connection() as conn:
         cats = conn.execute(
             "SELECT * FROM category_performance WHERE period = '30d' "
@@ -1420,7 +1450,7 @@ def api_category_heatmap():
 
 @app.route("/api/upgrade/ml-info")
 def api_ml_info():
-    """ML-Modell Info und Training-History. Read-only GET, no auth."""
+    """ML-Modell Info und Training-History."""
     with db.get_connection() as conn:
         training = conn.execute(
             "SELECT * FROM ml_training_log ORDER BY trained_at DESC LIMIT 5"
@@ -1430,7 +1460,7 @@ def api_ml_info():
 
 @app.route("/api/upgrade/candidates")
 def api_candidates():
-    """Trader-Kandidaten mit Paper-Stats. Read-only GET, no auth."""
+    """Trader-Kandidaten mit Paper-Stats."""
     candidates = db.get_all_candidates()
     for c in candidates:
         stats = db.get_candidate_stats(c["address"])
@@ -1440,7 +1470,7 @@ def api_candidates():
 
 @app.route("/api/upgrade/autonomous-trades")
 def api_autonomous_trades():
-    """Autonome Trades (Paper + Live). Read-only GET, no auth."""
+    """Autonome Trades (Paper + Live)."""
     with db.get_connection() as conn:
         trades = conn.execute(
             "SELECT * FROM autonomous_trades ORDER BY created_at DESC LIMIT 50"
@@ -1450,7 +1480,7 @@ def api_autonomous_trades():
 
 @app.route("/api/upgrade/status")
 def api_upgrade_status():
-    """Overall upgrade status — alles auf einen Blick. Read-only GET, no auth."""
+    """Overall upgrade status — alles auf einen Blick."""
     result = {}
 
     # Trader status

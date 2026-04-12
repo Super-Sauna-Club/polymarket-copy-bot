@@ -22,13 +22,6 @@ MIN_LIVE_TRADERS = 2
 def run_brain():
     logger.info("[BRAIN] === Brain Engine starting ===")
     try:
-        # Auto-tuner FIRST: sets baseline tiers
-        # Brain decisions AFTER: override/tighten what auto-tuner set
-        try:
-            from bot.auto_tuner import auto_tune
-            auto_tune()
-        except Exception as e:
-            logger.warning("[BRAIN] Auto-tuner error: %s", e)
         _classify_losses()
         _check_trader_health()
         _optimize_score_weights()
@@ -43,6 +36,12 @@ def run_brain():
             _revert_obsolete_tightens()
         except Exception as e:
             logger.warning("[BRAIN] Revert helpers error: %s", e)
+        # PATCH-025: Auto-tuner AFTER reverts, so relaxations are not immediately undone
+        try:
+            from bot.auto_tuner import auto_tune
+            auto_tune()
+        except Exception as e:
+            logger.warning("[BRAIN] Auto-tuner error: %s", e)
         logger.info("[BRAIN] === Brain Engine complete ===")
     except Exception as e:
         logger.exception("[BRAIN] Fatal error: %s", e)
@@ -180,22 +179,23 @@ def _check_trader_health():
                 break
         should_pause = False
         reason = ""
-        if pnl_7d < -10:
+        if pnl_7d < -20:
             should_pause = True
-            reason = "7d PnL $%.2f < -$10" % pnl_7d
+            reason = "7d PnL $%.2f < -$20" % pnl_7d
         elif streak >= 5:
             should_pause = True
             reason = "%d consecutive losses" % streak
         if should_pause and _current_live_count() > MIN_LIVE_TRADERS:
-            logger.info("[BRAIN] PAUSE %s: %s", trader, reason)
+            logger.info("[BRAIN] Would pause %s: %s (DISABLED — settings managed manually)", trader, reason)
             db.log_brain_decision("PAUSE_TRADER", trader, reason,
                                   json.dumps({"pnl_7d": pnl_7d, "streak": streak}),
-                                  "Prevent further losses from underperformer")
-            try:
-                from bot.trader_lifecycle import pause_trader
-                pause_trader(trader, reason)
-            except Exception as e:
-                logger.warning("[BRAIN] Failed to pause %s: %s", trader, e)
+                                  "Logged only — auto-pause disabled")
+            # DISABLED: settings managed manually
+            # try:
+            #     from bot.trader_lifecycle import pause_trader
+            #     pause_trader(trader, reason)
+            # except Exception as e:
+            #     logger.warning("[BRAIN] Failed to pause %s: %s", trader, e)
         elif pnl_7d > 5 and cnt_7d >= 5:
             wr = wins_7d / cnt_7d * 100 if cnt_7d > 0 else 0
             if wr > 60:
@@ -417,7 +417,7 @@ def _revert_obsolete_tightens():
     """
     from bot.auto_tuner import _load_tiers, _classify_trader
     tiers = _load_tiers()
-    content = _read_settings()
+    content = _read_settings()  # PATCH-024: always re-read fresh to avoid stale data
     min_map = _parse_map(content, "MIN_ENTRY_PRICE_MAP")
     max_map = _parse_map(content, "MAX_ENTRY_PRICE_MAP")
     if not min_map and not max_map:
@@ -466,6 +466,8 @@ def _revert_obsolete_tightens():
         relaxes += 1
 
     if relaxes > 0:
+        # PATCH-024: Re-read settings fresh before writing to avoid overwriting mid-cycle changes
+        content = _read_settings()
         map_str = ",".join("%s:%s" % (k, v) for k, v in sorted(min_map.items()))
         pattern = r'^(MIN_ENTRY_PRICE_MAP=).*$'
         if re.search(pattern, content, re.MULTILINE):

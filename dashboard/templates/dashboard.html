@@ -1254,7 +1254,7 @@ function chart(period){
   fetch('/api/equity-curve?period='+CP).then(r=>{if(!r.ok)throw r.status;return r.json()}).then(d=>{
   const c=$('chart');if(!c||!d.labels.length)return;
   const lb=d.labels.map(l=>{
-    if(CP==='4h'||CP==='1d'){const x=new Date(l.replace(' ','T'));return x.toLocaleTimeString('de-AT',{timeZone:'Europe/Vienna',hour:'2-digit',minute:'2-digit'})}
+    if(CP==='4h'||CP==='1d'){const x=new Date(l.replace(' ','T')+'Z');return x.toLocaleTimeString('de-AT',{timeZone:'Europe/Vienna',hour:'2-digit',minute:'2-digit'})}
     const x=new Date(l+'T12:00:00Z');return x.toLocaleDateString('de-AT',{timeZone:'Europe/Vienna',day:'2-digit',month:'2-digit'});
   });
   if(CI){CI.data.labels=lb;CI.data.datasets[0].data=d.values;CI.update();return}
@@ -1493,7 +1493,7 @@ function buildPreview(raw){
 }
 function loadReport(){
   // Live trader stats from DB (24h default)
-  fetch('/api/copy/trader-stats?hours=24').then(r=>r.json()).then(stats=>{
+  fetch('/api/copy/trader-stats?hours=24',{headers:{'X-Dashboard-Key':localStorage.getItem('dashSecret')||''}}).then(r=>r.json()).then(stats=>{
     if(!stats||!stats.length){$('reportText').innerHTML='<span style="color:var(--text-dim)">Keine Trades in den letzten 24h</span>';return}
     $('reportTime').textContent='live \u00B7 last 24h';
     $('reportText').innerHTML=stats.map(p=>{
