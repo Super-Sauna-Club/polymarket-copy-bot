@@ -11,9 +11,24 @@ MIN_BOOK_DEPTH_USD = 50  # Mindestens $50 Liquiditaet auf unserer Seite
 MIN_BOOK_DEPTH_FOR_SIZE = 3.0  # Unsere Order darf max 1/3 der Tiefe sein
 
 
+def _get_attr_or_key(obj, name, default=None):
+    """Support both attribute (OrderBookSummary) and dict ({"asks":[...]}) access."""
+    if obj is None:
+        return default
+    if hasattr(obj, name):
+        return getattr(obj, name)
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return default
+
+
 def check_liquidity(condition_id, side, our_size):
     """Check ob genug Liquiditaet im Orderbook ist.
     Returns True wenn OK, False wenn zu duenn.
+
+    Supports both py-clob-client OrderBookSummary (named tuple with .asks)
+    and legacy dict format ({"asks": [...]}). Each level can be either
+    OrderSummary (with .price/.size) or dict ({"price":..., "size":...}).
     """
     try:
         client = _get_client()

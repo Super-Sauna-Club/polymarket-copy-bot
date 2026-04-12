@@ -26,12 +26,19 @@ _model_loaded = False
 
 
 def _get_features(trade: dict) -> list:
-    """Extract feature vector from a trade dict."""
+    """Extract feature vector from a trade dict.
+
+    REMOVED size + fee_bps as features: they were data-source markers
+    rather than predictive signal. copy_trades have size>0 and fee_bps
+    set, blocked_trades have size=0 and fee_bps=0. The model trivially
+    learned `size==0 → predict by category` (blocked_trades have 28%
+    win rate). This inflated test accuracy to 92% while teaching nothing
+    about WHY trades win or lose. With these features removed, accuracy
+    will be lower but actually meaningful.
+    """
     entry = trade.get("actual_entry_price") or trade.get("entry_price") or 0.5
     cat = CATEGORY_MAP.get((trade.get("category") or "").lower(), 0)
     side = 1 if (trade.get("side") or "YES").upper() == "YES" else 0
-    size = trade.get("actual_size") or trade.get("size") or 1.0
-    fee = trade.get("fee_bps") or 0
 
     # Time features
     hour = 12
@@ -45,7 +52,7 @@ def _get_features(trade: dict) -> list:
     except Exception:
         pass
 
-    return [entry, cat, side, size, fee, hour, dow]
+    return [entry, cat, side, hour, dow]
 
 
 def _build_training_data():
@@ -78,14 +85,13 @@ def _build_training_data():
         y.append(label)
 
     for r in blocked_rows:
-        # Map blocked_trades schema to the dict shape _get_features expects
+        # Map blocked_trades schema to the dict shape _get_features expects.
+        # size/fee_bps removed from features (was leakage marker).
         d = {
             "entry_price": r["trader_price"] or 0.5,
             "category": r["category"] or "",
             "side": r["side"] or "YES",
             "created_at": r["created_at"] or "",
-            "size": 0,        # we did not execute, no real size
-            "fee_bps": 0,     # we did not execute, no fee
         }
         features = _get_features(d)
         label = int(r["would_have_won"])
@@ -124,8 +130,8 @@ def train_model():
     train_acc = model.score(X_train, y_train)
     test_acc = model.score(X_test, y_test)
 
-    # Feature importance
-    feature_names = ["entry_price", "category", "side", "size", "fee_bps", "hour", "day_of_week"]
+    # Feature importance (must match _get_features() order)
+    feature_names = ["entry_price", "category", "side", "hour", "day_of_week"]
     importances = sorted(zip(feature_names, model.feature_importances_), key=lambda x: -x[1])
 
     logger.info("[ML] Trained on %d samples (%d copy + %d blocked) | Train: %.1f%% | Test: %.1f%%",
