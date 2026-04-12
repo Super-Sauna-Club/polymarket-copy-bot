@@ -125,9 +125,12 @@ def _apply_fill_details(trade: dict, order_resp: dict, planned_size: float, plan
 
 
 def _correct_sell_pnl(trade: dict, sell_resp: dict, trade_id: int):
-    """If sell_shares returned actual USDC received, correct P&L in DB."""
+    """If sell_shares returned actual USDC received, correct P&L in DB.
+    Returns the corrected real_pnl, or None if no correction was made.
+    Callers can use this to update local pnl variables for accurate logging.
+    """
     if not sell_resp:
-        return
+        return None
     usdc_received = sell_resp.get("usdc_received", 0)
     if usdc_received > 0:
         actual_cost = _get_size(trade)
@@ -135,6 +138,8 @@ def _correct_sell_pnl(trade: dict, sell_resp: dict, trade_id: int):
         db.update_closed_trade_pnl(trade_id, real_pnl, usdc_received)
         logger.info("[PNL-FIX] #%d corrected: formula→real P&L=$%+.2f (received=$%.2f - cost=$%.2f)",
                     trade_id, real_pnl, usdc_received, actual_cost)
+        return real_pnl
+    return None
 
 
 def _cb_success():
@@ -2269,10 +2274,14 @@ def update_copy_positions():
                                                     "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:35], pnl), round(pnl, 2))
                                     continue
 
-                            # Trailing Stop: once position was 20%+ up, trail sell point below peak
-                            # Sell point = peak - MARGIN (follows peak upward, never downward)
-                            # Only activates after position was genuinely 20%+ above entry
-                            if config.TRAILING_STOP_ENABLED and _ep > 0:
+                            # Trailing Stop: once position was 20%+ up, trail sell point below peak.
+                            # DISABLED for esports (cs/lol/valorant/dota) — orderbook gaps too
+                            # fast between scans, actual fill ends up far below trigger price.
+                            # Last 4 esports trailing stops all bled (-$1.36 to -$13.43) while
+                            # the one non-esports case (#2749 NEC) locked in +$0.42 profit cleanly.
+                            _ts_category = (trade.get("category") or "").lower()
+                            _ts_is_esports = _ts_category in ("cs", "lol", "valorant", "dota")
+                            if config.TRAILING_STOP_ENABLED and _ep > 0 and not _ts_is_esports:
                                 _peak = trade.get("peak_price") if trade.get("peak_price") not in (None, 0) else effective_price
                                 _peak_gain = (_peak - _ep) / _ep
                                 _sell_at = _peak - config.TRAILING_STOP_MARGIN
@@ -2287,8 +2296,10 @@ def update_copy_positions():
                                             continue
                                     if not db.close_copy_trade(trade["id"], pnl):
                                         continue
-                                    if _ts_resp:
-                                        _correct_sell_pnl(trade, _ts_resp, trade["id"])
+                                    # Use corrected real P&L for logs (was buggy: showed live snapshot price)
+                                    _real_pnl = _correct_sell_pnl(trade, _ts_resp, trade["id"]) if _ts_resp else None
+                                    if _real_pnl is not None:
+                                        pnl = _real_pnl
                                     logger.info("[TRAILING-STOP] #%d closed — peak was %.0fc (+%.0f%%), now %.0fc: P&L=$%.2f | %s",
                                                 trade["id"], _peak * 100, _peak_gain * 100, effective_price * 100, pnl, trade["market_question"][:40])
                                     db.log_activity("sell", "WIN" if pnl >= 0 else "LOSS", "Trailing stop triggered",
