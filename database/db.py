@@ -1242,9 +1242,23 @@ def get_lifecycle_traders_by_status(status: str) -> list:
 def upsert_lifecycle_trader(address: str, username: str, status: str, source: str = ""):
     with get_connection() as conn:
         existing = conn.execute(
-            "SELECT id FROM trader_lifecycle WHERE address = ?", (address,)
+            "SELECT id, status, status_changed_at FROM trader_lifecycle WHERE address = ?", (address,)
         ).fetchone()
         if existing:
+            # KICKED traders get 30 day cooldown before re-entry
+            if existing["status"] == "KICKED":
+                from datetime import datetime, timedelta
+                changed = datetime.fromisoformat(existing["status_changed_at"]) if existing["status_changed_at"] else datetime.now()
+                if (datetime.now() - changed).days < 30:
+                    return  # Still in cooldown, ignore
+                # Cooldown over — reset pause_count and let them back in
+                conn.execute(
+                    "UPDATE trader_lifecycle SET status = ?, username = ?, source = ?, "
+                    "pause_count = 0, paper_trades = 0, paper_pnl = 0, paper_wr = 0, "
+                    "status_changed_at = datetime('now','localtime') WHERE address = ?",
+                    (status, username, source, address)
+                )
+                return
             conn.execute(
                 "UPDATE trader_lifecycle SET status = ?, username = ?, "
                 "status_changed_at = datetime('now','localtime') WHERE address = ?",
