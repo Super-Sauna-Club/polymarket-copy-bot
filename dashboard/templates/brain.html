@@ -256,7 +256,10 @@ function showWhale(text, detail){
 }
 
 const API='';
-let countdown=20, lastTradeCount=0, lastAchievements=new Set();
+let countdown=20, lastTradeCount=0;
+// Load already-unlocked achievements from localStorage so they only ever
+// pop ONCE in the user's lifetime on this browser, not on every page reload.
+let lastAchievements = new Set(JSON.parse(localStorage.getItem('brainAchievements') || '[]'));
 
 async function fetchJSON(url){try{return await(await fetch(API+url)).json()}catch(e){return null}}
 function pnlClass(v){return v>0?'pos':v<0?'neg':''}
@@ -294,8 +297,13 @@ function renderAchievements(data){
   const el=document.getElementById('achievements');
   el.innerHTML=ACHIEVEMENTS.map(a=>{
     const unlocked=a.check(data);
-    if(unlocked && !lastAchievements.has(a.id)){lastAchievements.add(a.id);playAchievement();
-      setTimeout(()=>showWhale('Achievement Unlocked!',a.icon+' '+a.name+' — '+a.desc),500)}
+    if(unlocked && !lastAchievements.has(a.id)){
+      lastAchievements.add(a.id);
+      // Persist so next page load knows this is already unlocked — no re-popup.
+      try{localStorage.setItem('brainAchievements', JSON.stringify([...lastAchievements]))}catch(e){}
+      playAchievement();
+      setTimeout(()=>showWhale('Achievement Unlocked!',a.icon+' '+a.name+' — '+a.desc),500);
+    }
     return `<div class="achievement ${unlocked?'unlocked':'locked'}" title="${esc(a.desc)}">
       <span class="ach-icon">${a.icon}</span>${esc(a.name)}</div>`;
   }).join('');
@@ -744,7 +752,11 @@ setInterval(() => {
 async function checkKonfetti(){
   const d=await fetchJSON('/api/fun/daily-pnl');
   if(!d) return;
-  if(d.konfetti && !window._konfettiDone){
+  // Fire konfetti at most once per calendar day, not on every page load.
+  // Uses local date as key so travelling across timezones still behaves sanely.
+  const today = new Date().toISOString().slice(0,10);
+  if(d.konfetti && localStorage.getItem('konfettiDay') !== today){
+    try{localStorage.setItem('konfettiDay', today)}catch(e){}
     window._konfettiDone=true;
     launchKonfetti();
     playWin();playWin();
