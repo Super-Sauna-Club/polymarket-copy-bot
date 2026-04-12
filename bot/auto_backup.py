@@ -13,8 +13,28 @@ REMOTE = 'piff'
 BRANCH = 'piff-custom'
 
 
+def _remote_exists() -> bool:
+    """Return True iff the configured remote exists on this machine."""
+    r = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=REPO_DIR)
+    return REMOTE in r.stdout.split()
+
+
+def _local_branch_exists() -> bool:
+    """Return True iff the configured branch exists locally."""
+    r = subprocess.run(
+        ['git', 'rev-parse', '--verify', '--quiet', f'refs/heads/{BRANCH}'],
+        capture_output=True, cwd=REPO_DIR,
+    )
+    return r.returncode == 0
+
+
 def run_backup():
     """Git add, commit, push auf piff remote."""
+    if not _remote_exists() or not _local_branch_exists():
+        logger.debug("[BACKUP] remote=%s or branch=%s not configured on this host — skipping",
+                     REMOTE, BRANCH)
+        return
+
     # Check ob es Aenderungen gibt
     result = subprocess.run(['git', 'status', '--porcelain'],
                           capture_output=True, text=True, cwd=REPO_DIR)
