@@ -487,6 +487,14 @@ def main():
     init_db()
     logger.info("Database initialized.")
 
+    try:
+        from bot.trader_lifecycle import ensure_followed_traders_seeded
+        _seeded = ensure_followed_traders_seeded()
+        if _seeded:
+            logger.info("[STARTUP] Seeded %d trader_lifecycle rows", _seeded)
+    except Exception as _e:
+        logger.warning("[STARTUP] lifecycle seed failed: %s", _e)
+
     # Sync followed traders from .env
     if config.FOLLOWED_TRADERS:
         from database.db import upsert_wallet, toggle_follow, unfollow_all

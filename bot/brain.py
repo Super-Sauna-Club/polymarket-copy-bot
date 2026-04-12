@@ -128,6 +128,14 @@ def _execute_loss_actions(classifications: dict, impacts: dict):
 
 
 def _check_trader_health():
+    # Keep lifecycle table in sync with FOLLOWED_TRADERS (picks up any
+    # new traders added since startup via settings reload).
+    try:
+        from bot.trader_lifecycle import ensure_followed_traders_seeded
+        ensure_followed_traders_seeded()
+    except Exception as e:
+        logger.debug("[BRAIN] lifecycle seed sync failed: %s", e)
+
     with db.get_connection() as conn:
         traders = conn.execute(
             "SELECT DISTINCT wallet_username FROM copy_trades "
