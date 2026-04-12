@@ -1392,7 +1392,7 @@ def api_trader_performance():
             "SELECT tp.*, ts.status as trader_status, ts.bet_multiplier, ts.reason "
             "FROM trader_performance tp "
             "LEFT JOIN trader_status ts ON tp.trader_name = ts.trader_name "
-            "WHERE tp.period = '7d' AND tp.trader_name != 'imported' AND tp.trader_name != 'test' AND tp.trades_count > 0 ORDER BY tp.total_pnl DESC"
+            "WHERE tp.period = '7d' AND tp.trader_name != 'imported' AND tp.trader_name != 'test' ORDER BY tp.total_pnl DESC"
         ).fetchall()
     return jsonify({"traders": [dict(r) for r in perf]})
 
