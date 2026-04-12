@@ -10,7 +10,6 @@ from datetime import datetime
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 
 from database import db
 
@@ -68,11 +67,13 @@ def _build_training_data():
         copy_rows = conn.execute(
             "SELECT actual_entry_price, entry_price, category, side, "
             "actual_size, size, fee_bps, created_at, pnl_realized "
-            "FROM copy_trades WHERE status = 'closed' AND pnl_realized IS NOT NULL"
+            "FROM copy_trades WHERE status = 'closed' AND pnl_realized IS NOT NULL "
+            "ORDER BY created_at ASC"
         ).fetchall()
         blocked_rows = conn.execute(
             "SELECT trader_price, category, side, created_at, would_have_won "
-            "FROM blocked_trades WHERE would_have_won IS NOT NULL"
+            "FROM blocked_trades WHERE would_have_won IS NOT NULL "
+            "ORDER BY created_at ASC"
         ).fetchall()
 
     X, y = [], []
@@ -121,8 +122,24 @@ def train_model():
         logger.warning("[ML] Only one class in training data — skipping")
         return
 
-    # Train/test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # Class balance — without this it's impossible to tell whether a high
+    # accuracy number is "real" or just a consequence of predicting the
+    # majority class.
+    n_win = int((y == 1).sum())
+    n_loss = int((y == 0).sum())
+    win_frac = n_win / len(y) if len(y) > 0 else 0
+    logger.info("[ML] Class balance: %d wins / %d losses (%.1f%% win rate)",
+                n_win, n_loss, win_frac * 100)
+
+    # Time-ordered split. _build_training_data returned rows sorted by
+    # created_at ASC, so slicing by index is time-ordered.
+    split_idx = int(len(X) * 0.8)
+    X_train, X_test = X[:split_idx], X[split_idx:]
+    y_train, y_test = y[:split_idx], y[split_idx:]
+
+    if len(set(y_train.tolist())) < 2 or len(set(y_test.tolist())) < 2:
+        logger.warning("[ML] Time-split produced single-class train/test — skipping")
+        return
 
     model = RandomForestClassifier(n_estimators=100, max_depth=6, min_samples_leaf=5, random_state=42)
     model.fit(X_train, y_train)
@@ -130,12 +147,17 @@ def train_model():
     train_acc = model.score(X_train, y_train)
     test_acc = model.score(X_test, y_test)
 
-    # Feature importance (must match _get_features() order)
+    # Majority-class baseline — what you get for free by always predicting
+    # the more frequent class in the training set.
+    majority = 1 if (y_train == 1).sum() >= (y_train == 0).sum() else 0
+    baseline_acc = float((y_test == majority).sum()) / len(y_test) if len(y_test) > 0 else 0
+
     feature_names = ["entry_price", "category", "side", "hour", "day_of_week"]
     importances = sorted(zip(feature_names, model.feature_importances_), key=lambda x: -x[1])
 
-    logger.info("[ML] Trained on %d samples (%d copy + %d blocked) | Train: %.1f%% | Test: %.1f%%",
-                total, copy_count, blocked_count, train_acc * 100, test_acc * 100)
+    logger.info("[ML] Trained on %d samples (%d copy + %d blocked) | Train: %.1f%% | Test: %.1f%% | Baseline: %.1f%%",
+                total, copy_count, blocked_count,
+                train_acc * 100, test_acc * 100, baseline_acc * 100)
     logger.info("[ML] Top features: %s",
                 ", ".join("%s=%.0f%%" % (n, v * 100) for n, v in importances[:4]))
 
