@@ -100,11 +100,7 @@ td{padding:6px 8px;border-bottom:1px solid rgba(30,30,48,0.3);font-family:var(--
     <img src="/static/logo.png" alt="SSC">
     <h1>SSC TAG</h1>
     <div class="date" id="gazetteDate">--</div>
-    <div class="nav">
-      <a href="/copy">Terminal</a>
-      <a href="/brain">Brain</a>
-      <a href="/reports" class="act">Tag</a>
-    </div>
+    {% with active='reports' %}{% include '_nav.html' %}{% endwith %}
   </div>
 
   <div class="headline">

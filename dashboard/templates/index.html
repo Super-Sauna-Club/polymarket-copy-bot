@@ -75,11 +75,7 @@ tr:hover{background:rgba(201,168,76,0.02)}
       <img src="/static/logo.png" alt="SSC" style="height:36px" onerror="this.style.display='none'">
       <div><div class="logo">Poly Copybot</div><div class="logo-sub">by Super Sauna Club</div></div>
     </div>
-    <nav class="nav">
-      <a href="/copy">Terminal</a>
-      <a href="/wallets" class="act">Settings</a>
-      <a href="/logs">Logs</a>
-    </nav>
+    {% with active='wallets' %}{% include '_nav.html' %}{% endwith %}
   </header>
 
   <div class="sec">

@@ -417,14 +417,8 @@ tr:hover{background:rgba(201,168,76,0.03)}
     <div class="hd-right">
       <button class="sfx-btn" id="sfxBtn" onclick="togSfxPanel()"><span id="sfxIco">&#128264;</span> Sound</button>
       <button class="sfx-btn" id="lockBtn" onclick="togLock()" title="Unlock to enable manual close"><span id="lockIco">&#128274;</span></button>
-      <button class="sfx-btn" id="wideBtn" onclick="togWide()" title="Toggle widescreen">&#9724; Wide</button>
-      <nav class="nav">
-        <a href="/copy">Terminal</a>
-        <a href="/wallets">Settings</a>
-        <a href="/logs">Logs</a>
-        <a href="/brain">Brain</a>
-        <a href="/reports">Tag</a>
-      </nav>
+      <button class="sfx-btn" id="wideBtn" onclick="togWide()" title="Switch layout">&#9724; Desktop</button>
+      {% with active='copy' %}{% include '_nav.html' %}{% endwith %}
     </div>
   </header>
 
@@ -1278,10 +1272,34 @@ document.querySelectorAll('.cp-btn').forEach(b=>b.addEventListener('click',()=>{
 
 let _reportLoaded=false;
 async function load(){try{const r=await fetch('/api/live-data');D=await r.json();_processNewActivities();render();chart();dot();_initStreaks();_checkPayouts();_fetchLiveInfo();if(!_reportLoaded&&D.followed){_reportLoaded=true;loadReport()}}catch(e){console.error('fetch:',e);pollOk=false;dot()}}
+// View mode: desktop (wide layout) or mobile (normal layout).
+// Resolution order: URL param > localStorage > auto-detect by screen width.
+// Default on first visit: desktop if screen >=768px, mobile otherwise.
+function _resolveViewMode(){
+  const u=new URLSearchParams(location.search);
+  if(u.get('wide')==='1')return 'desktop';
+  if(u.get('wide')==='0')return 'mobile';
+  const saved=localStorage.getItem('viewMode');
+  if(saved==='desktop'||saved==='mobile')return saved;
+  return window.innerWidth>=768?'desktop':'mobile';
+}
 function togWide(){
+  // User explicitly toggles — persist choice, clear URL override, reload.
+  const cur=document.body.classList.contains('wide')?'desktop':'mobile';
+  const next=cur==='desktop'?'mobile':'desktop';
+  localStorage.setItem('viewMode',next);
   const u=new URL(location);
-  if(u.searchParams.has('wide')){u.searchParams.delete('wide')}else{u.searchParams.set('wide','1')}
+  u.searchParams.delete('wide');
   location.href=u.toString();
+}
+// Update button label to reflect CURRENT mode (so user knows what pressing does).
+function _updateWideBtnLabel(){
+  const btn=document.getElementById('wideBtn');
+  if(!btn)return;
+  const isDesktop=document.body.classList.contains('wide');
+  // Label shows what pressing switches TO
+  btn.innerHTML=isDesktop?'&#9635; Mobile':'&#9724; Desktop';
+  btn.title=isDesktop?'Switch to mobile layout':'Switch to desktop layout';
 }
 // Digital clock — visible in wide mode only
 function _tickClock(){
@@ -1297,7 +1315,7 @@ function _tickClock(){
 setInterval(_tickClock,1000);
 _tickClock();
 
-if(new URLSearchParams(location.search).has('wide')){
+if(_resolveViewMode()==='desktop'){
   document.body.classList.add('wide');
   const app=document.querySelector('.app');
   // Hide normal exposure section in wide mode
@@ -1329,6 +1347,7 @@ if(new URLSearchParams(location.search).has('wide')){
   content.appendChild(right);
   app.appendChild(content);
 }
+_updateWideBtnLabel();
 load();const _pollWorker=new Worker(URL.createObjectURL(new Blob(["setInterval(()=>postMessage(1),10000)"],{type:"application/javascript"})));_pollWorker.onmessage=()=>load();
 setTimeout(_updSfxUI,100);
 // Auto-refresh report every 60s
