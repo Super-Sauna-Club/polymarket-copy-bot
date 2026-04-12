@@ -662,7 +662,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 continue
 
             # Duplicate market check (another trader already has this market)
-            if cid and db.is_market_already_open(cid, from_wallet=address):
+            if cid and db.is_market_already_open(cid, from_wallet=address, side=_s):
                 _log_block(username, _q, cid, _s, entry_price_raw, "cross_trader_dupe",
                            "market open from another trader", "diff")
                 continue
@@ -1133,7 +1133,7 @@ def copy_followed_wallets():
                     continue
 
                 # Cross-trader duplicate check
-                if _ew_cid and db.is_market_already_open(_ew_cid, from_wallet=td["wallet_address"]):
+                if _ew_cid and db.is_market_already_open(_ew_cid, from_wallet=td["wallet_address"], side=_ew_sd):
                     _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
                                "cross_trader_dupe", "market open from another trader", "event_wait")
                     _ew_expired.append(_ew_cid)
@@ -1303,7 +1303,7 @@ def copy_followed_wallets():
                                    "max_copies", "already copied (activity faster)", "hedge_wait")
                         continue
                     # Cross-trader duplicate check
-                    if _hw_cid and db.is_market_already_open(_hw_cid, from_wallet=td["address"]):
+                    if _hw_cid and db.is_market_already_open(_hw_cid, from_wallet=td["address"], side=_hw_sd):
                         _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
                                    "cross_trader_dupe", "market open from another trader", "hedge_wait")
                         continue
@@ -1654,8 +1654,8 @@ def copy_followed_wallets():
 
             # === STANDARD-FILTER ===
             # Duplikat-Markt-Check: nicht denselben Markt von 2 Tradern kopieren
-            if cid and db.is_market_already_open(cid, from_wallet=address):
-                logger.info("[SKIP] Markt bereits offen (anderer Trader): %s", question[:40])
+            if cid and db.is_market_already_open(cid, from_wallet=address, side=t.get("side", "")):
+                logger.info("[SKIP] Markt bereits offen (gleiche Seite, anderer Trader): %s", question[:40])
                 _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
                            "cross_trader_dupe", "market open from another trader", "activity")
                 continue

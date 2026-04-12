@@ -434,11 +434,12 @@ def count_copies_for_market(wallet_address: str, condition_id: str) -> int:
         return row["cnt"] if row else 0
 
 
-def is_market_already_open(condition_id: str, from_wallet: str = "") -> bool:
-    """Ist dieser Market bereits offen von einem ANDEREN Trader?
+def is_market_already_open(condition_id: str, from_wallet: str = "", side: str = "") -> bool:
+    """Ist dieser Market bereits offen von einem ANDEREN Trader (gleiche Seite)?
 
-    Same trader double-down → erlaubt (from_wallet ist ausgenommen)
-    Anderer Trader kauft dasselbe → geblockt (Duplikat)
+    Same trader double-down -> erlaubt (from_wallet ist ausgenommen)
+    Anderer Trader kauft exakt dieselbe Seite -> geblockt (Duplikat)
+    Anderer Trader kauft andere Seite (z.B. Over vs Under) -> erlaubt
     Also counts trades closed in the last 30 minutes (prevents rapid re-entry).
     """
     if not condition_id:
@@ -446,12 +447,27 @@ def is_market_already_open(condition_id: str, from_wallet: str = "") -> bool:
     _window = max(config.NO_REBUY_MINUTES, 30) if config.NO_REBUY_MINUTES > 0 else 30
     _window_mod = "-%d minutes" % int(_window)
     with get_connection() as conn:
-        if from_wallet:
+        if from_wallet and side:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM copy_trades WHERE condition_id=? "
+                "AND side=? "
+                "AND (status='open' OR (status='closed' AND closed_at > datetime('now', ?, 'localtime'))) "
+                "AND wallet_address!=?",
+                (condition_id, side, _window_mod, from_wallet)
+            ).fetchone()
+        elif from_wallet:
             row = conn.execute(
                 "SELECT COUNT(*) as cnt FROM copy_trades WHERE condition_id=? "
                 "AND (status='open' OR (status='closed' AND closed_at > datetime('now', ?, 'localtime'))) "
                 "AND wallet_address!=?",
                 (condition_id, _window_mod, from_wallet)
+            ).fetchone()
+        elif side:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM copy_trades WHERE condition_id=? "
+                "AND side=? "
+                "AND (status='open' OR (status='closed' AND closed_at > datetime('now', ?, 'localtime')))",
+                (condition_id, side, _window_mod)
             ).fetchone()
         else:
             row = conn.execute(
