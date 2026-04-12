@@ -1400,9 +1400,7 @@ def api_ai_dismiss(rec_id):
 
 @app.route("/api/upgrade/trader-performance")
 def api_trader_performance():
-    """Performance aller Trader mit Status."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """Performance aller Trader mit Status. Read-only GET, no auth (matches brain endpoints)."""
     with db.get_connection() as conn:
         perf = conn.execute(
             "SELECT tp.*, ts.status as trader_status, ts.bet_multiplier, ts.reason "
@@ -1415,9 +1413,7 @@ def api_trader_performance():
 
 @app.route("/api/upgrade/category-heatmap")
 def api_category_heatmap():
-    """Kategorie-Performance als Heatmap-Daten."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """Kategorie-Performance als Heatmap-Daten. Read-only GET, no auth."""
     with db.get_connection() as conn:
         cats = conn.execute(
             "SELECT * FROM category_performance WHERE period = '30d' "
@@ -1438,9 +1434,7 @@ def api_category_heatmap():
 
 @app.route("/api/upgrade/ml-info")
 def api_ml_info():
-    """ML-Modell Info und Training-History."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """ML-Modell Info und Training-History. Read-only GET, no auth."""
     with db.get_connection() as conn:
         training = conn.execute(
             "SELECT * FROM ml_training_log ORDER BY trained_at DESC LIMIT 5"
@@ -1450,9 +1444,7 @@ def api_ml_info():
 
 @app.route("/api/upgrade/candidates")
 def api_candidates():
-    """Trader-Kandidaten mit Paper-Stats."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """Trader-Kandidaten mit Paper-Stats. Read-only GET, no auth."""
     candidates = db.get_all_candidates()
     for c in candidates:
         stats = db.get_candidate_stats(c["address"])
@@ -1462,9 +1454,7 @@ def api_candidates():
 
 @app.route("/api/upgrade/autonomous-trades")
 def api_autonomous_trades():
-    """Autonome Trades (Paper + Live)."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """Autonome Trades (Paper + Live). Read-only GET, no auth."""
     with db.get_connection() as conn:
         trades = conn.execute(
             "SELECT * FROM autonomous_trades ORDER BY created_at DESC LIMIT 50"
@@ -1474,9 +1464,7 @@ def api_autonomous_trades():
 
 @app.route("/api/upgrade/status")
 def api_upgrade_status():
-    """Overall upgrade status — alles auf einen Blick."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """Overall upgrade status — alles auf einen Blick. Read-only GET, no auth."""
     result = {}
 
     # Trader status
