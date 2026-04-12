@@ -555,9 +555,7 @@ def api_generate_report():
 
 @app.route("/api/report/latest")
 def api_latest_report():
-    """Get most recent AI report."""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """Get most recent AI report. Read-only GET, no auth."""
     report = db.get_latest_report()
     if report:
         return jsonify({"report": dict(report)["report_text"], "created_at": dict(report)["created_at"]})
@@ -806,12 +804,11 @@ def copy_trading():
 @app.route("/api/copy/trader-stats")
 def api_trader_stats():
     """Per-Trader P&L breakdown — shows all-time + last 24h stats.
+    Read-only GET, no auth (matches /api/brain/* and /api/upgrade/* pattern).
 
     ?hours=24 (default) filters closed trades to last N hours.
     ?hours=0 returns all-time stats.
     """
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
     hours = request.args.get("hours", "24")
     try:
         hours = int(hours)
@@ -1058,9 +1055,8 @@ def api_copy_reset():
 
 @app.route("/api/copy/chart")
 def api_copy_chart():
-    """Portfolio chart data for copy trading. Supports ?period=4h|1d|1w|1m|all"""
-    if not _check_auth():
-        return jsonify({"error": "unauthorized"}), 403
+    """Portfolio chart data for copy trading. Read-only GET, no auth.
+    Supports ?period=4h|1d|1w|1m|all"""
     period = request.args.get("period", "1d")
     now = datetime.now()
     if period == "4h":
