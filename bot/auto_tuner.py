@@ -123,12 +123,8 @@ def _get_category_blacklist(trader_name):
 
 
 def _read_settings():
-    try:
-        with open(SETTINGS_PATH) as f:
-            return f.read()
-    except (FileNotFoundError, PermissionError) as e:
-        logger.error('[TUNER] Cannot read settings: %s', e)
-        return ''
+    from bot.settings_lock import read_settings
+    return read_settings()
 
 
 def _update_map_setting(content, key, new_map):
@@ -250,10 +246,8 @@ def auto_tune():
     content = _update_blacklist_setting(content, blacklist_map)
 
     if content != old_content:
-        _tmp = SETTINGS_PATH + '.tmp'
-        with open(_tmp, 'w') as f:
-            f.write(content)
-        os.replace(_tmp, SETTINGS_PATH)  # atomic rename
+        from bot.settings_lock import write_settings
+        write_settings(content)
         changes = []
         for name, data in sorted(classifications.items(), key=lambda x: x[1]["pnl_7d"], reverse=True):
             changes.append("%s=%s($%.0f)" % (name, data["tier"].upper(), data["pnl_7d"]))
