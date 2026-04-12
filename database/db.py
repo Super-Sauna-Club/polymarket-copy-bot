@@ -1278,6 +1278,60 @@ def get_score_range_performance() -> list:
         return [dict(r) for r in rows]
 
 
+def update_trade_score_outcome(condition_id: str, trader_name: str, pnl: float) -> int:
+    """Write outcome_pnl onto the newest matching trade_scores row.
+
+    Match: newest (highest id) trade_scores row with matching
+    condition_id + trader_name + outcome_pnl IS NULL. Returns rowcount.
+
+    NO_REBUY_MINUTES=120 guarantees at most one NULL-outcome score row
+    per (condition_id, trader_name) at any moment in production, so the
+    newest-by-id match is deterministic without a time window.
+    """
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE trade_scores SET outcome_pnl = ? "
+            "WHERE id = ("
+            "    SELECT id FROM trade_scores "
+            "    WHERE condition_id = ? AND trader_name = ? "
+            "      AND outcome_pnl IS NULL "
+            "    ORDER BY id DESC LIMIT 1"
+            ")",
+            (pnl, condition_id, trader_name)
+        )
+        return cur.rowcount
+
+
+def backfill_trade_score_outcomes(days: int = 30) -> int:
+    """Join trade_scores with closed copy_trades and fill missing outcome_pnl.
+
+    Called periodically by outcome_tracker.track_outcomes. Scans the last
+    `days` days of trade_scores rows with NULL outcome_pnl and fills them
+    from the matching (condition_id, trader) copy_trades row's pnl_realized.
+    Returns count updated.
+    """
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE trade_scores SET outcome_pnl = ("
+            "    SELECT ct.pnl_realized FROM copy_trades ct "
+            "    WHERE ct.condition_id = trade_scores.condition_id "
+            "      AND ct.wallet_username = trade_scores.trader_name "
+            "      AND ct.status = 'closed' AND ct.pnl_realized IS NOT NULL "
+            "    ORDER BY ct.id DESC LIMIT 1"
+            ") "
+            "WHERE outcome_pnl IS NULL "
+            "  AND created_at >= datetime('now','-' || ? || ' days','localtime') "
+            "  AND EXISTS ("
+            "    SELECT 1 FROM copy_trades ct2 "
+            "    WHERE ct2.condition_id = trade_scores.condition_id "
+            "      AND ct2.wallet_username = trade_scores.trader_name "
+            "      AND ct2.status = 'closed' AND ct2.pnl_realized IS NOT NULL"
+            "  )",
+            (days,)
+        )
+        return cur.rowcount
+
+
 # === Trader Lifecycle Helpers ===
 
 def get_lifecycle_trader(address: str) -> dict:
@@ -1372,6 +1426,73 @@ def get_lifecycle_pause_count(address: str) -> int:
             "SELECT pause_count FROM trader_lifecycle WHERE address = ?", (address,)
         ).fetchone()
         return row["pause_count"] if row else 0
+
+
+# === Unified Trader State ===
+
+def get_trader_effective_state(username: str) -> dict:
+    """Combine trader_status (soft throttle) + trader_lifecycle (hard pause).
+
+    Returns a dict with:
+      - hard_status: lifecycle status ('LIVE_FOLLOW', 'PAUSED', 'KICKED', ...)
+      - soft_status: trader_status ('active', 'throttled', 'paused')
+      - multiplier: soft bet multiplier (0.0-1.0) from trader_status
+      - is_paused: True if EITHER system reports paused/kicked
+      - reasons: list of reason strings from both sources
+
+    This is the canonical reader going forward. Writers are still split:
+    bot.trader_lifecycle.pause_trader writes the hard lifecycle;
+    bot.trader_performance writes the soft throttling. They are
+    orthogonal axes representing different signals.
+    """
+    hard_status = "LIVE_FOLLOW"
+    hard_reason = ""
+    with get_connection() as conn:
+        lc = conn.execute(
+            "SELECT status, kick_reason, notes FROM trader_lifecycle "
+            "WHERE username = ? ORDER BY id DESC LIMIT 1",
+            (username,)
+        ).fetchone()
+        if lc:
+            hard_status = lc["status"] or "LIVE_FOLLOW"
+            hard_reason = lc["kick_reason"] or ""
+
+    soft_status = "active"
+    soft_multiplier = 1.0
+    soft_reason = ""
+    with get_connection() as conn:
+        ts = conn.execute(
+            "SELECT status, bet_multiplier, reason FROM trader_status "
+            "WHERE trader_name = ?",
+            (username,)
+        ).fetchone()
+        if ts:
+            soft_status = ts["status"] or "active"
+            soft_multiplier = float(ts["bet_multiplier"] or 1.0)
+            soft_reason = ts["reason"] or ""
+
+    is_paused = (
+        hard_status in ("PAUSED", "KICKED") or
+        soft_status == "paused"
+    )
+    reasons = [r for r in (hard_reason, soft_reason) if r]
+
+    return {
+        "hard_status": hard_status,
+        "soft_status": soft_status,
+        "multiplier": soft_multiplier,
+        "is_paused": is_paused,
+        "reasons": reasons,
+    }
+
+
+def is_trader_paused(username: str) -> bool:
+    """Return True if the trader is paused in either lifecycle or trader_status.
+
+    Convenience wrapper over get_trader_effective_state for call sites
+    that only care about the boolean.
+    """
+    return get_trader_effective_state(username)["is_paused"]
 
 
 # === Autonomous Performance Helpers ===

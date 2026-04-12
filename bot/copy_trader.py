@@ -258,6 +258,10 @@ def _reload_maps():
     _MIN_TRADER_USD_MAP = _parse_float_map(vals.get("MIN_TRADER_USD_MAP", ""), "MIN_TRADER_USD_MAP")
     _MIN_CONVICTION_MAP = _parse_float_map(vals.get("MIN_CONVICTION_RATIO_MAP", ""), "MIN_CONVICTION_RATIO_MAP")
 
+    # Refresh config.FOLLOWED_TRADERS so additions/removals via
+    # trader_lifecycle take effect without a process restart.
+    config.FOLLOWED_TRADERS = vals.get("FOLLOWED_TRADERS", "") or ""
+
     # Reload category blacklist
     _CATEGORY_BLACKLIST.clear()
     for entry in (vals.get("CATEGORY_BLACKLIST_MAP", "") or "").split(","):
@@ -2254,6 +2258,12 @@ def update_copy_positions():
                             db.log_activity("resolved", "WIN" if pnl > 0 else "LOSS",
                                             "Position %s" % ("won" if pnl > 0 else "lost"),
                                             "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:40], pnl), pnl)
+                            try:
+                                db.update_trade_score_outcome(
+                                    trade_cid, trade.get("wallet_username","") or "", pnl
+                                )
+                            except Exception as _score_e:
+                                logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                             continue
 
                         # Still open → update price (WebSocket first, then Gamma REST)
@@ -2293,6 +2303,12 @@ def update_copy_positions():
                                                 trade["id"], loss_pct * 100, pnl, trade["market_question"][:40])
                                     db.log_activity("sell", "LOSS", "Stop-loss triggered",
                                                     "#%d %s — P&L $%+.2f" % (trade["id"], trade["market_question"][:35], pnl), round(pnl, 2))
+                                    try:
+                                        db.update_trade_score_outcome(
+                                            trade_cid, trade.get("wallet_username","") or "", pnl
+                                        )
+                                    except Exception as _score_e:
+                                        logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                                     continue
 
                             # Trailing Stop: once position was 20%+ up, trail sell point below peak.
@@ -2325,6 +2341,12 @@ def update_copy_positions():
                                                 trade["id"], _peak * 100, _peak_gain * 100, effective_price * 100, pnl, trade["market_question"][:40])
                                     db.log_activity("sell", "WIN" if pnl >= 0 else "LOSS", "Trailing stop triggered",
                                                     "#%d %s — peak %.0fc, sold %.0fc, P&L $%+.2f" % (trade["id"], trade["market_question"][:35], _peak * 100, effective_price * 100, pnl), round(pnl, 2))
+                                    try:
+                                        db.update_trade_score_outcome(
+                                            trade_cid, trade.get("wallet_username","") or "", pnl
+                                        )
+                                    except Exception as _score_e:
+                                        logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                                     continue
 
                             # Take-Profit: per-trader override via TAKE_PROFIT_MAP

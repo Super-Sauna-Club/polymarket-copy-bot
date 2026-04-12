@@ -122,7 +122,7 @@ def generate_daily_report():
     lines.append("")
 
     # Trader Status
-    paused = [p for p in perf if p["trader_status"] == "paused"]
+    paused = [p for p in perf if db.is_trader_paused(p["trader_name"] or "")]
     if paused:
         lines.append("=== GESPERRT ===")
         for p in paused:

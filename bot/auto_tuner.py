@@ -307,10 +307,9 @@ def auto_tune():
             changes.append("%s=%s($%.0f)" % (name, data["tier"].upper(), data["pnl_7d"]))
         summary = " | ".join(changes)
         logger.info("[TUNER] Settings updated: %s", summary)
-        # Activity logged to journal only, not dashboard
-        pass
 
-        # Auto-Restart disabled for safety (was killing running orders/DB writes)
-        logger.warning("[TUNER] Settings changed — restart recommended to apply new values")
+        # Hot-reload: copy_trader._reload_maps() picks up mtime change within
+        # one scan cycle (~5s). No restart needed; no warning.
+        logger.info("[TUNER] Settings written — copy_trader will reload on next scan")
     else:
         logger.info("[TUNER] No changes needed")

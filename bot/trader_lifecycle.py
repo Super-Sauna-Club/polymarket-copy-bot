@@ -272,3 +272,37 @@ def _read_settings() -> str:
 def _write_settings(content: str):
     from bot.settings_lock import write_settings
     write_settings(content)
+
+
+def ensure_followed_traders_seeded():
+    """Upsert a LIVE_FOLLOW lifecycle row for every trader in FOLLOWED_TRADERS.
+
+    Called at startup and at the start of each brain cycle so that primary
+    followed traders actually appear in the lifecycle table. Without this,
+    they only got lifecycle rows when brain.pause_trader paused them —
+    meaning paper stats and lifecycle transitions never worked for them.
+    """
+    content = _read_settings()
+    match = re.search(r'^FOLLOWED_TRADERS=(.*)$', content, re.MULTILINE)
+    if not match:
+        return 0
+    raw = match.group(1).strip()
+    if not raw:
+        return 0
+    seeded = 0
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if ":" not in entry:
+            # Legacy format (no address) — skip, nothing to upsert.
+            continue
+        username, address = entry.split(":", 1)
+        username = username.strip()
+        address = address.strip()
+        if not address:
+            continue
+        existing = db.get_lifecycle_trader(address)
+        if existing is None:
+            db.upsert_lifecycle_trader(address, username, "LIVE_FOLLOW", "bootstrap")
+            seeded += 1
+            logger.info("[LIFECYCLE] Seeded %s (%s) as LIVE_FOLLOW", username, address[:12])
+    return seeded
