@@ -22,13 +22,6 @@ MIN_LIVE_TRADERS = 2
 def run_brain():
     logger.info("[BRAIN] === Brain Engine starting ===")
     try:
-        # Auto-tuner FIRST: sets baseline tiers
-        # Brain decisions AFTER: override/tighten what auto-tuner set
-        try:
-            from bot.auto_tuner import auto_tune
-            auto_tune()
-        except Exception as e:
-            logger.warning("[BRAIN] Auto-tuner error: %s", e)
         _classify_losses()
         _check_trader_health()
         _optimize_score_weights()
@@ -43,6 +36,12 @@ def run_brain():
             _revert_obsolete_tightens()
         except Exception as e:
             logger.warning("[BRAIN] Revert helpers error: %s", e)
+        # PATCH-025: Auto-tuner AFTER reverts, so relaxations are not immediately undone
+        try:
+            from bot.auto_tuner import auto_tune
+            auto_tune()
+        except Exception as e:
+            logger.warning("[BRAIN] Auto-tuner error: %s", e)
         logger.info("[BRAIN] === Brain Engine complete ===")
     except Exception as e:
         logger.exception("[BRAIN] Fatal error: %s", e)

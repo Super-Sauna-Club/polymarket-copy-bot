@@ -577,7 +577,7 @@ def _process_pending_buys(balance: float, total_invested: float) -> int:
         _pb_addr = trade_data.get("wallet_address", "")
         _pb_side = trade_data.get("side", "")
         _pb_user = trade_data.get("wallet_username", "")
-        if cid and db.count_copies_for_market(_pb_addr, cid) >= config.MAX_COPIES_PER_MARKET:
+        if cid and db.count_copies_for_market(_pb_addr, cid) >= _get_max_copies(_pb_user):
             logger.info("[PENDING] Max copies reached, skipping: %s", trade_data["market_question"][:40])
             expired_keys.append(cid)
             continue
@@ -591,7 +591,12 @@ def _process_pending_buys(balance: float, total_invested: float) -> int:
         # LIVE_MODE: echte Order platzieren BEVOR DB-Record erstellt wird
         if LIVE_MODE and cid:
             try:
-                with _buy_lock:  # PATCH-024: prevent concurrent buy race
+                with _buy_lock:  # PATCH-025: lock covers buy + DB insert
+                    # Re-check under lock to prevent race
+                    if db.count_copies_for_market(_pb_addr, cid) >= _get_max_copies(_pb_user):
+                        logger.info("[PENDING] Max copies (re-check under lock), skipping: %s", trade_data["market_question"][:40])
+                        expired_keys.append(cid)
+                        continue
                     order_resp = buy_shares(cid, trade_data["side"], size, trade_data["entry_price"])
                     if not order_resp:
                         logger.warning("[PENDING] Order failed, skipping: %s", trade_data["market_question"][:40])
@@ -599,11 +604,13 @@ def _process_pending_buys(balance: float, total_invested: float) -> int:
                         continue
                     _apply_fill_details(trade_data, order_resp, size, trade_data["entry_price"])
                     size = trade_data["size"]
+                    trade_id = db.create_copy_trade(trade_data)  # Inside lock
             except Exception as _pe:
                 logger.warning("[PENDING] Buy error: %s", _pe)
                 expired_keys.append(cid)
                 continue
-        trade_id = db.create_copy_trade(trade_data)
+        else:
+            trade_id = db.create_copy_trade(trade_data)  # Paper mode
         if trade_id:
             fired += 1
             total_invested += size
@@ -684,9 +691,9 @@ def _position_diff_scan(address: str, username: str, balance: float,
                 continue
 
             # Max copies per market
-            if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+            if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                 _log_block(username, _q, cid, _s, entry_price_raw, "max_copies",
-                           "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "diff")
+                           "max %d copies reached" % _get_max_copies(username), "diff")
                 continue
 
             # Duplicate market check (another trader already has this market)
@@ -876,7 +883,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
                             username, _kelly_m, _score_result["score"], pos["market_question"][:40])
             # LIVE MODE: Echte Order platzieren
             with _buy_lock:
-                if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+                if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                     continue
                 if LIVE_MODE and cid:
                     try:
@@ -1161,9 +1168,9 @@ def copy_followed_wallets():
                     continue
 
                 # MAX_COPIES check
-                if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= config.MAX_COPIES_PER_MARKET:
+                if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= _get_max_copies(_ew_un):
                     _log_block(_ew_un, _ew_qn, _ew_cid, _ew_sd, _entry_price,
-                               "max_copies", "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "event_wait")
+                               "max_copies", "max %d copies reached" % _get_max_copies(_ew_un), "event_wait")
                     _ew_expired.append(_ew_cid)
                     continue
 
@@ -1232,7 +1239,7 @@ def copy_followed_wallets():
                         _ew_size = round(_ew_pos_rem, 2)
                 if _ew_size >= MIN_TRADE_SIZE and balance > _ew_size:
                     with _buy_lock:
-                        if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= config.MAX_COPIES_PER_MARKET:
+                        if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= _get_max_copies(td.get("wallet_username", "")):
                             _ew_expired.append(_ew_cid)
                             continue
                         if LIVE_MODE and _ew_cid:
@@ -1332,7 +1339,7 @@ def copy_followed_wallets():
                                    "category_blacklist", "category '%s' blocked" % _detect_category(_hw_qn), "hedge_wait")
                         continue
                     # MAX_COPIES check: activity scan may have already copied this market
-                    if _hw_cid and db.count_copies_for_market(td["address"], _hw_cid) >= config.MAX_COPIES_PER_MARKET:
+                    if _hw_cid and db.count_copies_for_market(td["address"], _hw_cid) >= _get_max_copies(_hw_un):
                         logger.info("[HEDGE-WAIT] Already copied (activity scan was faster), skipping: %s", _hw_qn[:40])
                         _log_block(_hw_un, _hw_qn, _hw_cid, _hw_sd, entry_price,
                                    "max_copies", "already copied (activity faster)", "hedge_wait")
@@ -1426,7 +1433,7 @@ def copy_followed_wallets():
                         "category": _detect_category(td["question"]),
                     }
                     with _buy_lock:
-                        if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= config.MAX_COPIES_PER_MARKET:
+                        if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= _get_max_copies():
                             continue
                         if LIVE_MODE and td["cid"]:
                             from bot.order_executor import get_wallet_balance as _gwb2
@@ -1463,7 +1470,7 @@ def copy_followed_wallets():
         _hq_first = list(_hq_entry["sides"].values())[0]
         _hq_addr = _hq_first.get("address", "")
         _hq_cid = _hq_first.get("cid", _hk)
-        if _hq_cid and db.count_copies_for_market(_hq_addr, _hq_cid) >= config.MAX_COPIES_PER_MARKET:
+        if _hq_cid and db.count_copies_for_market(_hq_addr, _hq_cid) >= _get_max_copies():
             logger.info("[HEDGE-WAIT] Removed from queue (already copied): %s", _hq_first.get("question", "")[:40])
             del _hedge_queue[_hk]
 
@@ -1680,11 +1687,11 @@ def copy_followed_wallets():
                 continue
 
             # 3) Max Kopien pro Markt: nicht X-mal denselben Markt kopieren
-            if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+            if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                 logger.info("[FILTER] Max copies (%d) for market: %s",
                             config.MAX_COPIES_PER_MARKET, question[:40])
                 _log_block(username, question, cid, t.get("side", ""), t.get("price", 0),
-                           "max_copies", "max %d copies reached" % config.MAX_COPIES_PER_MARKET, "activity")
+                           "max_copies", "max %d copies reached" % _get_max_copies(username), "activity")
                 continue
 
             # === STANDARD-FILTER ===
@@ -2055,7 +2062,7 @@ def copy_followed_wallets():
             # Lock prevents race conditions between concurrent buy attempts
             with _buy_lock:
                 # Re-check limits under lock (another thread may have bought in the meantime)
-                if cid and db.count_copies_for_market(address, cid) >= config.MAX_COPIES_PER_MARKET:
+                if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                     logger.info("[LOCK] Max copies reached (concurrent): %s", question[:40])
                     continue
 
