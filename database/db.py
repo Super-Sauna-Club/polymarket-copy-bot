@@ -1398,6 +1398,73 @@ def get_lifecycle_pause_count(address: str) -> int:
         return row["pause_count"] if row else 0
 
 
+# === Unified Trader State ===
+
+def get_trader_effective_state(username: str) -> dict:
+    """Combine trader_status (soft throttle) + trader_lifecycle (hard pause).
+
+    Returns a dict with:
+      - hard_status: lifecycle status ('LIVE_FOLLOW', 'PAUSED', 'KICKED', ...)
+      - soft_status: trader_status ('active', 'throttled', 'paused')
+      - multiplier: soft bet multiplier (0.0-1.0) from trader_status
+      - is_paused: True if EITHER system reports paused/kicked
+      - reasons: list of reason strings from both sources
+
+    This is the canonical reader going forward. Writers are still split:
+    bot.trader_lifecycle.pause_trader writes the hard lifecycle;
+    bot.trader_performance writes the soft throttling. They are
+    orthogonal axes representing different signals.
+    """
+    hard_status = "LIVE_FOLLOW"
+    hard_reason = ""
+    with get_connection() as conn:
+        lc = conn.execute(
+            "SELECT status, kick_reason, notes FROM trader_lifecycle "
+            "WHERE username = ? ORDER BY id DESC LIMIT 1",
+            (username,)
+        ).fetchone()
+        if lc:
+            hard_status = lc["status"] or "LIVE_FOLLOW"
+            hard_reason = lc["kick_reason"] or ""
+
+    soft_status = "active"
+    soft_multiplier = 1.0
+    soft_reason = ""
+    with get_connection() as conn:
+        ts = conn.execute(
+            "SELECT status, bet_multiplier, reason FROM trader_status "
+            "WHERE trader_name = ?",
+            (username,)
+        ).fetchone()
+        if ts:
+            soft_status = ts["status"] or "active"
+            soft_multiplier = float(ts["bet_multiplier"] or 1.0)
+            soft_reason = ts["reason"] or ""
+
+    is_paused = (
+        hard_status in ("PAUSED", "KICKED") or
+        soft_status == "paused"
+    )
+    reasons = [r for r in (hard_reason, soft_reason) if r]
+
+    return {
+        "hard_status": hard_status,
+        "soft_status": soft_status,
+        "multiplier": soft_multiplier,
+        "is_paused": is_paused,
+        "reasons": reasons,
+    }
+
+
+def is_trader_paused(username: str) -> bool:
+    """Return True if the trader is paused in either lifecycle or trader_status.
+
+    Convenience wrapper over get_trader_effective_state for call sites
+    that only care about the boolean.
+    """
+    return get_trader_effective_state(username)["is_paused"]
+
+
 # === Autonomous Performance Helpers ===
 
 def log_autonomous_daily(date_str: str, mode: str, signal_type: str, trades: int, wins: int, pnl: float):
