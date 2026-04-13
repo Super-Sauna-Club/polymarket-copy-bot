@@ -30,6 +30,9 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   background:radial-gradient(ellipse at 20% 0%,rgba(201,168,76,0.06),transparent 55%),
              radial-gradient(ellipse at 80% 100%,rgba(201,168,76,0.03),transparent 50%)}
 
+/* ═══ MATRIX RAIN (falling gold chars) ═══ */
+#matrixRain{position:fixed;inset:0;z-index:0;opacity:0.11;pointer-events:none}
+
 /* ═══ SCANLINE ═══ */
 .scan{position:fixed;top:0;left:0;right:0;height:1px;z-index:9998;pointer-events:none;
   background:linear-gradient(90deg,transparent 10%,rgba(201,168,76,0.25) 50%,transparent 90%);

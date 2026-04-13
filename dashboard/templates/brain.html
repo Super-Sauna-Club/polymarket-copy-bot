@@ -24,8 +24,7 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 .counter{padding:12px 14px}
 .counter-val{font-size:1.55rem}
 
-/* Matrix rain canvas behind everything */
-#matrixRain{position:fixed;inset:0;z-index:0;opacity:0.12;pointer-events:none}
+/* Matrix rain lives in terminal.css now (global on every page except DailyReport) */
 
 /* ═══ BRAIN STREAM — compact live log at the top (logs.html style) ═══ */
 .stream-wrap{margin-bottom:14px;position:relative}
@@ -417,7 +416,7 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 </style>
 </head>
 <body>
-<canvas id="matrixRain"></canvas>
+<!-- Matrix rain canvas is injected by terminal.js on all pages (opt out via body[data-no-matrix]) -->
 <div class="scan"></div>
 <div class="app">
 
@@ -702,31 +701,7 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 var $=function(s,r){return (r||document).querySelector(s)};
 var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 
-/* ── Matrix rain ── */
-(function matrix(){
-  var cvs=$('#matrixRain');if(!cvs)return;
-  var ctx=cvs.getContext('2d');
-  function resize(){cvs.width=window.innerWidth;cvs.height=window.innerHeight}
-  resize();window.addEventListener('resize',resize);
-  var chars='01 {} [] <> ABCDEF 0123456789 $ \u2716 \u25A0 \u25B2 \u25BC';
-  chars=chars.split('');
-  var font=14;
-  function cols(){return Math.floor(cvs.width/font)}
-  var drops=[];for(var i=0;i<cols();i++)drops.push(Math.random()*cvs.height/font);
-  function draw(){
-    ctx.fillStyle='rgba(6,6,10,0.08)';
-    ctx.fillRect(0,0,cvs.width,cvs.height);
-    ctx.fillStyle='rgba(201,168,76,0.55)';
-    ctx.font=font+'px "Fira Code",monospace';
-    for(var i=0;i<drops.length;i++){
-      var ch=chars[Math.floor(Math.random()*chars.length)];
-      ctx.fillText(ch,i*font,drops[i]*font);
-      if(drops[i]*font>cvs.height&&Math.random()>0.975)drops[i]=0;
-      drops[i]++;
-    }
-  }
-  setInterval(draw,80);
-})();
+/* Matrix rain moved to terminal.js — global on all pages except DailyReport */
 
 /* ── Neural network SVG — event-driven packet flow ── */
 var NN={packets:[],layers:[],nodeEls:[],svg:null,raf:null,activityDecay:null};

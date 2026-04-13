@@ -7,6 +7,39 @@
 
   function $(sel,root){return (root||document).querySelector(sel)}
 
+  // ═══ MATRIX RAIN ═══
+  // Global falling-gold-chars background, auto-created on every page that
+  // links terminal.js. Pages can opt out with <body data-no-matrix>.
+  function initMatrix(){
+    if(document.body.getAttribute('data-no-matrix')!==null)return;
+    var cvs=$('#matrixRain');
+    if(!cvs){
+      cvs=document.createElement('canvas');
+      cvs.id='matrixRain';
+      document.body.insertBefore(cvs,document.body.firstChild);
+    }
+    var ctx=cvs.getContext('2d');
+    function resize(){cvs.width=window.innerWidth;cvs.height=window.innerHeight}
+    resize();window.addEventListener('resize',resize);
+    var chars=('01 {} [] <> ABCDEF 0123456789 $ '+String.fromCharCode(0x2716,0x25A0,0x25B2,0x25BC)).split('');
+    var font=14;
+    var drops=[];
+    for(var i=0;i<Math.floor(cvs.width/font);i++)drops.push(Math.random()*cvs.height/font);
+    function draw(){
+      ctx.fillStyle='rgba(6,6,10,0.08)';
+      ctx.fillRect(0,0,cvs.width,cvs.height);
+      ctx.fillStyle='rgba(201,168,76,0.55)';
+      ctx.font=font+'px "Fira Code",monospace';
+      for(var i=0;i<drops.length;i++){
+        var ch=chars[Math.floor(Math.random()*chars.length)];
+        ctx.fillText(ch,i*font,drops[i]*font);
+        if(drops[i]*font>cvs.height&&Math.random()>0.975)drops[i]=0;
+        drops[i]++;
+      }
+    }
+    setInterval(draw,80);
+  }
+
   // ═══ DIGITAL CLOCK ═══
   function initClock(){
     var el=$('#digiClock');if(!el)return;
@@ -381,6 +414,7 @@
   };
 
   function bootstrap(){
+    initMatrix();
     initClock();
     initStatusDots();
     initTicker();
