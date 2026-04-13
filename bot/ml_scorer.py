@@ -61,7 +61,16 @@ def _build_training_data():
     This gives the ML model 6x more training data than copy_trades alone,
     and lets it learn from trades the filters blocked too.
 
-    Returns (X, y, copy_count, blocked_count).
+    The two sources are MERGED chronologically by created_at so the
+    downstream time-split in train_model() produces a time-ordered
+    train/test slice (previously they were concatenated, putting all
+    copy_rows before all blocked_rows regardless of actual date).
+
+    Returns (X, y, is_copy, copy_count, blocked_count):
+      - X: feature matrix, sorted by created_at ASC
+      - y: label vector aligned with X
+      - is_copy: bool vector, True for rows sourced from copy_trades
+      - copy_count, blocked_count: total counts
     """
     with db.get_connection() as conn:
         copy_rows = conn.execute(
@@ -76,14 +85,14 @@ def _build_training_data():
             "ORDER BY created_at ASC"
         ).fetchall()
 
-    X, y = [], []
+    # Merge chronologically. Each entry is (created_at, is_copy, features, label).
+    merged = []
 
     for r in copy_rows:
         d = dict(r)
         features = _get_features(d)
         label = 1 if (d.get("pnl_realized") or 0) > 0 else 0
-        X.append(features)
-        y.append(label)
+        merged.append((d.get("created_at") or "", True, features, label))
 
     for r in blocked_rows:
         # Map blocked_trades schema to the dict shape _get_features expects.
@@ -96,10 +105,16 @@ def _build_training_data():
         }
         features = _get_features(d)
         label = int(r["would_have_won"])
-        X.append(features)
-        y.append(label)
+        merged.append((d["created_at"], False, features, label))
 
-    return X, y, len(copy_rows), len(blocked_rows)
+    # Sort by created_at (ISO timestamp strings compare chronologically)
+    merged.sort(key=lambda t: t[0])
+
+    X = [m[2] for m in merged]
+    y = [m[3] for m in merged]
+    is_copy = [m[1] for m in merged]
+
+    return X, y, is_copy, len(copy_rows), len(blocked_rows)
 
 
 def train_model():
@@ -108,7 +123,7 @@ def train_model():
     """
     global _model, _model_loaded
 
-    X, y, copy_count, blocked_count = _build_training_data()
+    X, y, is_copy, copy_count, blocked_count = _build_training_data()
     total = copy_count + blocked_count
 
     if total < MIN_TRAINING_SAMPLES:
@@ -117,6 +132,7 @@ def train_model():
 
     X = np.array(X)
     y = np.array(y)
+    is_copy_arr = np.array(is_copy, dtype=bool)
 
     if len(set(y.tolist())) < 2:
         logger.warning("[ML] Only one class in training data — skipping")
@@ -131,11 +147,13 @@ def train_model():
     logger.info("[ML] Class balance: %d wins / %d losses (%.1f%% win rate)",
                 n_win, n_loss, win_frac * 100)
 
-    # Time-ordered split. _build_training_data returned rows sorted by
-    # created_at ASC, so slicing by index is time-ordered.
+    # Time-ordered split. _build_training_data returned rows merged and
+    # sorted by created_at ASC across BOTH sources, so slicing by index
+    # is a true chronological split.
     split_idx = int(len(X) * 0.8)
     X_train, X_test = X[:split_idx], X[split_idx:]
     y_train, y_test = y[:split_idx], y[split_idx:]
+    is_copy_test = is_copy_arr[split_idx:]
 
     if len(set(y_train.tolist())) < 2 or len(set(y_test.tolist())) < 2:
         logger.warning("[ML] Time-split produced single-class train/test — skipping")
@@ -151,6 +169,37 @@ def train_model():
     # the more frequent class in the training set.
     majority = 1 if (y_train == 1).sum() >= (y_train == 0).sum() else 0
     baseline_acc = float((y_test == majority).sum()) / len(y_test) if len(y_test) > 0 else 0
+
+    # COPY-ONLY test accuracy (real trades only, excluding the blocked
+    # subset that often has trivial extreme-price → extreme-outcome
+    # correlation and inflates overall accuracy). This is the number that
+    # actually matters for live trading decisions.
+    copy_test_mask = is_copy_test
+    n_copy_test = int(copy_test_mask.sum())
+    if n_copy_test >= 5:
+        y_test_copy = y_test[copy_test_mask]
+        X_test_copy = X_test[copy_test_mask]
+        copy_test_acc = model.score(X_test_copy, y_test_copy)
+        # Confusion matrix on copy-only subset
+        preds = model.predict(X_test_copy)
+        tp = int(((preds == 1) & (y_test_copy == 1)).sum())
+        fp = int(((preds == 1) & (y_test_copy == 0)).sum())
+        tn = int(((preds == 0) & (y_test_copy == 0)).sum())
+        fn = int(((preds == 0) & (y_test_copy == 1)).sum())
+        # Precision/recall for "predicted win" class
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        # Copy-only baseline (majority class within the copy subset)
+        n_copy_win = int((y_test_copy == 1).sum())
+        n_copy_loss = int((y_test_copy == 0).sum())
+        copy_majority = 1 if n_copy_win >= n_copy_loss else 0
+        copy_baseline = float((y_test_copy == copy_majority).sum()) / len(y_test_copy)
+        logger.info("[ML] COPY-ONLY test subset (n=%d, %d win / %d loss): acc=%.1f%% baseline=%.1f%% | TP=%d FP=%d TN=%d FN=%d | prec=%.2f rec=%.2f",
+                    n_copy_test, n_copy_win, n_copy_loss,
+                    copy_test_acc * 100, copy_baseline * 100,
+                    tp, fp, tn, fn, precision, recall)
+    else:
+        logger.info("[ML] COPY-ONLY test subset too small (n=%d < 5) to compute meaningful diagnostics", n_copy_test)
 
     feature_names = ["entry_price", "category", "side", "hour", "day_of_week"]
     importances = sorted(zip(feature_names, model.feature_importances_), key=lambda x: -x[1])

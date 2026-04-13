@@ -235,3 +235,10 @@ TRAILING_STOP_ACTIVATE = float(os.getenv('TRAILING_STOP_ACTIVATE', '0.20'))
 
 AUTONOMOUS_PAPER_MODE = os.getenv("AUTONOMOUS_PAPER_MODE", "true").lower() in ("true", "1", "yes")
 MAX_RESOLVE_HOURS = int(os.getenv("MAX_RESOLVE_HOURS", "24"))
+
+# --- Auto-Discovery Promotion Gate ---
+# Previously auto_discovery.py automatically called add_followed_wallet() on
+# any candidate meeting WR + PnL thresholds, causing unapproved whale wallets
+# to be silently auto-followed. Now gated: default false, user must explicitly
+# enable OR add the wallet manually via dashboard/settings.
+AUTO_DISCOVERY_AUTO_PROMOTE = os.getenv('AUTO_DISCOVERY_AUTO_PROMOTE', 'false').lower() in ('true', '1', 'yes')

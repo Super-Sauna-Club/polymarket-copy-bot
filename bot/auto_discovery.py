@@ -381,25 +381,38 @@ def check_promotions():
                     "promoted_at = datetime('now','localtime') WHERE address = ?",
                     (cand["address"],)
                 )
-            # CRITICAL: actually add them to FOLLOWED_TRADERS so the bot copies their trades.
-            # Without this, "promoted" was just a DB flag with no real effect.
-            # _add_followed_trader() also seeds NEUTRAL tier defaults in all per-trader maps
-            # via the cold-start fix, so the new trader doesn't fall through to globals.
+            # Previously: promoted candidates were automatically added to
+            # FOLLOWED_TRADERS and wallets table via _add_followed_trader +
+            # add_followed_wallet. That caused WHALE_AUTO_COPY_PATH: overnight
+            # 2 unapproved whales (0x3e5b23e9f7, 0x6bab41a0dc) were silently
+            # auto-followed and created 4 real losing copy_trades totalling
+            # -$0.81 without user consent. They also bypassed the tier
+            # constraint because they were never in any per-trader MAP.
             #
-            # Plus: write to wallets DB directly so the bot picks them up on the next
-            # copy_followed_wallets() scan WITHOUT needing a restart. The bot reads
-            # followed wallets from DB at runtime (db.get_followed_wallets()), so this
-            # makes promotion truly automatic.
+            # Now: gated behind AUTO_DISCOVERY_AUTO_PROMOTE setting (default
+            # FALSE). When false, auto_discovery still tracks candidates and
+            # logs PROMOTE recommendations, but the actual add-to-follow step
+            # requires manual opt-in (edit settings.env to add the trader).
+            # The candidates stay in trader_candidates table with
+            # status='promoted' so the dashboard can surface them for user
+            # review.
             try:
-                from bot.trader_lifecycle import _add_followed_trader
-                _add_followed_trader(cand["address"], cand["username"])
-                # Also insert into wallets DB so the running bot sees them immediately.
-                db.add_followed_wallet(cand["address"], cand["username"])
-                logger.info("[DISCOVERY] %s now LIVE — added to settings.env + wallets DB (no restart needed)",
+                _auto_promote = getattr(config, "AUTO_DISCOVERY_AUTO_PROMOTE", False)
+            except Exception:
+                _auto_promote = False
+            if _auto_promote:
+                try:
+                    from bot.trader_lifecycle import _add_followed_trader
+                    _add_followed_trader(cand["address"], cand["username"])
+                    db.add_followed_wallet(cand["address"], cand["username"])
+                    logger.info("[DISCOVERY] %s now LIVE — added to settings.env + wallets DB (AUTO_PROMOTE on)",
+                                cand["username"])
+                except Exception as _e:
+                    logger.warning("[DISCOVERY] Failed to add %s to FOLLOWED_TRADERS: %s",
+                                   cand["username"], _e)
+            else:
+                logger.info("[DISCOVERY] %s meets promote criteria but AUTO_PROMOTE=false — review manually",
                             cand["username"])
-            except Exception as _e:
-                logger.warning("[DISCOVERY] Failed to add %s to FOLLOWED_TRADERS: %s",
-                               cand["username"], _e)
             try:
                 db.log_activity("promotion", "",
                                 "Trader %s promoted" % cand["username"],

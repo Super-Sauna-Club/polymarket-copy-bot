@@ -848,11 +848,47 @@ def get_reports(limit=10):
 
 # --- Blocked Trades ---
 
+# In-memory dedup cache for log_blocked_trade. Prevents spamming
+# blocked_trades with the same (trader, cid, reason) tuple every scan cycle
+# when the trader's position hasn't moved. Process-local only — resets on
+# bot restart, which is fine because the dedup window is small (60s).
+#
+# Without this, one sovereign2013 position on "Bucks vs 76ers O/U 225.5" that
+# hit exposure_limit would log ~6 rows per 10-second scan = 36 rows/minute
+# for the entire duration the trader holds the position. Observed peak:
+# 11,372 blocked_trades rows in one 15-minute ralph iteration.
+import time as _time_mod
+_blocked_dedup_cache: dict = {}
+_BLOCKED_DEDUP_TTL_SEC = 60
+_BLOCKED_DEDUP_MAX_SIZE = 20000
+
+
 def log_blocked_trade(trader: str, market_question: str, condition_id: str,
                       side: str, trader_price: float, block_reason: str,
                       block_detail: str = "", buy_path: str = "",
                       asset: str = "", category: str = ""):
-    """Log a trade that was blocked by a filter."""
+    """Log a trade that was blocked by a filter.
+
+    Deduped in-memory: if the same (trader, condition_id, block_reason) was
+    logged within the last BLOCKED_DEDUP_TTL_SEC seconds, silently skip
+    instead of writing another row. Cache is bounded; oldest entries are
+    evicted when size exceeds _BLOCKED_DEDUP_MAX_SIZE.
+    """
+    now = _time_mod.time()
+    key = (trader or "", condition_id or "", block_reason or "")
+    last_ts = _blocked_dedup_cache.get(key, 0)
+    if last_ts and (now - last_ts) < _BLOCKED_DEDUP_TTL_SEC:
+        return  # recently logged — skip
+    _blocked_dedup_cache[key] = now
+
+    # Cache cleanup: drop entries older than 2 * TTL when size grows too large.
+    if len(_blocked_dedup_cache) > _BLOCKED_DEDUP_MAX_SIZE:
+        _cutoff = now - (2 * _BLOCKED_DEDUP_TTL_SEC)
+        _blocked_dedup_cache.clear()
+        # note: clearing fully is simpler than selective eviction; TTL re-fills
+        # normal traffic within a minute
+        _blocked_dedup_cache[key] = now
+
     with get_connection() as conn:
         conn.execute(
             "INSERT INTO blocked_trades (trader, market_question, condition_id, side, "
@@ -1217,8 +1253,34 @@ def get_candidate_stats(address: str) -> dict:
 
 # === Brain Engine Helpers ===
 
-def log_brain_decision(action: str, target: str, reason: str, data: str = "", expected_impact: str = ""):
+def log_brain_decision(action: str, target: str, reason: str, data: str = "",
+                       expected_impact: str = "", dedup_hours: int = 3):
+    """Insert a brain decision row, skipping duplicates within the last
+    `dedup_hours` window for the same (action, target) pair.
+
+    Brain runs every 2h and without this guard would write the same 5 rows
+    (TIGHTEN KING, PAUSE sov/xsaghav/fsavhlc, RELAX KING) every cycle
+    because the underlying conditions persist. 6+ cycles observed in one
+    overnight session = 30+ cumulative duplicate rows for information that
+    could be represented by 5 rows.
+
+    Match is on (action, target) only, not reason — the reason often embeds
+    changing numbers (e.g. "7d PnL $-135.55 < -$20") but the decision is
+    functionally the same if the same action is taken on the same target.
+
+    Set dedup_hours=0 to bypass the guard for any truly event-driven
+    decision (e.g. a new KICK that must always be logged).
+    """
     with get_connection() as conn:
+        if dedup_hours > 0:
+            cutoff = (datetime.now() - timedelta(hours=int(dedup_hours))).strftime("%Y-%m-%d %H:%M:%S")
+            existing = conn.execute(
+                "SELECT id FROM brain_decisions "
+                "WHERE action = ? AND target = ? AND created_at >= ? LIMIT 1",
+                (action, target, cutoff)
+            ).fetchone()
+            if existing:
+                return  # same decision recently logged — skip
         conn.execute(
             "INSERT INTO brain_decisions (action, target, reason, data, expected_impact) "
             "VALUES (?, ?, ?, ?, ?)",
