@@ -1460,8 +1460,8 @@ def api_ml_info():
 
 @app.route("/api/upgrade/candidates")
 def api_candidates():
-    """Trader-Kandidaten mit Paper-Stats."""
-    candidates = db.get_all_candidates()
+    """Trader-Kandidaten mit Paper-Stats (nur observing, nicht promoted/inactive/kicked)."""
+    candidates = db.get_all_candidates('observing')
     for c in candidates:
         stats = db.get_candidate_stats(c["address"])
         c.update(stats)
