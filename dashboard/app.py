@@ -1560,6 +1560,13 @@ def api_paper_traders():
                 ).fetchone()
                 d[key] = round(row["pnl"], 2) if row else 0
                 d["trades_%dd" % days] = row["cnt"] if row else 0
+            # Also count open paper trades
+            open_row = conn.execute(
+                "SELECT COUNT(*) as c FROM paper_trades WHERE candidate_address = ? AND status = 'open'",
+                (addr,)
+            ).fetchone()
+            d["open_trades"] = open_row["c"] if open_row else 0
+            d["paper_trades"] = (d.get("paper_trades") or 0) + d["open_trades"]
 
             # Days in current status
             if d.get("status_changed_at"):
