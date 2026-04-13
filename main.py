@@ -331,23 +331,10 @@ def update_prices():
                     if _cp <= config.AUTO_CLOSE_LOST_PRICE and _iv > 0.01:
                         _close_pnl = round(-_our_size, 2)
                         _close_title = (_p.get("title") or "")[:50]
-                        _did_close = False
-                        # Lost position: usdc_received = 0 (we got nothing back)
-                        try:
-                            from database.db import get_connection
-                            with get_connection() as _conn:
-                                _now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                _did_close = _conn.execute(
-                                    "UPDATE copy_trades SET status='closed', pnl_realized=?, current_price=0, closed_at=?, usdc_received=0 "
-                                    "WHERE condition_id=? AND side=? AND status='open'",
-                                    (_close_pnl, _now, _cid_pos, _pos_side)).rowcount > 0
-                                if not _did_close:
-                                    _did_close = _conn.execute(
-                                        "UPDATE copy_trades SET status='closed', pnl_realized=?, current_price=0, closed_at=?, usdc_received=0 "
-                                        "WHERE condition_id=? AND status='open'",
-                                        (_close_pnl, _now, _cid_pos)).rowcount > 0
-                        except Exception:
-                            pass
+                        # PATCH-033: atomic close via close_copy_trade (prevents race with copy_trader.py)
+                        _did_close = _db.close_copy_trade(_our_trade["id"], _close_pnl, close_price=0)
+                        if _did_close:
+                            _db.update_closed_trade_pnl(_our_trade["id"], _close_pnl, 0)
                         if _did_close:
                             logger.info("[AUTO-CLOSE] Lost position marked closed: $%.2f | %s", _iv, _close_title[:40])
                             _recently_closed[_cid_pos] = _t.time()
@@ -368,25 +355,12 @@ def update_prices():
                     elif _cp >= config.AUTO_CLOSE_WON_PRICE and _iv > 0.01:
                         _shares = _our_size / _our_entry if _our_entry > 0 else 0
                         _pnl_won = round((1.0 - _our_entry) * _shares, 2)
-                        # Won position: usdc_received = shares * $1 (each share pays $1 at resolution)
                         _usdc_won = round(_shares, 4)
                         _close_title = (_p.get("title") or "")[:50]
-                        _did_close = False
-                        try:
-                            from database.db import get_connection
-                            with get_connection() as _conn:
-                                _now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                _did_close = _conn.execute(
-                                    "UPDATE copy_trades SET status='closed', pnl_realized=?, current_price=1.0, closed_at=?, usdc_received=? "
-                                    "WHERE condition_id=? AND side=? AND status='open'",
-                                    (_pnl_won, _now, _usdc_won, _cid_pos, _pos_side)).rowcount > 0
-                                if not _did_close:
-                                    _did_close = _conn.execute(
-                                        "UPDATE copy_trades SET status='closed', pnl_realized=?, current_price=1.0, closed_at=?, usdc_received=? "
-                                        "WHERE condition_id=? AND status='open'",
-                                        (_pnl_won, _now, _usdc_won, _cid_pos)).rowcount > 0
-                        except Exception:
-                            pass
+                        # PATCH-033: atomic close via close_copy_trade (prevents race with copy_trader.py)
+                        _did_close = _db.close_copy_trade(_our_trade["id"], _pnl_won, close_price=1.0)
+                        if _did_close:
+                            _db.update_closed_trade_pnl(_our_trade["id"], _pnl_won, _usdc_won)
                         if _did_close:
                             logger.info("[AUTO-CLOSE] Won position marked closed: +$%.2f | %s", _pnl_won, _close_title[:40])
                             _recently_closed[_cid_pos] = _t.time()
@@ -428,18 +402,13 @@ def update_prices():
                                 broadcast_event("trade_closed", {"market": (_p.get("title") or "")[:50], "pnl": _pnl, "price": round(_cp * 100), "trader": "auto", "size": _our_size})
                             except Exception:
                                 pass
-                            # Close matching copy_trade in DB + save usdc_received
-                            try:
-                                from database.db import get_connection
-                                _now2 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            # PATCH-033: atomic close via close_copy_trade (prevents race + orphaned positions)
+                            if _db.close_copy_trade(_our_trade["id"], _pnl, close_price=_cp):
                                 _usdc_recv = _resp.get("usdc_received", 0)
-                                with get_connection() as _conn:
-                                    _conn.execute(
-                                        "UPDATE copy_trades SET status='closed', pnl_realized=?, current_price=?, closed_at=?, usdc_received=? "
-                                        "WHERE condition_id=? AND side=? AND status='open'",
-                                        (_pnl, _cp, _now2, _usdc_recv, _cid, _pos_side))
-                            except Exception as _e:
-                                logger.warning("[AUTO-SELL] DB update failed: %s", _e)
+                                if _usdc_recv > 0:
+                                    _db.update_closed_trade_pnl(_our_trade["id"], _pnl, _usdc_recv)
+                            else:
+                                logger.info("[AUTO-SELL] Trade #%d already closed by another path", _our_trade["id"])
         except Exception as _e:
             logger.warning("[AUTO-SELL] Error in auto-sell loop: %s", _e)
         _update_counter += 1
@@ -771,8 +740,9 @@ def main():
     scheduler.add_job(daily_report, 'cron', hour=0, minute=5, id='daily_report')
     scheduler.add_job(auto_backup, 'interval', hours=6, id='auto_backup',
                       next_run_time=datetime.now() + timedelta(seconds=60))
-    scheduler.add_job(auto_tune_settings, 'interval', hours=2, id='auto_tuner',
-                      next_run_time=datetime.now() + timedelta(seconds=100))
+    # PATCH-033: auto_tune_settings removed — brain_engine already calls auto_tune()
+    # scheduler.add_job(auto_tune_settings, 'interval', hours=2, id='auto_tuner',
+    #                   next_run_time=datetime.now() + timedelta(seconds=100))
     scheduler.add_job(clv_update, 'interval', hours=2, id='clv_update',
                       next_run_time=datetime.now() + timedelta(seconds=200))
     # DISABLED (module not implemented): scheduler.add_job(arbitrage_scan, 'interval', minutes=30, id='arbitrage_scan',
