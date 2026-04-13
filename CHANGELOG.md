@@ -2,6 +2,51 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-14 — Dashboard unification + Brain console rewrite
+
+All dashboard pages now share a terminal-styled chrome, and the Brain page has been rebuilt from scratch around a live decision/event stream and an event-driven neural-network visualization.
+
+### Shared chrome (all pages)
+
+New shared assets drive the look on every page:
+
+- `dashboard/static/terminal.css` — CSS variables, body/scanline/grid backdrop, header layout, nav, ticker, card/metric styles, scrollbars, popup-slot. Matches `dashboard.html` exactly (extracted from its inline CSS) and adds wide-mode header compression (`html.wide .hd { padding:4px 0 }` etc.) so every page reacts to the Desktop toggle identically.
+- `dashboard/static/terminal.js` — digital clock, status-dot polling (`/api/upgrade/status`), live ticker, single-slot PopupManager (SSE client to `/api/stream`, new events overwrite current popup, 8s auto-dismiss), web-audio Sound toggle (persisted in localStorage), WideMode toggle that defaults to Desktop on screens > 900px.
+
+`_nav.html` reordered to `Dashboard → Brain → DailyReport → Settings → Logs` with DailyReport opening in a new window (`target="_blank"`). All page templates (`dashboard.html`, `brain.html`, `logs.html`, `index.html`, `reports.html`) link `terminal.css` and include `terminal.js` + `<div class="popup-slot">`, and their headers carry the same structure: logo image + "Poly Copybot / by Super Sauna Club" + digiclock + LIVE tag + BOT/API/POLL dots + Sound + Desktop/Mobile toggle + nav. Page-specific CSS stayed inline where it makes sense (logs colorizer, reports newspaper fonts, dashboard ticker+wide+positions logic).
+
+The live ticker on every page now fetches `/api/live-data` and renders open trades exactly like `dashboard.html` — `#ID  🎾 ATP  MarketQuestion  [SIDE @ PRICE]  +$PnL` — using the same `dSp()` keyword map ported into `terminal.js` so sport emojis and labels are identical across the site.
+
+### Brain page (full rewrite)
+
+The old Brain page (achievements/power levels/smartphone chat panel/gamification) is gone. `dashboard/templates/brain.html` is a single-page intelligence console organized into two clearly-separated sections:
+
+**Neural Core** — brain status:
+- Hero panel with organic-brain SVG (~25 nodes, cyan→gold fold path, pulsing), "Neural State" readout (LEARNING / EXECUTING / OBSERVING / SCOUTING / IDLE) with state-specific colors and blinking cursor, plus an `#heroStats` grid showing uptime / last cycle (Vienna-time) / next cycle / PERFORMANCE_SINCE cutoff.
+- 4 growing counters beside the hero (Trades Scored, Brain Decisions, ML Samples, Candidates) with live Schreiber-Kurve sparklines — each is an SVG polyline oscilloscope sweep that ticks every 300ms, glowing head dot at the leading edge, dashed baseline, grid overlay, resets to the left when the buffer fills. Current value is overlaid in the corner of the sparkbox (`SCORED 12.891` etc.).
+- Mini-cards row (left) + ML Model Health panel (right) in a 1.4fr/2fr grid that matches the hero/counter column ratio above, so the whole Neural Core section shares a vertical alignment axis. Mini-cards show Decisions Today, Active Tightens, Blacklists, Active Traders, Paused, Promoted, Observing, Auto Trades, Auto Open. ML Health shows Train Acc / Test Acc / vs Baseline metric cells + feature-importance bars with neon shimmer + last-trained timestamp.
+- **Brain Stream + Neural Network** as a side-by-side row (1.7fr/1fr). The stream merges `brain_decisions` + `blocked_trades` (last 72h, 500 rows) + `/api/fun/ticker` events into a unified log rendered in a compact `logs.html`-style box. Filter buttons (ALL / DECISIONS / BLOCKED / TRADES / TIGHTEN / RELAX / BLACKLIST / PAUSE / BOOST). SSE live-appends new events with a gold flash animation. Row times are converted from UTC (server tz) to Europe/Vienna via `Intl.DateTimeFormat`. The neural network next to it is a 6-layer SVG that fires packet-flow animations only on real events (no continuous random pulsing) — `brain_decision` spawns 6 gold packets, `new_trade` spawns 4, `trade_closed` spawns 3 colored by W/L. Input labels on the left (trader_edge, category_wr, price_sig, conviction, market_q, correlation), output labels on the right (BUY / SKIP), live prediction pill in the panel title that updates on each event.
+
+**Battlefield** — live results:
+- Field mini-cards (16 metrics: 7d/1d P&L, Win Rate, Best/Worst Trader, Best/Worst Category, Paper P&L, Fee Drag, Slippage, Break-even WR, Stop Loss, etc.).
+- Scorer Weights + Score Buckets + Brain Action Counts as a trio-grid panel.
+- Per-Trader Intelligence table with power levels (Legendary / Epic / Rare / Common glow effects), streak emojis (🔥 for 3+ wins, 💀 for 3+ losses, ⭐/❌ for singles, on-fire animation), tier badges from auto-tuner, 7d+1d P&L, WR, effective filter summary.
+- Category Heatmap + Lifecycle Pipeline + Top Candidates table.
+
+Dropped entirely: the old smartphone-style chat feed, achievement grid, trading-card rarity system, heartbeat animation, whale-alert slide-in. Popup notifications for whale alerts / brain decisions / trade closes / new buys now flow through the shared bottom-right PopupManager instead.
+
+Matrix-rain canvas (gold, opacity 0.12) sits as a background behind the whole page.
+
+### Files touched
+
+- NEW `dashboard/static/terminal.css`, `dashboard/static/terminal.js`
+- `dashboard/templates/_nav.html` (reorder + rename + target=_blank)
+- `dashboard/templates/brain.html` (full rewrite)
+- `dashboard/templates/dashboard.html` (active value only; existing inline CSS/JS untouched)
+- `dashboard/templates/logs.html`, `dashboard/templates/index.html`, `dashboard/templates/reports.html` (chrome unified, page-specific body preserved)
+
+No `app.py` changes — all new brain panels reuse existing endpoints (`/api/upgrade/*`, `/api/brain/*`, `/api/ai/blocked-trades`, `/api/fun/ticker`, `/api/stream`).
+
 ## 2026-04-13 (Abend) — Code-review finding: lifecycle auto-promote bypass
 
 Self-review of commits `ba70dbf..e2c6129` via `code-review` skill surfaced one real bypass that the earlier `AUTO_DISCOVERY_AUTO_PROMOTE` gate missed.

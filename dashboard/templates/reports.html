@@ -5,12 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SSC Daily — TAG</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Manrope:wght@300;400;600;700&family=Fira+Code:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/terminal.css">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#06060a;--bg2:#0c0c12;--bg3:#12121c;--border:#1e1e30;
-  --gold:#c9a84c;--green:#34d399;--red:#f87171;--text:#e8e4dc;--text-dim:#7a7890;
-  --serif:'Playfair Display',Georgia,serif;--sans:'Manrope',sans-serif;--mono:'Fira Code',monospace}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
+/* ── reports-page specific: newspaper fonts + layout ── */
+:root{--serif:'Playfair Display',Georgia,serif;--sans:'Manrope',sans-serif}
 
 /* Login Overlay */
 #loginOverlay{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center}
@@ -26,16 +24,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .login-box .error{color:var(--red);font-size:.75rem;margin-top:8px;display:none}
 
 /* Newspaper Layout */
-.paper{max-width:900px;margin:0 auto;padding:30px 24px}
+.paper{max-width:960px;margin:0 auto;padding:20px 24px 40px;position:relative;z-index:1}
 .masthead{text-align:center;padding:20px 0;border-bottom:3px double var(--gold);margin-bottom:24px}
 .masthead img{height:44px;margin-bottom:8px}
 .masthead h1{font-family:var(--serif);color:var(--gold);font-size:2.2rem;font-weight:900;
   letter-spacing:.06em;line-height:1.1}
 .masthead .date{font-size:.75rem;color:var(--text-dim);margin-top:6px;font-family:var(--mono);letter-spacing:.08em}
-.masthead .nav{margin-top:10px}
-.masthead .nav a{color:var(--text-dim);text-decoration:none;padding:4px 12px;font-size:.72rem;
-  letter-spacing:.1em;text-transform:uppercase;border:1px solid transparent;border-radius:4px}
-.masthead .nav a:hover,.masthead .nav a.act{color:var(--gold);border-color:rgba(201,168,76,0.3)}
 
 /* Headline */
 .headline{text-align:center;padding:20px 0;border-bottom:1px solid var(--border);margin-bottom:20px}
@@ -95,12 +89,39 @@ td{padding:6px 8px;border-bottom:1px solid rgba(30,30,48,0.3);font-family:var(--
 </div>
 
 <!-- Newspaper -->
-<div class="paper" id="paper" style="display:none">
+<div class="scan"></div>
+<div class="app" id="paper" style="display:none;max-width:960px">
+  <header class="hd">
+    <div class="hd-left">
+      <img src="/static/logo.png" alt="SSC" class="hd-logo-img" onerror="this.style.display='none'">
+      <div>
+        <div class="logo">Poly Copybot</div>
+        <div class="logo-sub">by Super Sauna Club</div>
+      </div>
+    </div>
+    <div class="hd-center">
+      <div class="digiclock" id="digiClock">--:--:--</div>
+      <div class="live-tag"><span class="live-dot"></span>LIVE</div>
+      <div class="status-tags">
+        <div class="st"><span class="st-dot" id="stBot"></span>Bot</div>
+        <div class="st"><span class="st-dot" id="stApi"></span>API</div>
+        <div class="st"><span class="st-dot" id="stPoll"></span>Poll</div>
+      </div>
+    </div>
+    <div class="hd-right" style="display:flex;align-items:center;gap:8px">
+      <button class="sfx-btn" id="sscSound" type="button">&#128264; Sound</button>
+      <button class="sfx-btn" id="sscWide" type="button" title="Switch layout">&#9724; Desktop</button>
+      {% with active='dailyreport' %}{% include '_nav.html' %}{% endwith %}
+    </div>
+  </header>
+
+  <div class="tk-wrap">
+    <div class="tk" id="sscTicker"><div class="tk-i dim">Initializing market flow...</div></div>
+  </div>
+
   <div class="masthead">
-    <img src="/static/logo.png" alt="SSC">
     <h1>SSC TAG</h1>
     <div class="date" id="gazetteDate">--</div>
-    {% with active='reports' %}{% include '_nav.html' %}{% endwith %}
   </div>
 
   <div class="headline">
@@ -132,11 +153,12 @@ td{padding:6px 8px;border-bottom:1px solid rgba(30,30,48,0.3);font-family:var(--
   </div>
 
   <div class="footer">
-    Super Sauna Club &mdash; TAG &mdash; Automatisch generiert<br>
-    Dashboard: /copy | Brain: /brain | Tag: /reports
+    Super Sauna Club &mdash; DailyReport &mdash; Automatisch generiert
   </div>
 </div>
 
+<div class="popup-slot"></div>
+<script src="/static/terminal.js"></script>
 <script>
 function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 let dashKey = localStorage.getItem('ssc_key') || '';

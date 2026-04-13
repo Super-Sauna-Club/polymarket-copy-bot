@@ -1,13 +1,13 @@
 {#
   Canonical navigation partial — used by all dashboard pages for consistency.
   Usage: {% with active='logs' %}{% include '_nav.html' %}{% endwith %}
-  Valid active values: 'copy', 'wallets', 'logs', 'brain', 'reports'
-  (If active is None, no link is highlighted.)
+  Valid active values: 'dashboard', 'brain', 'dailyreport', 'wallets', 'logs'
+  DailyReport (TAG newspaper gazette) opens in a new window.
 #}
 <nav class="nav">
-  <a href="/copy"{% if active == 'copy' %} class="act"{% endif %}>Terminal</a>
+  <a href="/copy"{% if active == 'dashboard' %} class="act"{% endif %}>Dashboard</a>
+  <a href="/brain"{% if active == 'brain' %} class="act"{% endif %}>Brain</a>
+  <a href="/reports" target="_blank" rel="noopener"{% if active == 'dailyreport' %} class="act"{% endif %}>DailyReport</a>
   <a href="/wallets"{% if active == 'wallets' %} class="act"{% endif %}>Settings</a>
   <a href="/logs"{% if active == 'logs' %} class="act"{% endif %}>Logs</a>
-  <a href="/brain"{% if active == 'brain' %} class="act"{% endif %}>Brain</a>
-  <a href="/reports"{% if active == 'reports' %} class="act"{% endif %}>Tag</a>
 </nav>

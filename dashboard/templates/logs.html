@@ -6,38 +6,9 @@
 <title>System Log — Poly CopyBot</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&family=Fira+Code:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/terminal.css">
 <style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#06060a;--bg2:#0c0c12;--bg3:#12121c;--bg4:#1a1a28;
-  --border:#1e1e30;--border-h:#2e2e48;
-  --gold:#c9a84c;--gold-bright:#e4c868;--gold-dim:rgba(201,168,76,0.2);
-  --green:#34d399;--green-dim:rgba(52,211,153,0.15);
-  --red:#f87171;--red-dim:rgba(248,113,113,0.15);
-  --blue:#60a5fa;--yellow:#fbbf24;--purple:#a78bfa;--cyan:#22d3ee;
-  --text:#e8e4dc;--text-dim:#5c5a6a;--text-mid:#8a889a;
-  --font:'Manrope',system-ui,sans-serif;--mono:'Fira Code','Courier New',monospace;
-}
-html{font-size:15px}
-body{background:var(--bg);color:var(--text);font-family:var(--font);font-weight:300;line-height:1.65;min-height:100vh;-webkit-font-smoothing:antialiased}
-body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
-  background:linear-gradient(rgba(201,168,76,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,0.03) 1px,transparent 1px);
-  background-size:80px 80px;animation:gridDrift 60s linear infinite}
-@keyframes gridDrift{to{background-position:80px 80px}}
-body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
-  background:radial-gradient(ellipse at 20% 0%,rgba(201,168,76,0.06),transparent 55%),
-             radial-gradient(ellipse at 80% 100%,rgba(201,168,76,0.03),transparent 50%)}
-.scan{position:fixed;top:0;left:0;right:0;height:1px;z-index:9998;pointer-events:none;
-  background:linear-gradient(90deg,transparent 10%,rgba(201,168,76,0.25) 50%,transparent 90%);
-  animation:scanMove 8s linear infinite}
-@keyframes scanMove{0%{top:-1px}100%{top:100vh}}
-.app{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:0 3% 40px}
-.hd{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap;gap:12px}
-.logo{font-size:1.25rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--gold);text-shadow:0 0 30px rgba(201,168,76,0.2)}
-.logo-sub{font-size:.68rem;color:var(--text-dim);letter-spacing:.12em;font-weight:300}
-.nav a{font-size:.78rem;color:var(--text-mid);text-decoration:none;padding:8px 18px;border:1px solid transparent;letter-spacing:0.12em;text-transform:uppercase;font-weight:400;transition:all .25s}
-.nav a:hover,.nav a.act{color:var(--gold);border-color:rgba(201,168,76,0.35)}
-
+/* ── logs-page specific ── */
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
 .btn{font-size:.72rem;font-family:var(--mono);padding:5px 12px;border:1px solid var(--border);background:var(--bg2);color:var(--text-mid);cursor:pointer;letter-spacing:.06em;transition:all .2s;border-radius:2px}
 .btn:hover{border-color:var(--gold-dim);color:var(--text)}
@@ -48,7 +19,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .search:focus{border-color:var(--gold)}
 .count{font-size:.68rem;color:var(--text-dim);font-family:var(--mono);margin-left:auto}
 
-.log-box{border:1px solid var(--border);background:var(--bg2);height:calc(100vh - 180px);overflow-y:auto;font-family:var(--mono);font-size:.75rem;line-height:1.7;padding:8px 0}
+.log-box{border:1px solid var(--border);background:var(--bg2);height:calc(100vh - 240px);overflow-y:auto;font-family:var(--mono);font-size:.75rem;line-height:1.7;padding:8px 0}
 .log-box::-webkit-scrollbar{width:6px}
 .log-box::-webkit-scrollbar-track{background:var(--bg2)}
 .log-box::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:3px}
@@ -82,12 +53,32 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 <div class="scan"></div>
 <div class="app">
   <header class="hd">
-    <div style="display:flex;align-items:center;gap:8px">
-      <img src="/static/logo.png" alt="SSC" style="height:36px" onerror="this.style.display='none'">
-      <div><div class="logo">System Log</div><div class="logo-sub">Poly CopyBot by Super Sauna Club</div></div>
+    <div class="hd-left">
+      <img src="/static/logo.png" alt="SSC" class="hd-logo-img" onerror="this.style.display='none'">
+      <div>
+        <div class="logo">Poly Copybot</div>
+        <div class="logo-sub">by Super Sauna Club</div>
+      </div>
     </div>
-    {% with active='logs' %}{% include '_nav.html' %}{% endwith %}
+    <div class="hd-center">
+      <div class="digiclock" id="digiClock">--:--:--</div>
+      <div class="live-tag"><span class="live-dot"></span>LIVE</div>
+      <div class="status-tags">
+        <div class="st"><span class="st-dot" id="stBot"></span>Bot</div>
+        <div class="st"><span class="st-dot" id="stApi"></span>API</div>
+        <div class="st"><span class="st-dot" id="stPoll"></span>Poll</div>
+      </div>
+    </div>
+    <div class="hd-right" style="display:flex;align-items:center;gap:8px">
+      <button class="sfx-btn" id="sscSound" type="button">&#128264; Sound</button>
+      <button class="sfx-btn" id="sscWide" type="button" title="Switch layout">&#9724; Desktop</button>
+      {% with active='logs' %}{% include '_nav.html' %}{% endwith %}
+    </div>
   </header>
+
+  <div class="tk-wrap">
+    <div class="tk" id="sscTicker"><div class="tk-i dim">Initializing market flow...</div></div>
+  </div>
 
   <div class="toolbar">
     <button class="btn act" data-f="" onclick="setFilter(this,'')">ALL</button>
@@ -106,6 +97,9 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 
   <div class="log-box" id="logBox"></div>
 </div>
+
+<div class="popup-slot"></div>
+<script src="/static/terminal.js"></script>
 <script>
 let lines=[], filter='', paused=false, autoScroll=true, searchTxt='';
 

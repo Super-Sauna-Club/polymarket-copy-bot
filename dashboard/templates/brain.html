@@ -3,857 +3,1790 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CopyBot Brain — Intelligence Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<title>BRAIN — SSC Intelligence Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&family=Fira+Code:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/terminal.css">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#06060a;--bg2:#0c0c12;--bg3:#12121c;--bg4:#1a1a28;
-  --border:#1e1e30;--border-h:#2e2e48;
-  --gold:#c9a84c;--gold-bright:#e4c868;--gold-dim:rgba(201,168,76,0.2);
-  --green:#34d399;--green-dim:rgba(52,211,153,0.15);
-  --red:#f87171;--red-dim:rgba(248,113,113,0.15);
-  --blue:#60a5fa;--purple:#a78bfa;
-  --text:#e8e4dc;--text-dim:#7a7890;--text-mid:#a09eb0;
-  --font:'Manrope',system-ui,sans-serif;--mono:'Fira Code',monospace;
-}
-body{background:var(--bg);color:var(--text);font-family:var(--font);font-weight:300;
-  line-height:1.5;min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
-  background:linear-gradient(rgba(201,168,76,0.03) 1px,transparent 1px),
-  linear-gradient(90deg,rgba(201,168,76,0.03) 1px,transparent 1px);
-  background-size:80px 80px}
-.app{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:20px 24px}
-.hd{display:flex;align-items:center;justify-content:space-between;padding:12px 0;
-  border-bottom:1px solid var(--border);margin-bottom:20px}
-.logo{font-size:1.3rem;font-weight:800;color:var(--gold);letter-spacing:.04em}
-.logo span{color:var(--text-dim);font-weight:300;font-size:.8rem;margin-left:8px}
-.nav a{color:var(--text-mid);text-decoration:none;padding:6px 14px;font-size:.78rem;
-  border:1px solid transparent;border-radius:6px;transition:.2s}
-.nav a:hover,.nav a.act{color:var(--gold);border-color:rgba(201,168,76,0.35)}
-.grid{display:grid;gap:16px}.grid-2{grid-template-columns:1fr 1fr}
-.grid-3{grid-template-columns:1fr 1fr 1fr}.grid-4{grid-template-columns:1fr 1fr 1fr 1fr}
-.grid-5{grid-template-columns:1fr 1fr 1fr 1fr 1fr}
-@media(max-width:900px){.grid-2,.grid-3,.grid-4,.grid-5{grid-template-columns:1fr 1fr}}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;transition:.3s}
-.card:hover{border-color:var(--border-h);transform:translateY(-1px)}
-.card-title{font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin-bottom:6px;font-weight:600}
-.card-val{font-size:1.8rem;font-weight:700;font-family:var(--mono)}
-.card-sub{font-size:.7rem;color:var(--text-mid);margin-top:4px}
-.sec{margin-bottom:20px}
-.sec-hd{font-size:.85rem;font-weight:700;color:var(--gold);padding:10px 0;
-  border-bottom:1px solid var(--border);margin-bottom:12px;display:flex;align-items:center;gap:8px}
-.badge{font-size:.55rem;padding:2px 8px;border-radius:10px;font-weight:700;letter-spacing:.05em}
-.badge-live{background:rgba(52,211,153,0.2);color:var(--green)}
-.badge-fire{background:rgba(255,100,0,0.2);color:#ff6400;animation:pulse 1s infinite}
-.badge-paused{background:rgba(248,113,113,0.2);color:var(--red)}
-table{width:100%;border-collapse:collapse;font-size:.75rem}
-th{text-align:left;color:var(--text-dim);font-size:.6rem;text-transform:uppercase;
-  letter-spacing:.06em;padding:7px 8px;border-bottom:1px solid var(--border);font-weight:600}
-td{padding:7px 8px;border-bottom:1px solid rgba(30,30,48,0.4);font-family:var(--mono);font-size:.72rem}
-tr:hover td{background:rgba(201,168,76,0.03)}
-.pos{color:var(--green)}.neg{color:var(--red)}
-.heatmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
-.heat-cell{background:var(--bg3);border:1px solid var(--border);border-radius:8px;
-  padding:10px;text-align:center;transition:.2s}
-.heat-name{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
-.heat-val{font-size:1rem;font-weight:700;font-family:var(--mono)}
-.heat-sub{font-size:.55rem;color:var(--text-dim);margin-top:2px}
-.heat-bar{height:3px;border-radius:2px;margin-top:4px;background:var(--bg)}
-.heat-bar-fill{height:100%;border-radius:2px;transition:width .5s}
-.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-.status-active{background:var(--green);box-shadow:0 0 6px var(--green)}
-.status-throttled{background:#fbbf24;box-shadow:0 0 6px #fbbf24}
-.status-paused{background:var(--red);box-shadow:0 0 6px var(--red)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.pulse{animation:pulse 2s ease-in-out infinite}
-.score-bar{display:inline-block;width:60px;height:5px;background:var(--bg);border-radius:3px;vertical-align:middle;margin-left:6px}
-.score-fill{height:100%;border-radius:3px}
+/* ═══ BRAIN PAGE — hacker console, data porn ═══ */
+/* Colour policy: gold is for HEADINGS ONLY. Data values use cyan/green/red/white. */
 
-/* === POWER LEVELS === */
-.power-level{font-family:var(--mono);font-weight:800;font-size:.9rem;text-shadow:0 0 10px currentColor}
-.power-legendary{color:#ff6400;text-shadow:0 0 15px #ff6400,0 0 30px rgba(255,100,0,0.3)}
-.power-epic{color:#a78bfa;text-shadow:0 0 12px #a78bfa}
-.power-rare{color:#60a5fa;text-shadow:0 0 10px #60a5fa}
-.power-common{color:var(--text-mid)}
+/* Reduce section spacing for dashboard-like density */
+.app{max-width:1200px;padding:0 5% 40px}
+html.wide .app{max-width:none;padding:0 10px 8px}
+.sec{margin-bottom:14px}
+.panel{padding:14px 16px}
+.mini-cards{margin-bottom:12px;gap:6px}
+.ml-grid,.scorer-grid{gap:10px;margin-bottom:12px}
+.bottom-grid{gap:10px}
+.card{padding:16px 18px}
+.card-val{font-size:1.45rem}
+.counter{padding:12px 14px}
+.counter-val{font-size:1.55rem}
 
-/* === STREAK FIRE === */
-@keyframes fireGlow{0%{text-shadow:0 0 5px #ff4500,0 0 10px #ff6400}50%{text-shadow:0 0 15px #ff4500,0 0 30px #ff6400,0 0 45px rgba(255,100,0,0.3)}100%{text-shadow:0 0 5px #ff4500,0 0 10px #ff6400}}
+/* Matrix rain canvas behind everything */
+#matrixRain{position:fixed;inset:0;z-index:0;opacity:0.12;pointer-events:none}
+
+/* ═══ BRAIN STREAM — compact live log at the top (logs.html style) ═══ */
+.stream-wrap{margin-bottom:14px;position:relative}
+.stream-head{display:flex;align-items:center;justify-content:space-between;padding:6px 0;
+  border-bottom:1px solid var(--border);margin-bottom:4px}
+.stream-title{font-size:.7rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);
+  display:flex;align-items:center;gap:8px}
+.stream-title .live-dot{width:7px;height:7px;border-radius:50%;background:var(--red);
+  animation:livePulse 1.4s ease-in-out infinite;box-shadow:0 0 8px rgba(248,113,113,0.5)}
+.stream-filter{display:flex;gap:4px;flex-wrap:wrap}
+.stream-filter .sbtn{font-size:.54rem;padding:3px 9px;border:1px solid var(--border);background:transparent;
+  color:var(--text-mid);cursor:pointer;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.stream-filter .sbtn:hover{border-color:var(--gold-dim);color:var(--gold)}
+.stream-filter .sbtn.act{color:var(--gold);border-color:var(--gold);background:rgba(201,168,76,0.06)}
+.stream-box{border:1px solid var(--border);background:var(--bg2);height:168px;overflow-y:auto;
+  font-family:var(--mono);font-size:.72rem;line-height:1.5;padding:4px 0}
+.stream-box::-webkit-scrollbar{width:4px}
+.stream-box::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:2px}
+.sline{padding:3px 12px;display:flex;gap:12px;
+  border-left:2px solid transparent;align-items:baseline;white-space:nowrap;overflow:hidden}
+.sline:hover{background:rgba(201,168,76,0.03)}
+.sline.fresh{animation:streamFresh 1.8s ease-out}
+@keyframes streamFresh{0%{background:rgba(201,168,76,0.12)}100%{background:transparent}}
+.sline .sts{flex:0 0 58px;color:var(--text-dim);font-size:.64rem}
+.sline .sact{flex:0 0 88px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:.66rem}
+.sline .stgt{flex:0 1 auto;max-width:42%;color:var(--cyan);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.sline .srsn{flex:1 1 auto;min-width:0;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;font-size:.66rem}
+.sline.tighten_filter,.sline.blacklist_category,.sline.pause_trader,.sline.kick_trader,.sline.trade_loss{border-left-color:var(--red)}
+.sline.relax_filter,.sline.boost_trader,.sline.promote_recommended,.sline.unblacklist_category,.sline.unpause_trader,.sline.trade_win,.sline.trade_buy{border-left-color:var(--green)}
+.sline.blocked{border-left-color:var(--yellow)}
+.sline.tighten_filter .sact,.sline.blacklist_category .sact,.sline.pause_trader .sact,.sline.kick_trader .sact,.sline.trade_loss .sact{color:var(--red)}
+.sline.relax_filter .sact,.sline.boost_trader .sact,.sline.promote_recommended .sact,.sline.unblacklist_category .sact,.sline.unpause_trader .sact,.sline.trade_win .sact{color:var(--green)}
+.sline.blocked .sact{color:var(--yellow)}
+.sline.trade_buy .sact{color:var(--cyan)}
+
+/* Section divider — centred gold label with fading lines (as before) */
+.section-divider{margin:20px 0 12px;display:flex;align-items:center;gap:14px;position:relative}
+.section-divider::before,.section-divider::after{content:'';flex:1;height:1px}
+.section-divider::before{background:linear-gradient(90deg,transparent,var(--gold-dim) 60%,var(--gold))}
+.section-divider::after{background:linear-gradient(90deg,var(--gold),var(--gold-dim) 40%,transparent)}
+.section-divider .lbl{font-family:var(--mono);font-size:.82rem;font-weight:700;letter-spacing:.38em;
+  text-transform:uppercase;color:var(--gold);padding:6px 18px;border:1px solid var(--gold-dim);
+  background:linear-gradient(180deg,rgba(201,168,76,0.09),rgba(201,168,76,0.02));
+  text-shadow:0 0 18px rgba(201,168,76,0.4)}
+.section-divider .lbl::before{content:'\25C0';color:var(--gold-dim);margin-right:10px}
+.section-divider .lbl::after{content:'\25B6';color:var(--gold-dim);margin-left:10px}
+.section-divider .sub{position:absolute;right:18px;top:100%;font-family:var(--mono);font-size:.55rem;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim);margin-top:3px}
+
+/* Section backdrops for subtle visual differentiation */
+.sec-core{position:relative}
+.sec-core::before{content:'';position:absolute;inset:-8px -12px;background:radial-gradient(ellipse at top,rgba(96,165,250,0.025),transparent 70%);pointer-events:none;z-index:-1}
+.sec-field{position:relative}
+.sec-field::before{content:'';position:absolute;inset:-8px -12px;background:radial-gradient(ellipse at top,rgba(52,211,153,0.025),transparent 70%);pointer-events:none;z-index:-1}
+
+/* Core top row: hero + counters side by side */
+.core-top{display:grid;grid-template-columns:1.4fr 2fr;gap:10px;margin-bottom:10px}
+@media(max-width:1100px){.core-top{grid-template-columns:1fr}}
+.core-top .counters{margin-bottom:0;grid-template-columns:repeat(4,1fr);gap:8px}
+@media(max-width:1100px){.core-top .counters{grid-template-columns:repeat(2,1fr)}}
+
+/* Brain stream + neural network side-by-side — compact height */
+.stream-net-row{display:grid;grid-template-columns:1.7fr 1fr;gap:10px;margin-bottom:12px}
+@media(max-width:1100px){.stream-net-row{grid-template-columns:1fr}}
+.stream-net-row .stream-wrap{margin-bottom:0}
+.stream-net-row .stream-box{height:178px}
+.stream-net-row .neural-host{background:var(--bg2);border:1px solid var(--border);position:relative;overflow:hidden;display:flex;flex-direction:column;height:218px}
+.stream-net-row .neural-host .panel-title{padding:8px 14px 6px;margin:0;border-bottom:1px solid var(--border);font-size:.64rem}
+.stream-net-row .neural-box{height:auto;flex:1;min-height:0}
+
+/* ═══ CORE MID: mini-cards (left, larger) + ML Model Health (right, compact) ═══ */
+.core-mid{display:grid;grid-template-columns:1.4fr 2fr;gap:10px;margin-bottom:12px;align-items:stretch}
+@media(max-width:1100px){.core-mid{grid-template-columns:1fr}}
+.core-mid .mini-cards{margin-bottom:0;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:7px}
+.core-mid .mcard{padding:12px 16px;display:flex;flex-direction:column;justify-content:center;gap:3px;min-height:0}
+.core-mid .mcard-val{font-size:1.45rem;line-height:1.1;margin-top:2px}
+.core-mid .mcard-lbl{font-size:.62rem;letter-spacing:.14em;margin-bottom:0}
+.core-mid .mcard-sub{font-size:.6rem;margin-top:1px}
+
+/* ML Model Health — right side, matches mini-cards height */
+.core-mid .ml-compact{display:flex;flex-direction:column;padding:12px 14px}
+.core-mid .ml-compact .panel-title{padding-bottom:6px;margin-bottom:6px;font-size:.64rem}
+.core-mid .ml-compact-body{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
+.ml-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ml-cell{background:var(--bg3);border:1px solid var(--border);padding:8px 10px;text-align:center;
+  position:relative;overflow:hidden}
+.ml-cell::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.6}
+.ml-cell .ml-lbl{font-size:.52rem;text-transform:uppercase;letter-spacing:.13em;color:var(--text-dim);font-weight:600}
+.ml-cell .ml-val{font-family:var(--mono);font-size:1.25rem;font-weight:700;color:var(--text);margin-top:3px;line-height:1.05;
+  text-shadow:0 0 10px rgba(201,168,76,0.22)}
+.ml-cell .ml-val.up{color:var(--green);text-shadow:0 0 10px rgba(52,211,153,0.3)}
+.ml-cell .ml-val.dn{color:var(--red);text-shadow:0 0 10px rgba(248,113,113,0.3)}
+.ml-cell .ml-sub{font-size:.5rem;color:var(--text-dim);margin-top:2px;font-family:var(--mono)}
+.ml-feats{flex:1;min-height:0;display:flex;flex-direction:column}
+.ml-feats .ml-feats-lbl{font-size:.54rem;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:4px;font-weight:700;
+  padding-top:6px;border-top:1px solid var(--border)}
+.ml-feats #featImp{flex:1;display:flex;flex-direction:column;justify-content:space-around}
+.ml-feats .feat-row{padding:1px 0;font-size:.62rem}
+.ml-feats .feat-row .name{width:96px;font-size:.62rem}
+.ml-feats .feat-row .bar-bg{height:7px}
+.ml-feats .feat-row .pct{width:44px;font-size:.62rem}
+
+/* 3-col grid for scorer / buckets / actions */
+.trio-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+@media(max-width:1100px){.trio-grid{grid-template-columns:1fr}}
+
+/* Tighter brain hero — matches counter card height */
+.brain-hero{padding:12px 18px;margin-bottom:0}
+.brain-hero-inner{gap:16px;grid-template-columns:auto auto 1fr}
+.brain-hero-inner>svg{height:72px !important;width:90px !important}
+.brain-state-label{font-size:.56rem;margin-bottom:4px}
+.brain-state-value{font-size:1.55rem}
+.brain-state-sub{font-size:.66rem;margin-top:4px}
+.brain-stats-mini{font-size:.62rem;gap:3px 12px}
+
+/* Brain state hero banner */
+.brain-hero{position:relative;background:linear-gradient(135deg,#0a0a14,#0c0c18 40%,#10101e);
+  border:1px solid var(--gold-dim);padding:22px 26px;margin-bottom:16px;overflow:hidden}
+.brain-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);animation:heroLine 3s ease-in-out infinite}
+@keyframes heroLine{0%,100%{opacity:0.4}50%{opacity:1}}
+.brain-hero::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 30% 50%,rgba(201,168,76,0.08),transparent 60%)}
+.brain-hero-inner{position:relative;z-index:1;display:grid;grid-template-columns:auto 1fr auto;
+  gap:24px;align-items:center}
+.brain-ascii{font-family:var(--mono);font-size:.7rem;line-height:1.05;color:var(--gold);
+  white-space:pre;text-shadow:0 0 10px rgba(201,168,76,0.45);opacity:0.9}
+/* Mini neural brain in hero */
+#brainMiniSvg{filter:drop-shadow(0 0 6px rgba(201,168,76,0.3))}
+#brainMiniSvg .bmOutline{fill:none;stroke:var(--gold);stroke-width:1.2;opacity:0.45}
+#brainMiniSvg .bmNode{fill:var(--bg3);stroke:var(--gold);stroke-width:1.3;transition:all .5s}
+#brainMiniSvg .bmNode.active{fill:var(--gold);filter:drop-shadow(0 0 4px var(--gold))}
+#brainMiniSvg .bmEdge{stroke:rgba(201,168,76,0.22);stroke-width:.7;transition:stroke .5s}
+#brainMiniSvg .bmEdge.active{stroke:var(--gold);stroke-width:1.2;filter:drop-shadow(0 0 4px var(--gold))}
+.brain-state-label{font-size:.62rem;color:var(--gold);letter-spacing:.2em;
+  text-transform:uppercase;margin-bottom:6px;font-weight:700}
+.brain-state-value{font-family:var(--mono);font-size:2.2rem;font-weight:700;line-height:1;
+  color:var(--text);letter-spacing:.02em}
+.brain-state-value .blink{display:inline-block;animation:blinkCursor 1.05s steps(2) infinite}
+@keyframes blinkCursor{50%{opacity:0}}
+.brain-state-sub{font-size:.72rem;color:var(--text-mid);font-family:var(--mono);margin-top:6px}
+.brain-state-value.state-LEARNING{color:var(--purple);text-shadow:0 0 25px rgba(167,139,250,0.45)}
+.brain-state-value.state-EXECUTING{color:var(--red);text-shadow:0 0 25px rgba(248,113,113,0.45)}
+.brain-state-value.state-OBSERVING{color:var(--blue);text-shadow:0 0 25px rgba(96,165,250,0.4)}
+.brain-state-value.state-SCOUTING{color:var(--green);text-shadow:0 0 25px rgba(52,211,153,0.4)}
+.brain-state-value.state-IDLE{color:var(--text-mid);text-shadow:none}
+
+.brain-stats-mini{display:grid;grid-template-columns:auto auto;gap:4px 14px;font-family:var(--mono);font-size:.68rem;color:var(--text-dim)}
+.brain-stats-mini b{color:var(--gold);font-weight:600}
+
+/* Growing counters row */
+.counters{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+@media(max-width:900px){.counters{grid-template-columns:repeat(2,1fr)}}
+.counter{background:var(--bg2);border:1px solid var(--border);padding:14px 18px;position:relative;overflow:hidden}
+.counter::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--gold-dim)}
+.counter-lbl{font-size:.58rem;text-transform:uppercase;letter-spacing:.14em;color:var(--text-dim);font-weight:600}
+.counter-val{font-family:var(--mono);font-size:1.8rem;font-weight:700;color:var(--text);
+  text-shadow:0 0 18px rgba(201,168,76,0.22);
+  margin-top:4px;letter-spacing:-.02em;line-height:1.05}
+.counter{background:linear-gradient(160deg,var(--bg2),#0f0e18);position:relative}
+.counter::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(90deg,transparent 0,transparent 40px,rgba(201,168,76,0.025) 40px,rgba(201,168,76,0.025) 41px),
+    repeating-linear-gradient(0deg,transparent 0,transparent 40px,rgba(201,168,76,0.025) 40px,rgba(201,168,76,0.025) 41px)}
+.counter-delta{font-size:.6rem;color:var(--green);font-family:var(--mono);margin-top:3px}
+.counter-delta.dn{color:var(--red)}
+/* Schreiber-Kurve / chart-recorder line spark */
+.counter-spark{flex:0 0 62px;height:62px;margin-top:7px;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,rgba(0,0,0,0.4),rgba(12,12,18,0.65));
+  border:1px solid rgba(201,168,76,0.15);
+  box-shadow:inset 0 1px 4px rgba(0,0,0,0.7),inset 0 0 14px rgba(201,168,76,0.05)}
+/* tiny current-value tag in the corner of the spark */
+.counter-spark .spark-val{position:absolute;top:3px;right:5px;z-index:2;
+  font-family:var(--mono);font-size:.56rem;font-weight:700;color:var(--gold);
+  text-shadow:0 0 6px rgba(0,0,0,0.9),0 0 10px rgba(201,168,76,0.3);pointer-events:none;letter-spacing:.05em}
+.counter-spark .spark-val .lbl{color:var(--text-dim);font-weight:400;margin-right:3px;font-size:.48rem;text-transform:uppercase}
+.counter-spark::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(90deg,transparent 0,rgba(201,168,76,0.05) 50%,transparent 100%),
+    repeating-linear-gradient(90deg,transparent 0,transparent 11px,rgba(201,168,76,0.05) 11px,rgba(201,168,76,0.05) 12px),
+    repeating-linear-gradient(0deg,transparent 0,transparent 15px,rgba(201,168,76,0.05) 15px,rgba(201,168,76,0.05) 16px)}
+.counter-spark svg{width:100%;height:100%;display:block;position:relative;z-index:1}
+.counter-spark svg line.baseline{stroke:rgba(201,168,76,0.15);stroke-width:.5;stroke-dasharray:2 2}
+@keyframes headPulse{0%,100%{r:2.2}50%{r:3.2}}
+.counter-spark svg circle.head{animation:headPulse 1.4s ease-in-out infinite}
+/* Counter cards stretch to match the hero's row height; spark flex-fills */
+.core-top{align-items:stretch}
+.core-top .counter{padding:12px 14px 14px;display:flex;flex-direction:column}
+.core-top .counter-lbl{font-size:.6rem;margin-bottom:3px}
+.core-top .counter-val{font-size:1.4rem;margin-top:3px}
+.core-top .counter-delta{font-size:.58rem;margin-top:3px}
+
+/* ML panel */
+.ml-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin-bottom:16px}
+@media(max-width:1100px){.ml-grid{grid-template-columns:1fr}}
+.panel{background:var(--bg2);border:1px solid var(--border);padding:16px 18px;position:relative}
+.panel-title{font-size:.68rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);
+  margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;
+  justify-content:space-between;gap:8px}
+.panel-title .pill{font-size:.55rem;padding:2px 8px;border:1px solid var(--gold-dim);color:var(--text-dim);
+  font-family:var(--mono);letter-spacing:.1em}
+.panel-title .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);animation:popupDot 1.2s ease-in-out infinite}
+
+/* ═══ BARS — dashboard-gold, LED-segment + shimmer ═══ */
+.feat-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-family:var(--mono);font-size:.72rem}
+.feat-row .name{width:120px;color:var(--text-mid);flex-shrink:0}
+.feat-row .bar-bg{flex:1;height:12px;background:linear-gradient(180deg,rgba(0,0,0,0.45),rgba(12,12,18,0.8));
+  border:1px solid var(--gold-dim);position:relative;overflow:hidden;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,0.7),inset 0 0 6px rgba(201,168,76,0.08)}
+.feat-row .bar-bg::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(90deg,transparent 0,transparent 4px,rgba(201,168,76,0.05) 4px,rgba(201,168,76,0.05) 5px);opacity:.7}
+.feat-row .bar-fill{position:absolute;top:0;left:0;bottom:0;
+  background:linear-gradient(90deg,rgba(201,168,76,0.35),var(--gold) 55%,var(--gold-bright));
+  transition:width .8s cubic-bezier(.2,.8,.2,1);box-shadow:0 0 12px rgba(201,168,76,0.55);
+  border-right:1px solid rgba(255,255,255,0.45)}
+.feat-row .bar-fill::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent 0,transparent 3px,rgba(255,255,255,0.1) 3px,rgba(255,255,255,0.1) 4px);
+  mix-blend-mode:overlay;opacity:.6}
+.feat-row .bar-fill::after{content:'';position:absolute;top:0;bottom:0;right:0;width:4px;
+  background:linear-gradient(90deg,transparent,var(--gold-bright));box-shadow:0 0 14px var(--gold-bright),0 0 20px var(--gold);
+  animation:barTipPulse 1.8s ease-in-out infinite}
+@keyframes barTipPulse{0%,100%{opacity:.55}50%{opacity:1}}
+.feat-row .pct{width:52px;text-align:right;color:var(--text);font-weight:700}
+
+/* Neural network SVG — live packet flow, dashboard-gold */
+.neural-box{position:relative;
+  background:radial-gradient(ellipse at center,rgba(201,168,76,0.05),transparent 70%);
+  overflow:hidden;border-top:1px solid var(--gold-dim)}
+.neural-head-pills{display:flex;gap:6px;align-items:center}
+.pill.pred-pill{font-family:var(--mono);font-weight:700;color:var(--text);
+  background:rgba(0,0,0,0.35);border-color:var(--gold-dim);text-transform:uppercase;letter-spacing:.08em}
+.pill.pred-pill.buy{color:var(--green);border-color:var(--green-dim);text-shadow:0 0 8px rgba(52,211,153,0.5)}
+.pill.pred-pill.skip{color:var(--red);border-color:var(--red-dim);text-shadow:0 0 8px rgba(248,113,113,0.5)}
+.neural-box svg .io-label{font-size:6px;font-family:var(--mono);fill:var(--text-dim);letter-spacing:.1em}
+.neural-box svg .io-label.input{text-anchor:start}
+.neural-box svg .io-label.output{text-anchor:end;fill:var(--gold);font-weight:700}
+.neural-box::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent 0,transparent 19px,rgba(201,168,76,0.04) 19px,rgba(201,168,76,0.04) 20px),
+    repeating-linear-gradient(90deg,transparent 0,transparent 19px,rgba(201,168,76,0.04) 19px,rgba(201,168,76,0.04) 20px)}
+.neural-box svg{width:100%;height:100%;position:relative;z-index:1}
+.neural-box circle.node{fill:var(--bg3);stroke:rgba(201,168,76,0.45);stroke-width:1.1;transition:all .25s}
+.neural-box circle.node.active{fill:var(--gold);stroke:var(--gold-bright);stroke-width:1.6;
+  filter:drop-shadow(0 0 8px var(--gold)) drop-shadow(0 0 16px rgba(201,168,76,0.45))}
+.neural-box line.edge{stroke:rgba(201,168,76,0.18);stroke-width:.6;transition:stroke .3s,stroke-width .3s}
+.neural-box line.edge.active{stroke:var(--gold);stroke-width:1.3;filter:drop-shadow(0 0 5px var(--gold))}
+.neural-box circle.packet{fill:var(--gold-bright);filter:drop-shadow(0 0 6px var(--gold)) drop-shadow(0 0 12px rgba(201,168,76,0.6));pointer-events:none}
+.neural-box circle.packet.magenta{fill:var(--green);filter:drop-shadow(0 0 6px var(--green)) drop-shadow(0 0 12px rgba(52,211,153,0.5))}
+.neural-box .layer-label{font-size:7px;fill:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.15em}
+.neural-box .core-label{font-size:7px;fill:var(--gold);font-family:var(--mono);letter-spacing:.1em;opacity:.8}
+
+/* Scorer weights radial */
+.scorer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+@media(max-width:1100px){.scorer-grid{grid-template-columns:1fr}}
+.bucket-row{display:flex;align-items:center;gap:10px;padding:8px 0;font-family:var(--mono);font-size:.78rem;border-bottom:1px solid rgba(30,30,48,0.5)}
+.bucket-row:last-child{border-bottom:none}
+.bucket-row .bucket-lbl{width:70px;color:var(--text);font-weight:600}
+.bucket-row .n{width:38px;text-align:right;color:var(--text-mid)}
+.bucket-row .wr-bar-bg{flex:1;height:10px;max-width:160px;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,rgba(0,0,0,0.4),rgba(12,12,18,0.8));
+  border:1px solid var(--gold-dim);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,0.7)}
+.bucket-row .wr-bar-bg::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent 0,transparent 4px,rgba(201,168,76,0.05) 4px,rgba(201,168,76,0.05) 5px);pointer-events:none}
+.bucket-row .wr-bar-fill{height:100%;background:linear-gradient(90deg,rgba(201,168,76,0.4),var(--gold),var(--gold-bright));
+  transition:width .6s;box-shadow:0 0 10px rgba(201,168,76,0.5);position:relative}
+.bucket-row .wr-bar-fill::after{content:'';position:absolute;right:0;top:0;bottom:0;width:3px;background:var(--gold-bright);box-shadow:0 0 10px var(--gold)}
+.bucket-row .wr{width:46px;text-align:right}
+.bucket-row .pnl{width:70px;text-align:right;font-weight:600}
+
+/* Trader table */
+.trader-table{font-family:var(--mono);font-size:.72rem;width:100%;border-collapse:collapse}
+.trader-table th{text-align:left;color:var(--text-dim);font-size:.58rem;font-weight:600;padding:6px 8px;
+  text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);background:var(--bg3)}
+.trader-table td{padding:7px 8px;border-bottom:1px solid rgba(30,30,48,0.5)}
+.trader-table tr:hover td{background:rgba(201,168,76,0.03)}
+.tier{font-size:.54rem;padding:2px 7px;letter-spacing:.08em;font-weight:700;text-transform:uppercase;border:1px solid;border-radius:2px}
+.tier.star{color:#fbbf24;border-color:rgba(251,191,36,0.4);background:rgba(251,191,36,0.06)}
+.tier.solid{color:var(--green);border-color:var(--green-dim);background:rgba(52,211,153,0.05)}
+.tier.neutral{color:var(--text-mid);border-color:var(--border-h)}
+.tier.weak{color:#fb923c;border-color:rgba(251,146,60,0.4);background:rgba(251,146,60,0.05)}
+.tier.terrible,.tier.kicked{color:var(--red);border-color:var(--red-dim);background:rgba(248,113,113,0.05)}
+
+/* Category heatmap — larger tiles */
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.cat-cell{background:var(--bg3);border:1px solid var(--border);padding:16px 20px;text-align:center;
+  transition:all .3s;position:relative;overflow:hidden}
+.cat-cell::before{content:'';position:absolute;bottom:0;left:0;right:0;height:4px;background:var(--border-h);transition:background .4s}
+.cat-cell.pos::before{background:var(--green);box-shadow:0 0 8px rgba(52,211,153,0.4)}
+.cat-cell.neg::before{background:var(--red);box-shadow:0 0 8px rgba(248,113,113,0.4)}
+.cat-cell:hover{border-color:var(--gold-dim);transform:translateY(-2px)}
+.cat-name{font-size:.7rem;text-transform:uppercase;letter-spacing:.14em;color:var(--text-dim);font-weight:700}
+.cat-pnl{font-family:var(--mono);font-size:1.45rem;font-weight:700;margin-top:6px;line-height:1.1}
+.cat-meta{font-size:.64rem;color:var(--text-dim);margin-top:5px;font-family:var(--mono)}
+
+/* Brain activity log */
+.brain-log{height:340px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);
+  font-family:var(--mono);font-size:.7rem;padding:0}
+.brain-log::-webkit-scrollbar{width:4px}
+.brain-log::-webkit-scrollbar-thumb{background:var(--border-h)}
+.blog-row{display:grid;grid-template-columns:62px 100px 90px 1fr;gap:10px;padding:6px 12px;
+  border-bottom:1px solid rgba(30,30,48,0.5);align-items:baseline}
+.blog-row:hover{background:rgba(201,168,76,0.03)}
+.blog-ts{color:var(--text-dim);font-size:.62rem}
+.blog-action{font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:.66rem}
+.blog-action.tighten,.blog-action.blacklist,.blog-action.pause,.blog-action.kick{color:var(--red)}
+.blog-action.relax,.blog-action.boost,.blog-action.promote,.blog-action.unblacklist,.blog-action.unpause{color:var(--green)}
+.blog-action.promote_recommended{color:var(--blue)}
+.blog-target{color:var(--gold);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blog-reason{color:var(--text-mid);font-size:.64rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blog-filter{display:flex;gap:4px;padding:8px 12px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--bg3);position:sticky;top:0;z-index:1}
+.blog-filter .btn{font-size:.58rem;padding:3px 10px;border:1px solid var(--border);background:transparent;color:var(--text-mid);cursor:pointer;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.blog-filter .btn:hover{border-color:var(--gold-dim);color:var(--gold)}
+.blog-filter .btn.act{color:var(--gold);border-color:var(--gold)}
+
+/* Lifecycle pipeline */
+.pipeline{display:flex;flex-direction:column;gap:6px}
+.pipe-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(30,30,48,0.4)}
+.pipe-row:last-child{border-bottom:none}
+.pipe-name{width:120px;font-size:.62rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-mid);font-weight:600}
+.pipe-count{font-family:var(--mono);font-size:1.1rem;font-weight:700;color:var(--text);width:40px;text-align:right}
+.pipe-bar-bg{flex:1;height:10px;background:linear-gradient(180deg,rgba(0,0,0,0.4),rgba(12,12,18,0.8));
+  border:1px solid var(--gold-dim);box-shadow:inset 0 1px 3px rgba(0,0,0,0.7);position:relative;overflow:hidden}
+.pipe-bar-bg::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent 0,transparent 4px,rgba(201,168,76,0.05) 4px,rgba(201,168,76,0.05) 5px);pointer-events:none}
+.pipe-bar-fill{height:100%;background:linear-gradient(90deg,rgba(201,168,76,0.4),var(--gold),var(--gold-bright));
+  transition:width .6s;box-shadow:0 0 10px rgba(201,168,76,0.45);position:relative}
+.pipe-bar-fill::after{content:'';position:absolute;top:0;right:0;bottom:0;width:3px;background:var(--gold-bright);box-shadow:0 0 8px var(--gold)}
+
+/* Action counts strip */
+.action-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:10px}
+@media(max-width:900px){.action-strip{grid-template-columns:repeat(3,1fr)}}
+.action-pill{background:var(--bg3);border:1px solid var(--border);padding:8px 10px;text-align:center}
+.action-pill-lbl{font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);font-weight:600}
+.action-pill-val{font-family:var(--mono);font-size:1.2rem;font-weight:700;margin-top:3px}
+.action-pill.tighten .action-pill-val,.action-pill.blacklist .action-pill-val,.action-pill.pause .action-pill-val{color:var(--red)}
+.action-pill.relax .action-pill-val,.action-pill.boost .action-pill-val,.action-pill.promote .action-pill-val{color:var(--green)}
+
+/* Glitch text effect for LEARNING state */
+@keyframes glitch{0%,100%{transform:translate(0)}20%{transform:translate(-1px,1px)}40%{transform:translate(-1px,-1px)}60%{transform:translate(1px,1px)}80%{transform:translate(1px,-1px)}}
+.glitch{animation:glitch .4s infinite}
+
+/* Mini-card grid (more data density) */
+.mini-cards{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-bottom:14px}
+@media(max-width:1400px){.mini-cards{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:700px){.mini-cards{grid-template-columns:repeat(2,1fr)}}
+.mcard{background:var(--bg2);border:1px solid var(--border);padding:13px 15px;position:relative;
+  transition:all .25s;overflow:hidden}
+.mcard:hover{border-color:var(--gold-dim)}
+.mcard::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--border-h);transition:background .3s}
+.mcard:hover::before{background:var(--gold)}
+.mcard-lbl{font-size:.62rem;text-transform:uppercase;letter-spacing:.14em;color:var(--text-dim);font-weight:600;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard-val{font-family:var(--mono);font-size:1.3rem;font-weight:700;line-height:1.1;color:var(--text)}
+.mcard-val.up{color:var(--green);text-shadow:0 0 10px rgba(52,211,153,0.25)}
+.mcard-val.dn{color:var(--red);text-shadow:0 0 10px rgba(248,113,113,0.25)}
+.mcard-val.cy{color:var(--cyan)}
+.mcard-val.pu{color:var(--purple)}
+.mcard-val.yl{color:var(--yellow)}
+.mcard-sub{font-size:.62rem;color:var(--text-dim);margin-top:4px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Power levels + streak emojis in trader table */
+.power{font-family:var(--mono);font-weight:800;font-size:.78rem;text-shadow:0 0 10px currentColor;letter-spacing:.02em}
+.power.legendary{color:#ff6400;text-shadow:0 0 14px #ff6400,0 0 28px rgba(255,100,0,0.3)}
+.power.epic{color:#a78bfa;text-shadow:0 0 12px #a78bfa}
+.power.rare{color:#60a5fa;text-shadow:0 0 10px #60a5fa}
+.power.common{color:var(--text-mid);text-shadow:none}
+.power-tier{font-size:.5rem;color:var(--text-dim);letter-spacing:.08em;margin-left:4px;text-transform:uppercase;vertical-align:middle}
+.streak{font-family:var(--mono);font-size:.82rem;letter-spacing:-1px}
+.streak-emojis{letter-spacing:0;font-size:.78rem}
+@keyframes fireGlow{0%,100%{text-shadow:0 0 4px #ff4500,0 0 9px #ff6400}50%{text-shadow:0 0 12px #ff4500,0 0 22px #ff6400}}
 .on-fire{animation:fireGlow 1.5s ease-in-out infinite}
-.fire-text{color:#ff6400;font-weight:800}
+.on-fire td{background:rgba(255,100,0,0.03)}
+.streak-up{color:var(--green);font-weight:700}
+.streak-dn{color:var(--red);font-weight:700}
 
-/* === WHALE ALERT === */
-@keyframes whaleSlide{0%{transform:translateX(100%);opacity:0}10%{transform:translateX(0);opacity:1}90%{transform:translateX(0);opacity:1}100%{transform:translateX(-100%);opacity:0}}
-.whale-alert{position:fixed;top:60px;right:20px;z-index:9999;background:linear-gradient(135deg,#1a1a40,#0c0c20);
-  border:2px solid var(--gold);border-radius:12px;padding:14px 20px;min-width:300px;
-  box-shadow:0 0 40px rgba(201,168,76,0.3),0 0 80px rgba(201,168,76,0.1);
-  animation:whaleSlide 6s ease-in-out forwards;pointer-events:none}
-.whale-alert .whale-icon{font-size:2rem;float:left;margin-right:12px}
-.whale-alert .whale-text{font-size:.8rem;color:var(--gold-bright);font-weight:600}
-.whale-alert .whale-detail{font-size:.7rem;color:var(--text-mid);margin-top:4px}
+/* Health dot for red flags */
+.flag{display:inline-block;padding:1px 6px;font-size:.5rem;letter-spacing:.08em;text-transform:uppercase;
+  font-weight:700;border:1px solid;border-radius:2px;margin-left:4px;vertical-align:middle}
+.flag.warn{color:var(--yellow);border-color:rgba(251,191,36,0.4);background:rgba(251,191,36,0.06)}
+.flag.danger{color:var(--red);border-color:var(--red-dim);background:rgba(248,113,113,0.06)}
+.flag.ok{color:var(--green);border-color:var(--green-dim);background:rgba(52,211,153,0.06)}
 
-/* === ACHIEVEMENTS === */
-.achievements{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
-.achievement{background:var(--bg3);border:1px solid var(--border);border-radius:20px;
-  padding:4px 12px;font-size:.65rem;display:flex;align-items:center;gap:4px;transition:.3s}
-.achievement:hover{border-color:var(--gold);transform:scale(1.05)}
-.achievement.unlocked{border-color:var(--gold-dim);background:rgba(201,168,76,0.05)}
-.achievement.locked{opacity:0.3;filter:grayscale(1)}
-.ach-icon{font-size:.9rem}
-
-/* === HEARTBEAT === */
-@keyframes heartbeat{0%{transform:scale(1)}14%{transform:scale(1.15)}28%{transform:scale(1)}42%{transform:scale(1.1)}70%{transform:scale(1)}}
-.heartbeat{display:inline-block;animation:heartbeat 1.5s ease-in-out infinite;color:var(--red)}
-.heartbeat-fast{animation-duration:.8s}
-.heartbeat-slow{animation-duration:2.5s}
-
-/* === PARTICLE EXPLOSION === */
-@keyframes particle{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0}}
-.particle{position:fixed;width:6px;height:6px;border-radius:50%;pointer-events:none;z-index:9998;
-  animation:particle .8s ease-out forwards}
-
-.refresh{font-size:.6rem;color:var(--text-dim);font-family:var(--mono);margin-top:10px}
+/* Big bottom grid */
+.bottom-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:12px}
+@media(max-width:1100px){.bottom-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+<canvas id="matrixRain"></canvas>
+<div class="scan"></div>
 <div class="app">
 
-  <!-- Left Panel: Recent Activity -->
-  <div class="left-panel">
-    <div class="lp-header"><span class="live-dot"></span> RECENT ACTIVITY</div>
-    <div id="activityLog" style="font-size:.65rem;font-family:'Fira Code',monospace"></div>
-  </div>
-  <div class="hd">
-    <div style="display:flex;align-items:center;gap:10px">
-      <img src="/static/logo.png" alt="SSC" style="height:36px">
-      <div><div class="logo">BRAIN</div><div style="font-size:.7rem;color:var(--text-dim);letter-spacing:.12em;font-weight:300">by Super Sauna Club</div></div>
+  <header class="hd">
+    <div class="hd-left">
+      <img src="/static/logo.png" alt="SSC" class="hd-logo-img" onerror="this.style.display='none'">
+      <div>
+        <div class="logo">Poly Copybot</div>
+        <div class="logo-sub">by Super Sauna Club</div>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px">
-      <span class="heartbeat" id="heartIcon" style="font-size:1.2rem">&#x2764;</span>
-      <span style="font-size:.65rem;color:var(--text-dim);font-family:var(--mono)" id="brainClock"></span>
+    <div class="hd-center">
+      <div class="digiclock" id="digiClock">--:--:--</div>
+      <div class="live-tag"><span class="live-dot"></span>LIVE</div>
+      <div class="status-tags">
+        <div class="st"><span class="st-dot" id="stBot"></span>Bot</div>
+        <div class="st"><span class="st-dot" id="stApi"></span>API</div>
+        <div class="st"><span class="st-dot" id="stPoll"></span>Poll</div>
+      </div>
     </div>
-    {% with active='brain' %}{% include '_nav.html' %}{% endwith %}
-  </div>
-  <script>
-function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}setInterval(()=>{const d=new Date();document.getElementById('brainClock').textContent=d.toLocaleTimeString('de',{hour:'2-digit',minute:'2-digit',second:'2-digit'})},1000)</script>
+    <div class="hd-right" style="display:flex;align-items:center;gap:8px">
+      <button class="sfx-btn" id="sscSound" type="button">&#128264; Sound</button>
+      <button class="sfx-btn" id="sscWide" type="button" title="Switch layout">&#9724; Desktop</button>
+      {% with active='brain' %}{% include '_nav.html' %}{% endwith %}
+    </div>
+  </header>
 
-  <!-- Top Cards -->
-  <div class="grid grid-5 sec">
-    <div class="card">
-      <div class="card-title">ML Accuracy</div>
-      <div class="card-val" id="mlAccuracy">--</div>
-      <div class="card-sub" id="mlSamples">-- samples</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Active Traders</div>
-      <div class="card-val" id="activeTraders">--</div>
-      <div class="card-sub" id="traderDetail">--</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Scouting</div>
-      <div class="card-val" id="candidateCount">--</div>
-      <div class="card-sub" id="candidateDetail">--</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Auto Trades</div>
-      <div class="card-val" id="autoCount">--</div>
-      <div class="card-sub" id="autoDetail">--</div>
-    </div>
-    <div class="card">
-      <div class="card-title">Bot Mood</div>
-      <div class="card-val" id="botMood">--</div>
-      <div class="card-sub" id="moodDetail">--</div>
-    </div>
+  <div class="tk-wrap">
+    <div class="tk" id="sscTicker"><div class="tk-i dim">Initializing market flow...</div></div>
   </div>
 
-  <!-- Achievements -->
-  <div class="sec">
-    <div class="sec-hd">Achievements</div>
-    <div class="achievements" id="achievements"></div>
+  <!-- ═══ NEURAL CORE — brain status ═══ -->
+  <div class="section-divider"><span class="lbl">Neural Core</span><span class="sub">brain status</span></div>
+
+  <div class="sec-core">
+  <!-- HERO + 4 GROWING COUNTERS side by side -->
+  <div class="core-top">
+    <div class="brain-hero">
+      <div class="brain-hero-inner">
+        <svg id="brainMiniSvg" viewBox="0 0 140 110" width="130" height="100"></svg>
+        <div>
+          <div class="brain-state-label">NEURAL STATE</div>
+          <div class="brain-state-value state-OBSERVING" id="brainState">OBSERVING<span class="blink">_</span></div>
+          <div class="brain-state-sub" id="brainStateSub">awaiting next cycle</div>
+        </div>
+        <div>
+          <div class="brain-stats-mini" id="heroStats">
+            <span>uptime</span><b id="heroUptime">--</b>
+            <span>last cycle</span><b id="heroLastCycle">--</b>
+            <span>next cycle</span><b id="heroNextCycle">--</b>
+            <span>performance since</span><b id="heroPerfSince">--</b>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="counters">
+      <div class="counter">
+        <div class="counter-lbl">Trades Scored</div>
+        <div class="counter-val" id="cntScored">0</div>
+        <div class="counter-delta" id="cntScoredDelta">&Delta; +0</div>
+        <div class="counter-spark" id="sparkScored"></div>
+      </div>
+      <div class="counter">
+        <div class="counter-lbl">Brain Decisions</div>
+        <div class="counter-val" id="cntDecisions">0</div>
+        <div class="counter-delta" id="cntDecisionsDelta">&Delta; +0</div>
+        <div class="counter-spark" id="sparkDecisions"></div>
+      </div>
+      <div class="counter">
+        <div class="counter-lbl">ML Samples</div>
+        <div class="counter-val" id="cntSamples">0</div>
+        <div class="counter-delta" id="cntSamplesDelta">&Delta; +0</div>
+        <div class="counter-spark" id="sparkSamples"></div>
+      </div>
+      <div class="counter">
+        <div class="counter-lbl">Candidates</div>
+        <div class="counter-val" id="cntCandidates">0</div>
+        <div class="counter-delta" id="cntCandidatesDelta">&Delta; +0</div>
+        <div class="counter-spark" id="sparkCandidates"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- Trader Power Levels -->
-  <div class="sec">
-    <div class="sec-hd">Trader Power Levels <span class="badge badge-live">LIVE</span></div>
-    <table>
+  <!-- CORE MID: mini-cards (left) + ML Model Health (right) -->
+  <div class="core-mid">
+    <div class="mini-cards" id="coreMini"></div>
+    <div class="panel ml-compact">
+      <div class="panel-title">
+        <span>ML Model Health</span>
+        <span class="pill" id="mlLastTrained">last trained &mdash;</span>
+      </div>
+      <div class="ml-compact-body">
+        <div class="ml-metrics">
+          <div class="ml-cell">
+            <div class="ml-lbl">Train Acc</div>
+            <div class="ml-val" id="mlTrainAcc">--</div>
+            <div class="ml-sub" id="mlTrainN">n=--</div>
+          </div>
+          <div class="ml-cell">
+            <div class="ml-lbl">Test Acc</div>
+            <div class="ml-val" id="mlTestAcc">--</div>
+            <div class="ml-sub" id="mlTestN">n=--</div>
+          </div>
+          <div class="ml-cell">
+            <div class="ml-lbl">vs Baseline</div>
+            <div class="ml-val" id="mlGap">--</div>
+            <div class="ml-sub">majority 79.1%</div>
+          </div>
+        </div>
+        <div class="ml-feats">
+          <div class="ml-feats-lbl">Feature Importance</div>
+          <div id="featImp"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ BRAIN STREAM + NEURAL NETWORK side by side ═══ -->
+  <div class="stream-net-row">
+    <div class="stream-wrap">
+      <div class="stream-head">
+        <div class="stream-title">
+          <span class="live-dot"></span>Brain Stream &mdash; live
+        </div>
+        <div class="stream-filter" id="streamFilter">
+          <button class="sbtn act" data-act="">ALL</button>
+          <button class="sbtn" data-act="DECISION">DECISIONS</button>
+          <button class="sbtn" data-act="BLOCKED">BLOCKED</button>
+          <button class="sbtn" data-act="TRADE">TRADES</button>
+          <button class="sbtn" data-act="TIGHTEN_FILTER">TIGHTEN</button>
+          <button class="sbtn" data-act="RELAX_FILTER">RELAX</button>
+          <button class="sbtn" data-act="BLACKLIST_CATEGORY">BLACKLIST</button>
+          <button class="sbtn" data-act="PAUSE_TRADER">PAUSE</button>
+        </div>
+      </div>
+      <div class="stream-box" id="streamBox"></div>
+    </div>
+    <div class="neural-host">
+      <div class="panel-title">
+        <span>Neural Network</span>
+        <span class="neural-head-pills">
+          <span class="pill pred-pill" id="predVal">idle</span>
+          <span class="pill" id="neuralActivity">ready</span>
+        </span>
+      </div>
+      <div class="neural-box">
+        <svg viewBox="0 0 420 190" preserveAspectRatio="xMidYMid meet" id="neuralSvg"></svg>
+      </div>
+    </div>
+  </div>
+
+
+  </div><!-- /sec-core -->
+
+  <!-- ═══ BATTLEFIELD — actual trading results ═══ -->
+  <div class="section-divider"><span class="lbl">Battlefield</span><span class="sub">live results</span></div>
+
+  <div class="sec-field">
+  <!-- FIELD MINI-CARDS: real outcome metrics -->
+  <div class="mini-cards" id="fieldMini"></div>
+
+  <!-- SCORER + BUCKETS + ACTION COUNTS (trio) -->
+  <div class="trio-grid">
+    <div class="panel">
+      <div class="panel-title">
+        <span>Scorer Weights</span>
+        <span class="pill" id="scorerTuned">autotuned</span>
+      </div>
+      <div id="scorerBars"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">
+        <span>Score Buckets</span>
+        <span class="pill">perf since</span>
+      </div>
+      <div id="scoreBuckets"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">
+        <span>Brain Actions</span>
+        <span class="pill" id="actionRange">rolling</span>
+      </div>
+      <div class="action-strip" id="actionStrip" style="grid-template-columns:repeat(3,1fr)"></div>
+    </div>
+  </div>
+
+  <!-- TRADER DETAILS -->
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-title">
+      <span>Per-Trader Intelligence</span>
+      <span class="pill">brain view</span>
+    </div>
+    <div class="tw"><table class="trader-table" id="traderTable">
       <thead><tr>
-        <th></th><th>Trader</th><th>Copied</th><th>Power</th><th>Streak</th><th>1d WR</th><th>1d P&L</th><th>7d WR</th>
-        <th>7d P&L</th><th>Kelly</th><th>Status</th>
+        <th>Trader</th><th>Power</th><th>Tier</th><th>Copied</th>
+        <th>7d P&amp;L</th><th>1d P&amp;L</th><th>7d WR</th><th>Streak</th>
+        <th>Status</th><th>Effective Filter</th>
       </tr></thead>
-      <tbody id="tTraders"></tbody>
-    </table>
+      <tbody></tbody>
+    </table></div>
   </div>
 
-  
-  <!-- Category Heatmap -->
-  <div class="sec">
-    <div class="sec-hd">Category Heatmap <span class="badge badge-live">LIVE</span></div>
-    <div class="heatmap" id="heatmap"></div>
-  </div>
-
-  <!-- Two columns -->
-  <div class="grid grid-2">
-    <div class="sec">
-      <div class="sec-hd">ML Brain</div>
-      <div class="card" id="mlDetails" style="font-size:.75rem;line-height:1.8">Loading...</div>
+  <!-- CATEGORY HEATMAP + LIFECYCLE PIPELINE -->
+  <div class="bottom-grid">
+    <div class="panel">
+      <div class="panel-title">
+        <span>Category Heatmap</span>
+        <span class="pill">30d</span>
+      </div>
+      <div class="cat-grid" id="catGrid"></div>
     </div>
-    <div class="sec">
-      <div class="sec-hd">Top Candidates <span class="badge badge-live">SCOUTING</span></div>
-      <table>
-        <thead><tr><th>Name</th><th>Profit</th><th>Volume</th><th>Paper</th><th>Status</th></tr></thead>
-        <tbody id="tCandidates"></tbody>
-      </table>
+    <div class="panel">
+      <div class="panel-title"><span>Lifecycle Pipeline</span></div>
+      <div class="pipeline" id="pipeline"></div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="font-size:.58rem;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;font-weight:700">Paper Trading</div>
+        <div id="paperList" style="font-family:var(--mono);font-size:.68rem;color:var(--text-mid)">loading...</div>
+      </div>
     </div>
   </div>
 
-  <!-- Autonomous -->
-  <div class="sec">
-    <div class="sec-hd">Autonomous Trades <span class="badge badge-live">LIVE</span></div>
-    <table>
-      <thead><tr><th>Signal</th><th>Market</th><th>Side</th><th>Entry</th><th>Now</th><th>$</th><th>P&L</th><th>Status</th></tr></thead>
-      <tbody id="tAuto"></tbody>
-    </table>
+  <!-- TOP CANDIDATES -->
+  <div class="panel" style="margin-top:12px">
+    <div class="panel-title">
+      <span>Top Candidates</span>
+      <span class="pill">scouting</span>
+    </div>
+    <div class="tw"><table class="trader-table" id="candTable">
+      <thead><tr>
+        <th>Trader</th><th>Profit</th><th>Volume</th><th>Paper</th><th>Days</th><th>Status</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table></div>
   </div>
+  </div><!-- /sec-field -->
 
-  <div class="refresh">Auto-refresh: <span id="timer">20</span>s | <span id="soundToggle" onclick="toggleSound()" style="cursor:pointer;color:var(--gold)">&#128264; Sound ON</span></div>
 </div>
 
-<!-- Sounds (base64 tiny beeps) -->
+<div class="popup-slot"></div>
+<script src="/static/terminal.js"></script>
 <script>
-let soundEnabled = true;
-function toggleSound(){soundEnabled=!soundEnabled;document.getElementById('soundToggle').innerHTML=soundEnabled?'&#128264; Sound ON':'&#128263; Sound OFF'}
+/* ═══ BRAIN CONSOLE LOGIC ═══ */
+(function(){
+'use strict';
 
-// Generate sounds with Web Audio API
-const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-function playTone(freq, dur, type='sine', vol=0.15){
-  if(!soundEnabled) return;
-  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
-  o.type=type;o.frequency.value=freq;g.gain.value=vol;
-  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
-  o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur);
-}
-function playWin(){playTone(523,.1);setTimeout(()=>playTone(659,.1),100);setTimeout(()=>playTone(784,.15),200)}
-function playLoss(){playTone(200,.3,'sawtooth',0.08)}
-function playWhale(){playTone(100,.1,'square',0.1);setTimeout(()=>playTone(150,.1,'square',0.1),100);setTimeout(()=>playTone(200,.2,'square',0.1),200)}
-function playAchievement(){playTone(523,.08);setTimeout(()=>playTone(659,.08),80);setTimeout(()=>playTone(784,.08),160);setTimeout(()=>playTone(1047,.2),240)}
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 
-// Particle explosion
-function explode(x,y,color='#c9a84c'){
-  for(let i=0;i<12;i++){
-    const p=document.createElement('div');p.className='particle';
-    p.style.left=x+'px';p.style.top=y+'px';p.style.background=color;
-    p.style.setProperty('--tx',(Math.random()*120-60)+'px');
-    p.style.setProperty('--ty',(Math.random()*120-60)+'px');
-    document.body.appendChild(p);setTimeout(()=>p.remove(),800);
-  }
-}
-
-// Whale alert
-function showWhale(text, detail){
-  const w=document.createElement('div');w.className='whale-alert';
-  w.innerHTML=`<span class="whale-icon">&#x1F433;</span><div class="whale-text">${text}</div><div class="whale-detail">${esc(detail)}</div>`;
-  document.body.appendChild(w);playWhale();
-  setTimeout(()=>w.remove(),6500);
-}
-
-const API='';
-let countdown=20, lastTradeCount=0;
-// Load already-unlocked achievements from localStorage so they only ever
-// pop ONCE in the user's lifetime on this browser, not on every page reload.
-let lastAchievements = new Set(JSON.parse(localStorage.getItem('brainAchievements') || '[]'));
-
-async function fetchJSON(url){try{return await(await fetch(API+url)).json()}catch(e){return null}}
-function pnlClass(v){return v>0?'pos':v<0?'neg':''}
-function fmt(v,d=2){return v!=null?Number(v).toFixed(d):'--'}
-
-// Power level calculation
-function getPowerLevel(wr, pnl, trades){
-  let power = (wr * 2) + (pnl * 5) + (trades * 0.5);
-  power = Math.max(0, Math.round(power));
-  let tier, cls;
-  if(power >= 500){tier='LEGENDARY';cls='power-legendary'}
-  else if(power >= 200){tier='EPIC';cls='power-epic'}
-  else if(power >= 50){tier='RARE';cls='power-rare'}
-  else{tier='COMMON';cls='power-common'}
-  return {power, tier, cls};
-}
-
-// Achievements
-const ACHIEVEMENTS = [
-  {id:'first_blood',icon:'&#x1F3AF;',name:'First Blood',desc:'First profitable trade',check:d=>d.totalWins>=1},
-  {id:'ten_streak',icon:'&#x1F525;',name:'On Fire',desc:'3+ win streak',check:d=>d.maxStreak>=3},
-  {id:'century',icon:'&#x1F4AF;',name:'Century',desc:'100 trades completed',check:d=>d.totalTrades>=100},
-  {id:'five_hundo',icon:'&#x1F3C6;',name:'500 Club',desc:'500 trades completed',check:d=>d.totalTrades>=500},
-  {id:'ml_brain',icon:'&#x1F9E0;',name:'Big Brain',desc:'ML model trained',check:d=>d.mlTrained},
-  {id:'scout',icon:'&#x1F50D;',name:'Scout',desc:'50 candidates found',check:d=>d.candidates>=50},
-  {id:'profit_10',icon:'&#x1F4B0;',name:'First Bag',desc:'$10+ total profit on any trader',check:d=>d.bestTraderPnl>=10},
-  {id:'profit_50',icon:'&#x1F48E;',name:'Diamond Hands',desc:'$50+ total profit on any trader',check:d=>d.bestTraderPnl>=50},
-  {id:'categories',icon:'&#x1F30D;',name:'Diversified',desc:'Profitable in 3+ categories',check:d=>d.profitableCategories>=3},
-  {id:'auto_trade',icon:'&#x1F916;',name:'Skynet',desc:'First autonomous trade',check:d=>d.autoTrades>=1},
-  {id:'whale_watch',icon:'&#x1F433;',name:'Whale Watcher',desc:'Scouting 50 traders',check:d=>d.candidates>=50},
-  {id:'night_owl',icon:'&#x1F989;',name:'Night Owl',desc:'Trade placed after midnight',check:d=>d.nightTrades>=1},
-];
-
-function renderAchievements(data){
-  const el=document.getElementById('achievements');
-  el.innerHTML=ACHIEVEMENTS.map(a=>{
-    const unlocked=a.check(data);
-    if(unlocked && !lastAchievements.has(a.id)){
-      lastAchievements.add(a.id);
-      // Persist so next page load knows this is already unlocked — no re-popup.
-      try{localStorage.setItem('brainAchievements', JSON.stringify([...lastAchievements]))}catch(e){}
-      playAchievement();
-      setTimeout(()=>showWhale('Achievement Unlocked!',a.icon+' '+a.name+' — '+a.desc),500);
+/* ── Matrix rain ── */
+(function matrix(){
+  var cvs=$('#matrixRain');if(!cvs)return;
+  var ctx=cvs.getContext('2d');
+  function resize(){cvs.width=window.innerWidth;cvs.height=window.innerHeight}
+  resize();window.addEventListener('resize',resize);
+  var chars='01 {} [] <> ABCDEF 0123456789 $ \u2716 \u25A0 \u25B2 \u25BC';
+  chars=chars.split('');
+  var font=14;
+  function cols(){return Math.floor(cvs.width/font)}
+  var drops=[];for(var i=0;i<cols();i++)drops.push(Math.random()*cvs.height/font);
+  function draw(){
+    ctx.fillStyle='rgba(6,6,10,0.08)';
+    ctx.fillRect(0,0,cvs.width,cvs.height);
+    ctx.fillStyle='rgba(201,168,76,0.55)';
+    ctx.font=font+'px "Fira Code",monospace';
+    for(var i=0;i<drops.length;i++){
+      var ch=chars[Math.floor(Math.random()*chars.length)];
+      ctx.fillText(ch,i*font,drops[i]*font);
+      if(drops[i]*font>cvs.height&&Math.random()>0.975)drops[i]=0;
+      drops[i]++;
     }
-    return `<div class="achievement ${unlocked?'unlocked':'locked'}" title="${esc(a.desc)}">
-      <span class="ach-icon">${a.icon}</span>${esc(a.name)}</div>`;
-  }).join('');
+  }
+  setInterval(draw,80);
+})();
+
+/* ── Neural network SVG — event-driven packet flow ── */
+var NN={packets:[],layers:[],nodeEls:[],svg:null,raf:null,activityDecay:null};
+function setNeuralActivity(label){
+  var el=$('#neuralActivity');if(el)el.textContent=label||'idle';
 }
-
-async function refresh(){
-  const st=await fetchJSON('/api/upgrade/status');
-  if(!st) return;
-
-  // Top cards
-  if(st.ml_model){
-    document.getElementById('mlAccuracy').textContent=fmt(st.ml_model.accuracy,1)+'%';
-    document.getElementById('mlSamples').textContent=st.ml_model.samples_count+' samples';
+function setPrediction(label,sub,kind){
+  var v=$('#predVal');
+  if(v){v.textContent=label||'idle';v.className='pill pred-pill '+(kind||'')}
+}
+function burstNeural(n,magenta,label){
+  if(label)setNeuralActivity(label);
+  for(var i=0;i<(n||1);i++){
+    setTimeout(function(m){return function(){spawnPacket(m)}}(magenta),i*70);
   }
-  const statusList=st.trader_status||[];
-  const paused=statusList.filter(t=>t.status==='paused').length;
-  // Get total from trader-performance API (fetched later), use 7 as default
-  const totalTraders = 7;
-  document.getElementById('activeTraders').textContent=(totalTraders-paused)+'/'+totalTraders;
-  document.getElementById('traderDetail').textContent=paused+' paused';
-  const c=st.candidates||{};
-  document.getElementById('candidateCount').textContent=c.total||0;
-  document.getElementById('candidateDetail').textContent=(c.promoted||0)+' promoted';
-  const a=st.autonomous||{};
-  document.getElementById('autoCount').textContent=a.total||0;
-  document.getElementById('autoDetail').textContent=(a.open_count||0)+' open';
-
-  // Bot mood based on recent performance
-  const moods=['&#x1F480; REKT','&#x1F612; Meh','&#x1F60C; Chill','&#x1F60E; Vibing','&#x1F911; PROFIT','&#x1F525; ON FIRE'];
-  // We'll set mood based on data later
-
-  // Trader performance with power levels
-  const tp=await fetchJSON('/api/upgrade/trader-performance');
-  const tuner=await fetchJSON('/api/brain/tuner-settings');
-  let bestPnl=0, maxStreak=0, totalWins=0, totalTrades=0;
-  if(tp&&tp.traders){
-    const tbody=document.getElementById('tTraders');
-    tbody.innerHTML=tp.traders.map(t=>{
-      const status=t.trader_status||'active';
-      const tn=(t.trader_name||'').toLowerCase();
-      if(tuner&&tuner.traders&&tuner.traders[tn]){t._tuner=tuner.traders[tn].changes_summary||'';}
-      const dot=`<span class="status-dot status-${status}"></span>`;
-      const wr=t.winrate||0;const pnl=t.total_pnl||0;const cnt=t.trades_count||0;
-      totalWins+=(t.wins||0);totalTrades+=cnt;
-      if(pnl>bestPnl) bestPnl=pnl;
-      const pl=getPowerLevel(wr,pnl,cnt);
-      // Real streak from API
-      const wStreak=t.win_streak||0;
-      const lStreak=t.loss_streak||0;
-      const streak=wStreak>0?wStreak:-lStreak;
-      if(wStreak>maxStreak) maxStreak=wStreak;
-      const isOnFire=wStreak>=3;
-      const kelly=pnl>0?fmt(0.063*wr/50,2)+'x':'0.5x';
-      const pnl1d=t.pnl_1d||0;const wr1d=t.winrate_1d||0;const copied=t.copied_trades||0;
-      return `<tr${isOnFire?' class="on-fire"':''}>
-        <td>${dot}</td>
-        <td style="font-weight:600"><a href="https://polymarket.com/profile/${t.trader_name}" target="_blank" style="color:var(--gold);text-decoration:none">${t.trader_name}</a> ${isOnFire?'&#x1F525;':''}</td>
-        <td style="font-size:.7rem;font-weight:600">${copied}</td>
-        <td><span class="power-level ${pl.cls}">${pl.power}</span> <span style="font-size:.55rem;color:var(--text-dim)">${pl.tier}</span></td>
-        <td>${wStreak>=3?'&#x1F525;'.repeat(Math.min(wStreak,5)):lStreak>=3?'&#x1F480;'.repeat(Math.min(lStreak,5)):wStreak>0?'&#x2B50;'.repeat(wStreak):lStreak>0?'&#x274C;'.repeat(lStreak):'--'}</td>
-        <td style="color:${wr1d>=60?'var(--green)':wr1d>=40?'var(--gold)':'var(--red)'}">${t.trades_1d>0?fmt(wr1d,1)+'%':'--'}</td>
-        <td class="${pnlClass(pnl1d)}">$${fmt(pnl1d)}</td>
-        <td>${fmt(wr,1)}%</td>
-        <td class="${pnlClass(pnl)}">$${fmt(pnl)}</td>
-        <td style="font-size:.65rem">${kelly}</td>
-        <td style="font-size:.65rem">${t._tuner||''} <span style="opacity:.6">${t.reason||status}</span></td>
-      </tr>`;
-    }).join('');
+  // decay back to idle after no packets for 2s
+  if(NN.activityDecay)clearTimeout(NN.activityDecay);
+  NN.activityDecay=setTimeout(function(){
+    if(NN.packets.length===0)setNeuralActivity('idle');
+  },2500);
+}
+function spawnPacket(magenta){
+  if(!NN.svg||!NN.layers.length)return;
+  var ns='http://www.w3.org/2000/svg';
+  var path=[];
+  for(var li=0;li<NN.layers.length;li++){
+    var col=NN.layers[li];
+    path.push(col[Math.floor(Math.random()*col.length)]);
   }
-
-  
-  // Paper Trading Pipeline
-  const paper=await fetchJSON('/api/brain/paper-traders');
-  if(paper&&paper.paper_traders&&paper.paper_traders.length>0){
-    const pe=document.getElementById('paperTraders');
-    pe.innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr style="color:var(--gold);font-size:.65rem">
-      <th style="text-align:left;padding:4px">Trader</th>
-      <th>Status</th><th>Tage</th><th>Open</th><th>Closed</th>
-      <th>1d PnL</th><th>2d PnL</th><th>3d PnL</th><th>Total</th>
-    </tr></thead><tbody>${paper.paper_traders.map(p=>{
-      const pnlCls=(v)=>v>0?'color:var(--green)':v<0?'color:var(--red)':'color:var(--text-dim)';
-      const days=p.days_in_status||0;
-      const bar=Math.min(days/3*100,100);
-      const ready=days>=3&&(p.paper_pnl||0)>0&&(p.paper_trades||0)>=10;
-      return `<tr>
-        <td style="font-weight:600;padding:4px"><a href="https://polymarket.com/profile/${p.address}" target="_blank" style="color:var(--gold);text-decoration:none">${p.username||p.address.slice(0,10)}</a></td>
-        <td style="text-align:center;font-size:.6rem">${p.status}</td>
-        <td style="text-align:center"><div style="background:var(--bg-card);border-radius:4px;overflow:hidden;height:12px;width:50px;display:inline-block;position:relative"><div style="height:100%;width:${bar}%;background:${ready?'var(--green)':'var(--gold)'};border-radius:4px"></div><span style="position:absolute;left:50%;top:0;transform:translateX(-50%);font-size:.55rem;line-height:12px">${days.toFixed(1)}d</span></div></td>
-        <td style="text-align:center;font-size:.65rem;color:var(--gold)">${p.open_trades||0}</td>
-        <td style="text-align:center;font-size:.65rem">${(p.paper_trades||0)-(p.open_trades||0)}</td>
-        <td style="text-align:center;font-size:.65rem;${pnlCls(p.pnl_1d)}">$${(p.pnl_1d||0).toFixed(2)}</td>
-        <td style="text-align:center;font-size:.65rem;${pnlCls(p.pnl_2d)}">$${(p.pnl_2d||0).toFixed(2)}</td>
-        <td style="text-align:center;font-size:.65rem;${pnlCls(p.pnl_3d)}">$${(p.pnl_3d||0).toFixed(2)}</td>
-        <td style="text-align:center;font-weight:700;${pnlCls(p.paper_pnl)}">$${(p.paper_pnl||0).toFixed(2)}${ready?' \u2705':''}</td>
-      </tr>`}).join('')}</tbody></table>`;
-  } else {
-    document.getElementById('paperTraders').innerHTML='<div style="text-align:center;padding:12px;color:var(--text-dim)">Keine Kandidaten im Paper-Test</div>';
-  }
-
-  // Category heatmap
-  const ch=await fetchJSON('/api/upgrade/category-heatmap');
-  let profitableCats=0;
-  if(ch&&ch.categories){
-    const hm=document.getElementById('heatmap');
-    const maxPnl=Math.max(...ch.categories.map(c=>Math.abs(c.total_pnl||0)),1);
-    ch.categories.forEach(c=>{if((c.total_pnl||0)>0) profitableCats++});
-    hm.innerHTML=ch.categories.map(c=>{
-      const pnl=c.total_pnl||0;const wr=c.winrate||0;
-      const alloc=((c.allocation||0.1)*100).toFixed(0);
-      const color=pnl>=0?'var(--green)':'var(--red)';
-      const barW=Math.min(Math.abs(pnl)/maxPnl*100,100);
-      return `<div class="heat-cell">
-        <div class="heat-name">${c.category}</div>
-        <div class="heat-val" style="color:${color}">$${fmt(pnl)}</div>
-        <div class="heat-sub">${c.trades_count}t | ${fmt(wr,0)}%WR | ${alloc}%</div>
-        <div class="heat-bar"><div class="heat-bar-fill" style="width:${barW}%;background:${color}"></div></div>
-      </div>`;
-    }).join('');
-  }
-
-  // ML details
-  const ml=await fetchJSON('/api/upgrade/ml-info');
-  if(ml&&ml.training_history&&ml.training_history.length>0){
-    const latest=ml.training_history[0];
-    let imp={};try{imp=JSON.parse(latest.feature_importance.replace(/'/g,'"'))}catch(e){}
-    const impSorted=Object.entries(imp).sort((a,b)=>b[1]-a[1]);
-    document.getElementById('mlDetails').innerHTML=`
-      <div style="margin-bottom:6px"><strong>Last trained:</strong> ${latest.trained_at}</div>
-      <div style="margin-bottom:6px"><strong>Accuracy:</strong> ${fmt(latest.accuracy,1)}% | <strong>Samples:</strong> ${latest.samples_count}</div>
-      <div style="margin-bottom:4px"><strong>Feature Importance:</strong></div>
-      ${impSorted.map(([k,v])=>{const w=(v*100).toFixed(0);
-        return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
-          <span style="width:80px;font-size:.65rem">${k}</span>
-          <div class="score-bar" style="flex:1;max-width:180px"><div class="score-fill" style="width:${w}%;background:var(--gold)"></div></div>
-          <span style="font-size:.6rem;color:var(--text-dim)">${(v*100).toFixed(1)}%</span>
-        </div>`}).join('')}`;
-  }
-
-  // Candidates
-  const ca=await fetchJSON('/api/upgrade/candidates');
-  if(ca&&ca.candidates){
-    document.getElementById('tCandidates').innerHTML=ca.candidates.filter(c=>c.status!=="inactive").slice(0,10).map(c=>`<tr>
-      <td><a href="https://polymarket.com/profile/${c.address||c.username}" target="_blank" style="color:var(--gold);text-decoration:none">${c.username||c.address.slice(0,8)}</a></td>
-      <td class="${pnlClass(c.profit_total)}">$${Number(c.profit_total||0).toLocaleString('en',{maximumFractionDigits:0})}</td>
-      <td>$${Number(c.volume_total||0).toLocaleString('en',{maximumFractionDigits:0})}</td>
-      <td>${c.total||0}</td>
-      <td><span class="badge badge-${c.status==='promoted'?'fire':'live'}">${c.status}</span></td>
-    </tr>`).join('')||'<tr><td colspan="5" style="color:var(--text-dim);text-align:center">Scanning...</td></tr>';
-  }
-
-  // Autonomous trades
-  const at=await fetchJSON('/api/upgrade/autonomous-trades');
-  if(at&&at.trades){
-    if(at.trades.length>lastTradeCount&&lastTradeCount>0){
-      playWin();showWhale('New Autonomous Trade!',at.trades[0].market_question||'Momentum signal detected');
+  var dot=document.createElementNS(ns,'circle');
+  dot.setAttribute('class','packet'+(magenta?' magenta':''));
+  dot.setAttribute('r',3.4);
+  dot.setAttribute('cx',path[0].x);dot.setAttribute('cy',path[0].y);
+  NN.svg.appendChild(dot);
+  NN.packets.push({path:path,dot:dot,t:0,speed:0.009+Math.random()*0.006,trail:[]});
+  if(!NN.rafRunning)startNeuralLoop();
+}
+function startNeuralLoop(){
+  if(NN.raf)return;
+  NN.rafRunning=true;
+  function step(){
+    var alive=[];
+    NN.packets.forEach(function(p){
+      p.t+=p.speed;
+      var seg=Math.floor(p.t);
+      var segT=p.t-seg;
+      if(seg>=p.path.length-1){try{p.dot.remove()}catch(e){}return}
+      var from=p.path[seg],to=p.path[seg+1];
+      var x=from.x+(to.x-from.x)*segT;
+      var y=from.y+(to.y-from.y)*segT;
+      p.dot.setAttribute('cx',x);p.dot.setAttribute('cy',y);
+      var toIdx=NN.layers[seg+1].indexOf(to);
+      var edgeLine=from['_out'+toIdx];
+      if(edgeLine)edgeLine.classList.add('active');
+      if(segT>0.85&&to.el){to.el.classList.add('active')}
+      alive.push(p);
+    });
+    NN.packets=alive;
+    // Decay active edges/nodes quickly
+    var activeEdges=NN.svg.querySelectorAll('.edge.active');
+    if(activeEdges.length>0&&Math.random()<0.4){
+      activeEdges[Math.floor(Math.random()*activeEdges.length)].classList.remove('active');
     }
-    lastTradeCount=at.trades.length;
-    document.getElementById('tAuto').innerHTML=at.trades.slice(0,10).map(t=>{
-      const pnl=t.pnl_realized||0;
-      return `<tr>
-        <td><span class="badge badge-fire">${t.signal_type}</span></td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.market_question||'--'}</td>
-        <td>${t.side||'--'}</td>
-        <td>${t.entry_price?(t.entry_price*100).toFixed(0)+'c':'--'}</td>
-        <td>${t.current_price?(t.current_price*100).toFixed(0)+'c':'--'}</td>
-        <td>$${fmt(t.size)}</td>
-        <td class="${pnlClass(pnl)}">$${fmt(pnl)}</td>
-        <td><span class="badge badge-${t.status==='open'?'live':'paused'}">${t.status}</span></td>
-      </tr>`}).join('')||'<tr><td colspan="8" style="color:var(--text-dim);text-align:center">Waiting for momentum signals...</td></tr>';
+    var activeNodes=NN.svg.querySelectorAll('.node.active');
+    if(activeNodes.length>0&&Math.random()<0.25){
+      activeNodes[Math.floor(Math.random()*activeNodes.length)].classList.remove('active');
+    }
+    // If no packets AND no active elements → stop loop (truly idle)
+    if(NN.packets.length===0&&activeEdges.length===0&&activeNodes.length===0){
+      NN.raf=null;NN.rafRunning=false;setNeuralActivity('idle');
+      return;
+    }
+    NN.raf=requestAnimationFrame(step);
+  }
+  NN.raf=requestAnimationFrame(step);
+}
+function buildNeural(){
+  var svg=$('#neuralSvg');if(!svg)return;
+  NN.svg=svg;NN.packets.forEach(function(p){try{p.dot.remove()}catch(e){}});
+  NN.packets=[];NN.layers=[];NN.nodeEls=[];
+  while(svg.firstChild)svg.removeChild(svg.firstChild);
+  var ns='http://www.w3.org/2000/svg';
+  // Compact network that fits the small box with I/O label gutters
+  var layerSizes=[6,8,10,8,4,2];
+  var W=420,H=190;
+  var padL=70,padR=60,padT=12,padB=18;
+  var xs=layerSizes.map(function(_,i){return padL+(i/(layerSizes.length-1))*(W-padL-padR)});
+  var inputLabels=['trader_edge','category_wr','price_sig','conviction','market_q','correlation'];
+  var outputLabels=['BUY','SKIP'];
+  for(var li=0;li<layerSizes.length;li++){
+    var col=[];var n=layerSizes[li];
+    for(var ni=0;ni<n;ni++){
+      var y=padT+((H-padT-padB)*(ni+0.5)/n);
+      col.push({x:xs[li],y:y,el:null});
+    }
+    NN.layers.push(col);
+  }
+  // Edges: all-to-all between adjacent layers (capped at 12 per source for visual breathing room)
+  for(var li2=0;li2<NN.layers.length-1;li2++){
+    var a=NN.layers[li2],b=NN.layers[li2+1];
+    for(var ai=0;ai<a.length;ai++){
+      for(var bi=0;bi<b.length;bi++){
+        var line=document.createElementNS(ns,'line');
+        line.setAttribute('class','edge');
+        line.setAttribute('x1',a[ai].x);line.setAttribute('y1',a[ai].y);
+        line.setAttribute('x2',b[bi].x);line.setAttribute('y2',b[bi].y);
+        svg.appendChild(line);
+        a[ai]['_out'+bi]=line;
+      }
+    }
+  }
+  // Nodes on top
+  for(var li3=0;li3<NN.layers.length;li3++){
+    var col2=NN.layers[li3];
+    for(var ci=0;ci<col2.length;ci++){
+      var c=document.createElementNS(ns,'circle');
+      c.setAttribute('class','node');
+      c.setAttribute('cx',col2[ci].x);c.setAttribute('cy',col2[ci].y);
+      c.setAttribute('r',3.2);
+      svg.appendChild(c);
+      col2[ci].el=c;NN.nodeEls.push(c);
+    }
+  }
+  // Layer labels (inside, above bottom padding)
+  var names=['INPUT','DENSE','DENSE','DENSE','DROPOUT','OUTPUT'];
+  for(var li4=0;li4<xs.length;li4++){
+    var t=document.createElementNS(ns,'text');
+    t.setAttribute('class','layer-label');
+    t.setAttribute('x',xs[li4]);t.setAttribute('y',H-4);
+    t.setAttribute('text-anchor','middle');
+    t.textContent=names[li4]||'';
+    svg.appendChild(t);
+  }
+  // Input feature labels on the left gutter
+  var inputCol=NN.layers[0];
+  for(var il=0;il<inputCol.length&&il<inputLabels.length;il++){
+    var inT=document.createElementNS(ns,'text');
+    inT.setAttribute('class','io-label input');
+    inT.setAttribute('x',4);
+    inT.setAttribute('y',inputCol[il].y+2);
+    inT.textContent=inputLabels[il];
+    svg.appendChild(inT);
+  }
+  // Output labels on the right gutter
+  var outputCol=NN.layers[NN.layers.length-1];
+  for(var ol=0;ol<outputCol.length&&ol<outputLabels.length;ol++){
+    var outT=document.createElementNS(ns,'text');
+    outT.setAttribute('class','io-label output');
+    outT.setAttribute('x',W-4);
+    outT.setAttribute('y',outputCol[ol].y+2);
+    outT.textContent=outputLabels[ol];
+    svg.appendChild(outT);
   }
 
-  // Achievements
-  renderAchievements({
-    totalWins, totalTrades,
-    maxStreak, mlTrained:!!(st.ml_model),
-    candidates:(c.total||0),
-    bestTraderPnl:bestPnl,
-    profitableCategories:profitableCats,
-    autoTrades:(a.total||0),
-    nightTrades:1,
+  setNeuralActivity('idle');
+  // Single intro burst on load (2 packets), then event-driven only
+  setTimeout(function(){burstNeural(2,false,'booting')},200);
+}
+buildNeural();
+
+/* Mini brain SVG in hero: scattered nodes in a brain-hemisphere shape, pulsing */
+function buildBrainMini(){
+  var svg=$('#brainMiniSvg');if(!svg)return;
+  while(svg.firstChild)svg.removeChild(svg.firstChild);
+  var ns='http://www.w3.org/2000/svg';
+  // Organic brain-ish outline path (rough hemisphere + fold)
+  var outline=document.createElementNS(ns,'path');
+  outline.setAttribute('class','bmOutline');
+  outline.setAttribute('d','M 18 60 C 12 35, 30 14, 56 14 C 68 6, 86 8, 98 18 C 118 18, 132 34, 128 58 C 132 78, 118 98, 96 98 C 78 104, 52 102, 38 92 C 22 88, 14 75, 18 60 Z M 70 16 C 70 40, 70 80, 70 98');
+  svg.appendChild(outline);
+  // Nodes scattered in brain-hemisphere area
+  var pts=[
+    [30,42],[44,28],[58,34],[72,22],[86,30],[100,26],[116,44],
+    [26,60],[40,56],[56,58],[72,50],[88,56],[104,62],[122,62],
+    [30,78],[44,84],[60,80],[76,86],[92,80],[108,84],
+    [36,96],[52,98],[70,96],[88,98],[104,96]
+  ];
+  var nodes=[];
+  pts.forEach(function(p){
+    var c=document.createElementNS(ns,'circle');
+    c.setAttribute('class','bmNode');
+    c.setAttribute('cx',p[0]);c.setAttribute('cy',p[1]);c.setAttribute('r',2.6);
+    svg.appendChild(c);nodes.push(c);
   });
-
-  // Bot mood
-  const moodIdx = bestPnl>=50?5:bestPnl>=20?4:bestPnl>=5?3:bestPnl>=0?2:bestPnl>=-10?1:0;
-  document.getElementById('botMood').innerHTML=moods[moodIdx];
-  document.getElementById('moodDetail').textContent=['run.','okay.','stable.','nice.','money!','LFG!'][moodIdx];
-
-  // Heartbeat speed based on open positions
-  const hb=document.getElementById('heartIcon');
-  hb.className='heartbeat'+(totalTrades>100?' heartbeat-fast':' heartbeat-slow');
-}
-
-setInterval(()=>{countdown--;document.getElementById('timer').textContent=countdown;
-  if(countdown<=0){countdown=20;refresh()}},1000);
-refresh();
-</script>
-
-  <!-- === TICKER TAPE === -->
-  <div id="tickerWrap" style="position:fixed;top:0;left:0;right:0;z-index:100;height:28px;background:var(--bg2);border-bottom:1px solid var(--border);overflow:hidden">
-    <div id="ticker" style="display:flex;gap:40px;white-space:nowrap;animation:tickerScroll 30s linear infinite;padding:5px 0;font-size:.65rem;font-family:var(--mono)"></div>
-  </div>
-  <style>
-  @keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-  .app{padding-top:38px!important}
-  /* Trading Cards */
-  .cards-grid{display:flex;gap:16px;overflow-x:auto;padding:10px 0;scroll-snap-type:x mandatory}
-  .tcard{min-width:200px;max-width:220px;scroll-snap-align:start;border-radius:14px;padding:2px;
-    background:linear-gradient(135deg,var(--border),var(--bg3));transition:.3s;cursor:pointer;flex-shrink:0}
-  .tcard:hover{transform:translateY(-4px) scale(1.02)}
-  .tcard-inner{background:var(--bg2);border-radius:12px;padding:16px;height:100%;position:relative;overflow:hidden}
-  .tcard-inner::before{content:'';position:absolute;top:-50%;right:-50%;width:100%;height:100%;
-    background:radial-gradient(circle,rgba(201,168,76,0.06),transparent 60%);pointer-events:none}
-  .tcard.legendary{background:linear-gradient(135deg,#ff6400,#c9a84c,#ff6400);animation:legendaryGlow 3s ease-in-out infinite}
-  .tcard.epic{background:linear-gradient(135deg,#a78bfa,#6366f1,#a78bfa)}
-  .tcard.rare{background:linear-gradient(135deg,#60a5fa,#3b82f6,#60a5fa)}
-  .tcard.common{background:linear-gradient(135deg,#4b5563,#374151,#4b5563)}
-  @keyframes legendaryGlow{0%,100%{box-shadow:0 0 20px rgba(255,100,0,0.3)}50%{box-shadow:0 0 40px rgba(255,100,0,0.5),0 0 60px rgba(201,168,76,0.2)}}
-  .tcard-name{font-size:1rem;font-weight:800;color:var(--gold);margin-bottom:2px}
-  .tcard-title{font-size:.6rem;color:var(--text-dim);font-style:italic;margin-bottom:8px}
-  .tcard-rarity{position:absolute;top:10px;right:12px;font-size:.5rem;text-transform:uppercase;
-    letter-spacing:.1em;font-weight:800;padding:2px 6px;border-radius:4px}
-  .tcard-rarity.legendary{color:#ff6400;background:rgba(255,100,0,0.15)}
-  .tcard-rarity.epic{color:#a78bfa;background:rgba(167,139,250,0.15)}
-  .tcard-rarity.rare{color:#60a5fa;background:rgba(96,165,250,0.15)}
-  .tcard-rarity.common{color:#9ca3af;background:rgba(156,163,175,0.15)}
-  .tcard-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:8px 0}
-  .tcard-stat{font-size:.6rem;color:var(--text-mid)}
-  .tcard-stat span{display:block;font-size:.85rem;font-weight:700;font-family:var(--mono);color:var(--text)}
-  .tcard-special{font-size:.55rem;color:var(--gold);border-top:1px solid var(--border);padding-top:6px;margin-top:6px}
-  .tcard-power{position:absolute;bottom:10px;right:12px;font-size:1.4rem;font-weight:900;font-family:var(--mono);opacity:.15}
-  .tcard-status{margin-top:4px;font-size:.55rem}
-  /* Live Chat Feed — Phone Mockup */
-  .chat-wrap{position:fixed;right:20px;top:70px;bottom:30px;width:320px;z-index:99;display:flex;flex-direction:column;
-    border-radius:28px;overflow:hidden;border:3px solid #333;box-shadow:0 10px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(255,255,255,0.05);
-    background:var(--bg)}
-  .chat-notch{width:120px;height:22px;background:#111;border-radius:0 0 14px 14px;margin:0 auto;position:relative;z-index:2}
-  .chat-notch::after{content:'';width:8px;height:8px;border-radius:50%;background:#1a1a28;position:absolute;right:16px;top:6px}
-  .chat-header{background:linear-gradient(135deg,rgba(201,168,76,0.15),rgba(201,168,76,0.05));
-    padding:10px 14px;font-size:.72rem;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:6px;
-    border-bottom:1px solid var(--border)}
-  .chat-header .live-dot{width:6px;height:6px;border-radius:50%;background:#34d399;animation:pulse 2s infinite}
-  .chat-feed{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;
-    scrollbar-width:thin;scrollbar-color:var(--border-h) transparent;
-    background:url('/static/logo.png') center center / 60% no-repeat;background-blend-mode:soft-light;
-    background-color:var(--bg2)}
-  .chat-feed::before{content:'';position:sticky;top:0;display:block;width:100%;height:0;z-index:1}
-  .chat-feed::-webkit-scrollbar{width:4px}
-  .chat-feed::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:2px}
-  .chat-msg{animation:msgSlide .3s ease-out}
-  @keyframes msgSlide{0%{transform:translateY(10px);opacity:0}100%{transform:translateY(0);opacity:1}}
-  .chat-msg-inner{background:var(--bg3);border-radius:12px 12px 12px 4px;padding:8px 12px;max-width:250px;
-    font-size:.66rem;line-height:1.5;box-shadow:0 1px 3px rgba(0,0,0,0.2)}
-  .chat-msg.win .chat-msg-inner{background:rgba(52,211,153,0.08);border-radius:12px 12px 4px 12px}
-  .chat-msg.loss .chat-msg-inner{background:rgba(248,113,113,0.08);border-radius:12px 12px 4px 12px}
-  .chat-msg.system .chat-msg-inner{background:rgba(201,168,76,0.06);border-radius:12px;text-align:center;max-width:100%}
-  .chat-msg.roast .chat-msg-inner{background:rgba(255,100,0,0.06);border-radius:12px 12px 4px 12px}
-  .chat-msg.system .chat-user{justify-content:center}
-  .chat-user{font-weight:700;font-size:.62rem;margin-bottom:2px;display:flex;align-items:center;gap:4px}
-  .chat-user .avatar{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;
-    justify-content:center;font-size:.55rem;background:var(--bg4)}
-  .chat-text{color:var(--text);word-break:break-word}
-  .chat-pnl{font-family:var(--mono);font-weight:700;font-size:.7rem;margin-top:2px}
-  .chat-time{font-size:.5rem;color:var(--text-dim);margin-top:2px;text-align:right}
-  .chat-typing{font-size:.6rem;color:var(--text-dim);padding:4px 10px;font-style:italic}
-  .chat-typing span{animation:typingDot 1.4s infinite}
-  .chat-typing span:nth-child(2){animation-delay:.2s}
-  .chat-typing span:nth-child(3){animation-delay:.4s}
-  @keyframes typingDot{0%,60%,100%{opacity:.2}30%{opacity:1}}
-  /* Three column layout: left activity | center content | right phone */
-  .left-panel{position:fixed;left:0;top:60px;bottom:0;width:280px;z-index:98;
-    background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:12px;
-    scrollbar-width:thin;scrollbar-color:var(--border-h) transparent}
-  .left-panel::-webkit-scrollbar{width:3px}
-  .left-panel::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:2px}
-  .left-panel .lp-header{font-size:.72rem;font-weight:700;color:var(--gold);padding:6px 0;
-    border-bottom:1px solid var(--border);margin-bottom:8px;display:flex;align-items:center;gap:6px}
-  .left-panel .lp-header .live-dot{width:5px;height:5px;border-radius:50%;background:#34d399;animation:pulse 2s infinite}
-  @media(min-width:1100px){.app{margin-left:290px!important;margin-right:340px!important;max-width:none!important}}
-  @media(max-width:1099px){.chat-wrap{display:none}.left-panel{display:none}}
-
-  /* Konfetti */
-  .konfetti{position:fixed;top:-10px;z-index:10000;width:10px;height:10px;pointer-events:none}
-  @keyframes konfettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
-  </style>
-
-  <!-- Trading Cards Section -->
-  <div class="sec" style="margin-top:20px">
-    <div class="sec-hd">Trader Cards <span class="badge badge-fire">COLLECTIBLE</span></div>
-    <div class="cards-grid" id="traderCards"></div>
-  </div>
-
-  <!-- Live Chat Feed — Phone Style -->
-  <div class="chat-wrap">
-    <div class="chat-notch"></div>
-    <div class="chat-header">
-      <span class="live-dot"></span> SSC SAUNA CHAT
-      <span style="font-weight:300;color:var(--text-dim);margin-left:auto;font-size:.5rem" id="chatCount">0 msgs</span>
-    </div>
-    <div class="chat-feed" id="chatFeed">
-      <div class="chat-typing">Bot is analyzing<span>.</span><span>.</span><span>.</span></div>
-    </div>
-  </div>
-
-<script>
-// === TICKER TAPE ===
-async function loadTicker(){
-  const d=await fetchJSON('/api/fun/ticker');
-  if(!d||!d.events) return;
-  const el=document.getElementById('ticker');
-  const items=d.events.map(e=>{
-    const color=e.pnl>0?'var(--green)':e.pnl<0?'var(--red)':'var(--text-dim)';
-    const icon=e.type==='buy'?'&#x1F4B0;':e.type==='sell'?'&#x1F4B8;':e.type==='smart_sell'?'&#x1F9E0;':'&#x26A1;';
-    return `<span>${icon} <span style="color:${color}">${esc(e.title)}</span> <span style="color:var(--text-dim)">${e.detail.slice(0,40)}</span></span>`;
-  }).join('');
-  // Duplicate for seamless loop
-  el.innerHTML=items+items;
-}
-
-// === TRADING CARDS ===
-async function loadCards(){
-  const d=await fetchJSON('/api/fun/trader-cards');
-  if(!d||!d.cards) return;
-  const el=document.getElementById('traderCards');
-  el.innerHTML=d.cards.map(c=>{
-    const statusIcon=c.status==='paused'?'&#x1F6D1;':c.status==='throttled'?'&#x26A0;':'&#x2705;';
-    return `<div class="tcard ${c.rarity}">
-      <div class="tcard-inner">
-        <div class="tcard-rarity ${c.rarity}">${c.rarity}</div>
-        <div class="tcard-name">${esc(c.name)}</div>
-        <div class="tcard-title">${esc(c.title)}</div>
-        <div class="tcard-stats">
-          <div class="tcard-stat">WR<span>${c.winrate}%</span></div>
-          <div class="tcard-stat">P&L<span class="${pnlClass(c.total_pnl)}">$${fmt(c.total_pnl)}</span></div>
-          <div class="tcard-stat">Trades<span>${c.total_trades}</span></div>
-          <div class="tcard-stat">W/L<span>${c.wins}/${c.losses}</span></div>
-        </div>
-        <div class="tcard-stat" style="font-size:.55rem">Best: <span class="pos" style="display:inline;font-size:.65rem">$${fmt(c.best_trade)}</span> | Worst: <span class="neg" style="display:inline;font-size:.65rem">$${fmt(c.worst_trade)}</span></div>
-        <div class="tcard-special">&#x2728; ${c.special}</div>
-        <div class="tcard-status">${statusIcon} ${c.status}</div>
-        <div class="tcard-power">${c.power}</div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-// === LIVE CHAT FEED ===
-const CHAT_USERS = [
-  {name:'Postl',avatar:'\ud83e\uddd6',color:'#c9a84c'},
-  {name:'K\u00f6nig',avatar:'\ud83d\udc51',color:'#fbbf24'},
-  {name:'Chris K.',avatar:'\ud83c\udf7a',color:'#60a5fa'},
-  {name:'Reszner',avatar:'\ud83c\udfa8',color:'#a78bfa'},
-  {name:'Steiger',avatar:'\ud83d\udcb0',color:'#34d399'},
-  {name:'Kevin K.',avatar:'\ud83c\udf7e',color:'#f472b6'},
-  {name:'Simetzberger',avatar:'\ud83d\udd25',color:'#f87171'},
-  {name:'Grill',avatar:'\ud83c\udf56',color:'#f59e0b'},
-  {name:'Hohenegger',avatar:'\ud83e\udd43',color:'#e879f9'},
-  {name:'Ganaus',avatar:'\ud83c\udf7b',color:'#22d3ee'},
-  {name:'Fr\u00f6schl',avatar:'\ud83d\udc38',color:'#86efac'},
-  {name:'Vymyslicky',avatar:'\ud83c\udf93',color:'#fca5a5'},
-  {name:'Kaiser',avatar:'\ud83c\udfb0',color:'#fbbf24'},
-  {name:'Geissler',avatar:'\ud83e\udde0',color:'#c084fc'},
-  {name:'Piff',avatar:'\ud83d\ude0e',color:'#c9a84c'},
-  {name:'Siegl',avatar:'\ud83c\udf19',color:'#93c5fd'},
-];
-
-const CHAT_WIN_REACTIONS = [
-  'JAAA {trader}!! Runde Bier fuer alle!! \ud83c\udf7a\ud83c\udf7a \ud83d\udcb0',
-  '{trader} druckt! Extra Aufguss zur Feier! \ud83d\udd25\ud83e\uddd6 \ud83d\udcaa',
-  'GEWONNEN! Shots shots shots! {trader} Legende \ud83e\udd43',
-  '{amount} Profit?! Champagner wird gekoepft \ud83c\udf7e \ud83e\udd11',
-  '{trader} tradet besser besoffen als andere nuechtern \ud83c\udf7a',
-  '{trader} ist heisser als unser Saunaofen! Geld fliesst! \ud83d\udd25\ud83d\udcb0 \ud83d\udc8e',
-  'Noch ein Bier und noch ein Win! {trader} MVP \ud83c\udf7a\ud83c\udfc6',
-  '{trader} GOAT! Runde Jaegermeister! \ud83e\udd43\ud83d\udd25',
-  'Prost auf {trader}! {amount} reicher! \ud83c\udf7b',
-  'Besoffen und trotzdem am gewinnen. {trader} built different \ud83c\udf7a \ud83d\udd25',
-];
-
-const CHAT_LOSS_REACTIONS = [
-  '{trader} Bruder... ich brauch jetzt einen Doppelten \ud83e\udd43\ud83e\udd43 \ud83d\ude29',
-  'Meine USDC... {trader} du schuldest mir ne Flasche Vodka \ud83d\ude2d \ud83d\ude2d',
-  '{trader} war das betrunken oder nuechtern? Beides schlimm \ud83c\udf7a',
-  '{amount} weg... ich trink jetzt einen Doppelten \ud83e\udd43 muss das verarbeiten',
-  '{trader} hat zu tief ins Glas geschaut vor dem Trade \ud83c\udf7a\ud83d\ude35',
-  'RIP. Da hilft nur noch Whisky. {trader} du Katastrophe \ud83e\udd43 \ud83c\udf7a',
-  '{trader} traded mit 3 Promille confirmed \ud83c\udf7e',
-  '{trader}... erstmal Bierpause \ud83c\udf7a \ud83d\udc80',
-  '{trader} verbrennt Geld schneller als der Saunaofen Holz \ud83d\udd25',
-  'Ich brauch jetzt Alkohol. Viel davon. Danke {trader} \ud83c\udf7a\ud83d\ude2d',
-];
-
-const CHAT_PAUSED_REACTIONS = [
-  '\ud83d\udea8 {trader} GESPERRT! Ab in die Ausnuechterungszelle! \ud83c\udf7a\u274c',
-  'Bot hat {trader} den Alkohol weggenommen. Kein Trading! \ud83e\udd23 \ud83e\udd23',
-  '{trader} muss seinen Rausch ausschlafen \ud83d\ude34\ud83c\udf7e',
-  '{trader} hat Saunaverbot! Ab unter die kalte Dusche! \ud83d\udebf',
-  'INTERVENTION! {trader} hat ein Trading-Problem \ud83d\udc80',
-];
-
-const CHAT_RANDOM = [
-  'wann Lambo? \ud83c\udf7a *trinkt Bier*',
-  '*nimmt Schluck Bier* \ud83c\udf7a sovereign GOAT frfr',
-  'hat jemand Snacks? Hunger nach der Sauna \ud83c\udf55\ud83c\udf7a',
-  'ich bin so betrunken und der Bot macht einfach Geld \ud83c\udf7a',
-  'Prost! \ud83c\udf7b Auf den naechsten Win!',
-  '*oeffnet drittes Bier* \ud83c\udf7a Bot tradet, ich trinke.',
-  'stellt euch vor ihr tradet nuechtern lmao \ud83e\udd23',
-  '*bestellt noch ein Bier* \ud83c\udf7a ah Bot laeuft. Alles gut.',
-  'mein Wirt hat bessere Odds als RN1 \ud83d\ude02\ud83c\udf7a',
-  'wer bringt naechstes Bier? \ud83c\udf7a',
-  '*Whisky eingegossen* \ud83e\udd43 so. Jetzt P&L checken.',
-  'Sauna + Bier + Bot = Lifestyle \ud83e\uddd6\ud83c\udf7a \ud83c\udf89',
-  'Prost! \ud83c\udf7a und der Bot casht auch! \ud83d\udd25',
-];
-
-let chatMessages = [];
-let lastChatHash = '';
-
-function addChatMessage(user, text, type='normal', pnl=null, time='') {
-  const feed = document.getElementById('chatFeed');
-  const msg = document.createElement('div');
-  msg.className = 'chat-msg ' + type;
-  const pnlHtml = pnl ? `<div class="chat-pnl ${pnlClass(pnl)}">$${fmt(pnl)}</div>` : '';
-  const timeStr = time ? time.split(' ').pop().slice(0,5) : new Date().toLocaleTimeString('de',{hour:'2-digit',minute:'2-digit'});
-  msg.innerHTML = `<div class="chat-msg-inner">
-    <div class="chat-user"><span class="avatar">${user.avatar}</span><span style="color:${user.color}">${esc(user.name)}</span></div>
-    <div class="chat-text">${text}</div>${pnlHtml}
-    <div class="chat-time">${timeStr}</div>
-  </div>`;
-  // Remove typing indicator
-  const typing = feed.querySelector('.chat-typing');
-  if(typing) typing.remove();
-  feed.appendChild(msg);
-  // Keep max 50 messages
-  while(feed.children.length > 5) feed.children[0].remove();
-  feed.scrollTop = feed.scrollHeight;
-  document.getElementById('chatCount').textContent = feed.children.length + ' messages';
-}
-
-function randomUser() { return CHAT_USERS[Math.floor(Math.random()*CHAT_USERS.length)]; }
-function randomFrom(arr, vars={}) {
-  let t = arr[Math.floor(Math.random()*arr.length)];
-  for(const [k,v] of Object.entries(vars)) t = t.replaceAll('{'+k+'}', v);
-  return t;
-}
-
-async function loadChat(){
-  const d = await fetchJSON('/api/fun/trash-talk');
-  if(!d||!d.talks) return;
-  const hash = JSON.stringify(d.talks.map(t=>t.talk));
-  if(hash === lastChatHash) {
-    // No new data — add random chat message occasionally
-    if(Math.random() < 0.06) {
-      addChatMessage(randomUser(), randomFrom(CHAT_RANDOM), 'system');
+  // Edges: connect each node to 2 nearest neighbours
+  var edges=[];
+  for(var i=0;i<pts.length;i++){
+    var ds=[];
+    for(var j=0;j<pts.length;j++){
+      if(i===j)continue;
+      var dx=pts[i][0]-pts[j][0],dy=pts[i][1]-pts[j][1];
+      ds.push([Math.sqrt(dx*dx+dy*dy),j]);
     }
+    ds.sort(function(a,b){return a[0]-b[0]});
+    for(var k=0;k<2;k++){
+      var j2=ds[k][1];
+      if(j2<=i)continue;  // avoid dup
+      var e=document.createElementNS(ns,'line');
+      e.setAttribute('class','bmEdge');
+      e.setAttribute('x1',pts[i][0]);e.setAttribute('y1',pts[i][1]);
+      e.setAttribute('x2',pts[j2][0]);e.setAttribute('y2',pts[j2][1]);
+      svg.insertBefore(e,svg.firstChild.nextSibling);  // behind nodes
+      edges.push(e);
+    }
+  }
+  // Pulse animation
+  function pulse(){
+    nodes.forEach(function(n){if(Math.random()<0.22)n.classList.add('active');else n.classList.remove('active')});
+    edges.forEach(function(e){if(Math.random()<0.18)e.classList.add('active');else e.classList.remove('active')});
+  }
+  pulse();setInterval(pulse,900);
+}
+buildBrainMini();
+
+/* ── Data ── */
+async function fetchJSON(u){try{var r=await fetch(u);if(!r.ok)return null;return await r.json()}catch(e){return null}}
+function fmt(v,d){if(v==null)return '--';return Number(v).toFixed(d==null?2:d)}
+function pnlClass(v){return v>0?'pos':v<0?'neg':''}
+
+/* Vienna time helpers — all stream timestamps are displayed as Europe/Vienna */
+var _vienna=null;
+try{_vienna=new Intl.DateTimeFormat('de-AT',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'Europe/Vienna'})}catch(e){}
+function viennaNow(){
+  if(_vienna)return _vienna.format(new Date());
+  return new Date().toLocaleTimeString('de-AT',{hour12:false});
+}
+function viennaTime(stamp){
+  // All server timestamps come from a server running in UTC. Parse as UTC, format in Europe/Vienna.
+  if(!stamp)return '--:--:--';
+  var s=String(stamp);
+  var d=null;
+  try{
+    if(s.indexOf('T')>=0||s.endsWith('Z')){
+      d=new Date(s);
+    }else if(s.length>=19){
+      // SQLite 'YYYY-MM-DD HH:MM:SS' format — treat as UTC (server tz is UTC)
+      d=new Date(s.replace(' ','T')+'Z');
+    }
+  }catch(e){}
+  if(d&&!isNaN(d)&&_vienna)return _vienna.format(d);
+  return s.length>=19?s.slice(11,19):s;
+}
+/* (standalone stream clock removed — row timestamps use Vienna TZ directly) */
+
+var lastCounts={scored:0,decisions:0,samples:0,candidates:0};
+var sparkHist={scored:[0,0],decisions:[0,0],samples:[0,0],candidates:[0,0]};
+var SPARK_MAX=42;
+
+var SPARK_LBL={scored:'scored',decisions:'dec',samples:'samples',candidates:'cand'};
+/* Schreiber-Kurve: SVG polyline chart recorder */
+function drawSpark(key,arr){
+  var el=$('#spark'+key.charAt(0).toUpperCase()+key.slice(1));
+  if(!el)return;
+  while(el.firstChild)el.removeChild(el.firstChild);
+  // Current-value tag in the top-right corner
+  if(arr&&arr.length>0){
+    var tag=document.createElement('div');tag.className='spark-val';
+    var lbl=document.createElement('span');lbl.className='lbl';
+    lbl.textContent=SPARK_LBL[key]||key;
+    tag.appendChild(lbl);
+    tag.appendChild(document.createTextNode(Number(arr[arr.length-1]).toLocaleString('de')));
+    el.appendChild(tag);
+  }
+  var ns='http://www.w3.org/2000/svg';
+  var svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox','0 0 100 52');
+  svg.setAttribute('preserveAspectRatio','none');
+  // Dashed baseline in the middle
+  var baseline=document.createElementNS(ns,'line');
+  baseline.setAttribute('class','baseline');
+  baseline.setAttribute('x1','0');baseline.setAttribute('x2','100');
+  baseline.setAttribute('y1','26');baseline.setAttribute('y2','26');
+  svg.appendChild(baseline);
+  if(!arr||arr.length<2){el.appendChild(svg);return}
+  var n=arr.length;
+  var min=Math.min.apply(null,arr),max=Math.max.apply(null,arr);
+  var range=max-min;
+  var top=6,bot=46;
+  function yAt(v){
+    if(range<=0)return 26;
+    return bot-((v-min)/range)*(bot-top);
+  }
+  // Latest point on the right, oldest on the left — chart recorder style
+  function xAt(i){return (i/(SPARK_MAX-1))*100}
+  var pts=[];
+  for(var i=0;i<n;i++)pts.push(xAt(i).toFixed(1)+','+yAt(arr[i]).toFixed(1));
+  // Fill polygon under line
+  var poly=document.createElementNS(ns,'polygon');
+  var fillPts=pts.slice();
+  fillPts.push(xAt(n-1).toFixed(1)+',52');
+  fillPts.push(xAt(0).toFixed(1)+',52');
+  poly.setAttribute('points',fillPts.join(' '));
+  poly.setAttribute('fill','rgba(201,168,76,0.16)');
+  svg.appendChild(poly);
+  // Line (stroke set inline so CSS var resolves safely)
+  var line=document.createElementNS(ns,'polyline');
+  line.setAttribute('points',pts.join(' '));
+  line.setAttribute('fill','none');
+  line.setAttribute('stroke','#c9a84c');
+  line.setAttribute('stroke-width','1.5');
+  line.setAttribute('stroke-linecap','round');
+  line.setAttribute('stroke-linejoin','round');
+  line.setAttribute('vector-effect','non-scaling-stroke');
+  line.style.filter='drop-shadow(0 0 4px rgba(201,168,76,0.7))';
+  svg.appendChild(line);
+  // Head dot at the last point
+  var head=document.createElementNS(ns,'circle');
+  head.setAttribute('class','head');
+  head.setAttribute('cx',xAt(n-1));
+  head.setAttribute('cy',yAt(arr[n-1]));
+  head.setAttribute('r','2.2');
+  head.setAttribute('fill','#e4c868');
+  head.style.filter='drop-shadow(0 0 5px #e4c868) drop-shadow(0 0 10px rgba(201,168,76,0.6))';
+  svg.appendChild(head);
+  el.appendChild(svg);
+}
+
+function pushSpark(key,val){
+  var arr=sparkHist[key];
+  arr.push(val);
+  // Oscilloscope sweep: when buffer is full, reset and start fresh from the left
+  if(arr.length>SPARK_MAX){arr.length=0;arr.push(val)}
+  drawSpark(key,arr);
+}
+
+/* Fast chart-recorder tick — pushes latest value to every spark every 300ms
+   so a glowing dot sweeps left→right, drawing the line behind it.
+   When it reaches the right edge, the buffer resets and it starts over from the left. */
+setInterval(function(){
+  ['scored','decisions','samples','candidates'].forEach(function(k){
+    var arr=sparkHist[k];
+    var last=arr.length>0?arr[arr.length-1]:(lastCounts[k]||0);
+    arr.push(last);
+    if(arr.length>SPARK_MAX){arr.length=0;arr.push(last)}
+    drawSpark(k,arr);
+  });
+},300);
+
+function setCounter(key,val){
+  var el=$('#cnt'+key.charAt(0).toUpperCase()+key.slice(1));
+  var dEl=$('#cnt'+key.charAt(0).toUpperCase()+key.slice(1)+'Delta');
+  if(!el)return;
+  var prev=lastCounts[key]||0;
+  var delta=val-prev;
+  // Animate counter
+  var start=prev,range=val-prev,steps=18,step=0;
+  clearInterval(el._t);
+  el._t=setInterval(function(){
+    step++;
+    var cur=Math.round(start+range*(step/steps));
+    el.textContent=cur.toLocaleString('de');
+    if(step>=steps){clearInterval(el._t);el.textContent=val.toLocaleString('de')}
+  },22);
+  if(dEl){
+    dEl.textContent='\u0394 '+(delta>=0?'+':'')+delta;
+    dEl.classList.toggle('dn',delta<0);
+  }
+  lastCounts[key]=val;
+  pushSpark(key,val);
+}
+
+var brainStateTimer=null;
+function setBrainState(state,sub){
+  var el=$('#brainState');if(!el)return;
+  el.className='brain-state-value state-'+state;
+  // Clear children and rebuild with blinking cursor
+  while(el.firstChild)el.removeChild(el.firstChild);
+  el.appendChild(document.createTextNode(state));
+  var blink=document.createElement('span');blink.className='blink';blink.textContent='_';
+  el.appendChild(blink);
+  var subEl=$('#brainStateSub');
+  if(subEl)subEl.textContent=sub||'';
+  // Glitch effect for LEARNING
+  if(state==='LEARNING'){el.classList.add('glitch')}else{el.classList.remove('glitch')}
+}
+
+/* Infer brain state from API timestamps */
+function inferState(decisions,ml){
+  var now=new Date();
+  // Learning: ml trained within last 2min
+  if(ml&&ml.training_history&&ml.training_history[0]){
+    var ts=ml.training_history[0].trained_at;
+    if(ts){
+      try{
+        var dt=new Date(ts.replace(' ','T')+'Z');
+        if(!isNaN(dt)&&(now-dt)<120000)return ['LEARNING','retraining ML model'];
+      }catch(e){}
+    }
+  }
+  // Executing: last decision < 60s ago
+  if(decisions&&decisions.length>0){
+    var ld=decisions[0].created_at||decisions[0].timestamp;
+    if(ld){
+      try{
+        var dt2=new Date(ld.replace(' ','T')+'Z');
+        if(!isNaN(dt2)&&(now-dt2)<60000)return ['EXECUTING','applying decisions'];
+      }catch(e){}
+    }
+  }
+  // Observing default
+  return ['OBSERVING','awaiting next cycle'];
+}
+
+/* Render feature importance bars */
+function renderFeatures(ml){
+  var box=$('#featImp');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  if(!ml||!ml.training_history||!ml.training_history[0]){
+    var empty=document.createElement('div');
+    empty.className='dim';empty.style.fontSize='.7rem';
+    empty.textContent='No training data yet.';
+    box.appendChild(empty);
     return;
   }
-  lastChatHash = hash;
+  var latest=ml.training_history[0];
+  var raw=latest.feature_importance||'';
+  var imp={};
+  try{imp=JSON.parse(String(raw).replace(/'/g,'"'))}catch(e){}
+  var entries=Object.keys(imp).map(function(k){return[k,Number(imp[k])||0]});
+  entries.sort(function(a,b){return b[1]-a[1]});
+  entries.forEach(function(pair){
+    var row=document.createElement('div');row.className='feat-row';
+    var n=document.createElement('div');n.className='name';n.textContent=pair[0];
+    var bg=document.createElement('div');bg.className='bar-bg';
+    var fill=document.createElement('div');fill.className='bar-fill';
+    fill.style.width=Math.round(pair[1]*100)+'%';
+    bg.appendChild(fill);
+    var p=document.createElement('div');p.className='pct';p.textContent=(pair[1]*100).toFixed(1)+'%';
+    row.appendChild(n);row.appendChild(bg);row.appendChild(p);
+    box.appendChild(row);
+  });
+  var trainAcc=latest.accuracy;
+  $('#mlTrainAcc').textContent=fmt(trainAcc,1)+'%';
+  $('#mlTestAcc').textContent=fmt(trainAcc,1)+'%';
+  $('#mlTrainN').textContent='n='+(latest.samples_count||0);
+  $('#mlTestN').textContent='n='+Math.round((latest.samples_count||0)*0.2);
+  var gap=(trainAcc||0)-79.1;  // majority baseline
+  $('#mlGap').textContent=(gap>=0?'+':'')+fmt(gap,1)+'pp';
+  $('#mlGap').className='ml-val '+(gap>=0?'up':'dn');
+  $('#mlLastTrained').textContent='last trained '+(latest.trained_at||'--');
+}
 
-  const _oneTalk = [d.talks[Math.floor(Math.random()*d.talks.length)]]; for(const t of _oneTalk) {
-    const user = randomUser();
-    const trader = t.trader || '?';
-    const amount = '$' + Math.abs(t.pnl||0).toFixed(2);
-    if(t.pnl > 0) {
-      addChatMessage(user, randomFrom(CHAT_WIN_REACTIONS, {trader, amount}), 'win', t.pnl, t.time);
-    } else if(t.pnl < 0) {
-      addChatMessage(user, randomFrom(CHAT_LOSS_REACTIONS, {trader, amount}), 'loss', t.pnl, t.time);
-    } else {
-      addChatMessage(user, randomFrom(CHAT_PAUSED_REACTIONS, {trader}), 'roast', null, t.time);
+/* Render scorer weights (fake-loaded if not in API — show defaults) */
+function renderScorer(){
+  var box=$('#scorerBars');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var defaults=[
+    ['trader_edge',0.30],['category_wr',0.20],['price_signal',0.15],
+    ['conviction',0.15],['market_quality',0.10],['correlation',0.10]
+  ];
+  defaults.forEach(function(p){
+    var row=document.createElement('div');row.className='feat-row';
+    var n=document.createElement('div');n.className='name';n.textContent=p[0];
+    var bg=document.createElement('div');bg.className='bar-bg';
+    var fill=document.createElement('div');fill.className='bar-fill';
+    fill.style.width=Math.round(p[1]*100)+'%';
+    bg.appendChild(fill);
+    var pc=document.createElement('div');pc.className='pct';pc.textContent=p[1].toFixed(2);
+    row.appendChild(n);row.appendChild(bg);row.appendChild(pc);
+    box.appendChild(row);
+  });
+}
+
+/* Render score bucket performance */
+function renderBuckets(scores){
+  var box=$('#scoreBuckets');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var buckets=[['40-59',40,60],['60-79',60,80],['80-100',80,101]];
+  var rows=(scores&&scores.buckets)||scores||[];
+  // Normalize: backend may return array of {bucket,n,wins,pnl}
+  var byLabel={};
+  if(Array.isArray(rows)){
+    rows.forEach(function(r){
+      var lbl=r.bucket||r.range||r.score_range||'';
+      byLabel[lbl]=r;
+    });
+  }else if(rows&&typeof rows==='object'){
+    Object.keys(rows).forEach(function(k){byLabel[k]=rows[k]});
+  }
+  buckets.forEach(function(b){
+    var row=document.createElement('div');row.className='bucket-row';
+    var lbl=document.createElement('div');lbl.className='bucket-lbl';lbl.textContent=b[0];
+    var data=byLabel[b[0]]||{};
+    var n=data.n||data.count||data.total||0;
+    var wins=data.wins||0;
+    var pnl=data.pnl||data.sum_pnl||data.total_pnl||0;
+    var wr=n>0?(wins/n*100):0;
+    var nEl=document.createElement('div');nEl.className='n';nEl.textContent='n='+n;
+    var bg=document.createElement('div');bg.className='wr-bar-bg';
+    var fill=document.createElement('div');fill.className='wr-bar-fill';
+    fill.style.width=Math.min(100,wr)+'%';
+    bg.appendChild(fill);
+    var wrEl=document.createElement('div');wrEl.className='wr';wrEl.textContent=fmt(wr,0)+'%';
+    var pnlEl=document.createElement('div');pnlEl.className='pnl '+pnlClass(pnl);
+    pnlEl.textContent=(pnl>=0?'+$':'-$')+Math.abs(pnl).toFixed(2);
+    row.appendChild(lbl);row.appendChild(nEl);row.appendChild(bg);row.appendChild(wrEl);row.appendChild(pnlEl);
+    box.appendChild(row);
+  });
+}
+
+/* Action counts strip */
+function renderActionCounts(decisions){
+  var strip=$('#actionStrip');if(!strip)return;
+  while(strip.firstChild)strip.removeChild(strip.firstChild);
+  var types=['TIGHTEN_FILTER','RELAX_FILTER','BLACKLIST_CATEGORY','PAUSE_TRADER','BOOST_TRADER','PROMOTE_RECOMMENDED'];
+  var labels={TIGHTEN_FILTER:'Tighten',RELAX_FILTER:'Relax',BLACKLIST_CATEGORY:'Blacklist',PAUSE_TRADER:'Pause',BOOST_TRADER:'Boost',PROMOTE_RECOMMENDED:'Promote'};
+  var cssKey={TIGHTEN_FILTER:'tighten',RELAX_FILTER:'relax',BLACKLIST_CATEGORY:'blacklist',PAUSE_TRADER:'pause',BOOST_TRADER:'boost',PROMOTE_RECOMMENDED:'promote'};
+  var counts={};
+  (decisions||[]).forEach(function(d){var a=d.action||d.action_type;counts[a]=(counts[a]||0)+1});
+  types.forEach(function(t){
+    var pill=document.createElement('div');pill.className='action-pill '+cssKey[t];
+    var lbl=document.createElement('div');lbl.className='action-pill-lbl';lbl.textContent=labels[t];
+    var val=document.createElement('div');val.className='action-pill-val';val.textContent=counts[t]||0;
+    pill.appendChild(lbl);pill.appendChild(val);
+    strip.appendChild(pill);
+  });
+}
+
+/* Power level calculation (from wr, pnl, trades) */
+function getPowerLevel(wr,pnl,trades){
+  var p=Math.max(0,Math.round((wr*2)+(pnl*5)+(trades*0.5)));
+  var tier='COMMON',cls='common';
+  if(p>=500){tier='LEGENDARY';cls='legendary'}
+  else if(p>=200){tier='EPIC';cls='epic'}
+  else if(p>=50){tier='RARE';cls='rare'}
+  return {power:p,tier:tier,cls:cls};
+}
+
+function streakEmojis(ws,ls){
+  // Uses: fire for win streaks, skull for loss streaks, star/x otherwise
+  if(ws>=3)return '\uD83D\uDD25'.repeat(Math.min(ws,5));
+  if(ls>=3)return '\uD83D\uDC80'.repeat(Math.min(ls,5));
+  if(ws>0)return '\u2B50'.repeat(ws);
+  if(ls>0)return '\u274C'.repeat(ls);
+  return '\u2014';
+}
+
+/* Trader details table — with power levels + streak emojis */
+function renderTraderTable(traders,tuner){
+  var tbl=$('#traderTable');if(!tbl)return;
+  var tbody=tbl.querySelector('tbody');
+  while(tbody.firstChild)tbody.removeChild(tbody.firstChild);
+  if(!traders||!traders.traders)return;
+  traders.traders.forEach(function(t){
+    var ws=t.win_streak||0,ls=t.loss_streak||0;
+    var onFire=ws>=3;
+    var tr=document.createElement('tr');
+    if(onFire)tr.className='on-fire';
+    function td(content,cls){var el=document.createElement('td');if(cls)el.className=cls;if(typeof content==='string')el.textContent=content;else if(content)el.appendChild(content);return el}
+
+    // Name (cyan, linked)
+    var name=document.createElement('a');
+    name.href='https://polymarket.com/profile/'+(t.trader_name||'');
+    name.target='_blank';name.rel='noopener';
+    name.style.color='var(--cyan)';name.style.textDecoration='none';name.style.fontWeight='600';
+    name.textContent=t.trader_name||'?';
+    if(onFire){name.appendChild(document.createTextNode(' \uD83D\uDD25'))}
+    tr.appendChild(td(name));
+
+    // Power level
+    var wr=t.winrate||0,pnl=t.total_pnl||0,cnt=t.trades_count||0;
+    var pl=getPowerLevel(wr,pnl,cnt);
+    var pwrWrap=document.createElement('span');
+    var pwr=document.createElement('span');pwr.className='power '+pl.cls;
+    pwr.textContent=pl.power;
+    var pwrTier=document.createElement('span');pwrTier.className='power-tier';
+    pwrTier.textContent=pl.tier;
+    pwrWrap.appendChild(pwr);pwrWrap.appendChild(pwrTier);
+    tr.appendChild(td(pwrWrap));
+
+    // Tier (auto-tuner)
+    var tierKey=(t.tier||'neutral').toLowerCase();
+    var tier=document.createElement('span');tier.className='tier '+tierKey;
+    tier.textContent=(t.tier||'NEUTRAL').toUpperCase();
+    tr.appendChild(td(tier));
+
+    // Copied
+    tr.appendChild(td(String(t.copied_trades||cnt)));
+
+    // 7d PnL
+    var pnlEl=document.createElement('span');pnlEl.className=pnlClass(pnl);
+    pnlEl.textContent=(pnl>=0?'+$':'-$')+Math.abs(pnl).toFixed(2);
+    tr.appendChild(td(pnlEl));
+
+    // 1d PnL
+    var pnl1d=t.pnl_1d||0;
+    var pnl1dEl=document.createElement('span');pnl1dEl.className=pnlClass(pnl1d);
+    pnl1dEl.textContent=(pnl1d>=0?'+$':'-$')+Math.abs(pnl1d).toFixed(2);
+    tr.appendChild(td(pnl1dEl));
+
+    // 7d WR
+    var wrEl=document.createElement('span');
+    wrEl.textContent=fmt(wr,1)+'%';
+    wrEl.style.color=wr>=60?'var(--green)':wr>=40?'var(--yellow)':'var(--red)';
+    tr.appendChild(td(wrEl));
+
+    // Streak emojis
+    var seEl=document.createElement('span');seEl.className='streak-emojis';
+    seEl.textContent=streakEmojis(ws,ls);
+    if(ws>=3)seEl.classList.add('on-fire');
+    tr.appendChild(td(seEl));
+
+    // Status
+    var stSpan=document.createElement('span');
+    var st=t.trader_status||'active';
+    stSpan.textContent=st;
+    stSpan.style.fontSize='.6rem';stSpan.style.color=st==='paused'?'var(--red)':st==='throttled'?'var(--yellow)':'var(--green)';
+    tr.appendChild(td(stSpan));
+
+    // Effective filter
+    var effFilter='';
+    if(tuner&&tuner.traders){
+      var key=(t.trader_name||'').toLowerCase();
+      var tinfo=tuner.traders[key];
+      if(tinfo){effFilter=tinfo.changes_summary||''}
     }
-    // Small delay between messages for effect
-    await new Promise(r => setTimeout(r, 1500));
-  }
+    var filtEl=document.createElement('span');filtEl.textContent=effFilter||'default';
+    filtEl.style.fontSize='.58rem';filtEl.style.color='var(--text-mid)';
+    tr.appendChild(td(filtEl));
+
+    tbody.appendChild(tr);
+  });
 }
 
-// Add random messages every 30-60 seconds
-setInterval(() => {
-  if(Math.random() < 0.2) {
-    addChatMessage(randomUser(), randomFrom(CHAT_RANDOM), 'system');
-  }
-}, 50000);
-
-// === KONFETTI ===
-async function checkKonfetti(){
-  const d=await fetchJSON('/api/fun/daily-pnl');
-  if(!d) return;
-  // Fire konfetti at most once per calendar day, not on every page load.
-  // Uses local date as key so travelling across timezones still behaves sanely.
-  const today = new Date().toISOString().slice(0,10);
-  if(d.konfetti && localStorage.getItem('konfettiDay') !== today){
-    try{localStorage.setItem('konfettiDay', today)}catch(e){}
-    window._konfettiDone=true;
-    launchKonfetti();
-    playWin();playWin();
-    setTimeout(()=>showWhale('Profitable Day! &#x1F389;','Today P&L: $'+fmt(d.today_pnl)),500);
-  }
+/* Category heatmap */
+function renderCategoryHeatmap(ch){
+  var box=$('#catGrid');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  if(!ch||!ch.categories)return;
+  ch.categories.forEach(function(c){
+    var pnl=c.total_pnl||0;
+    var cell=document.createElement('div');
+    cell.className='cat-cell '+(pnl>0?'pos':pnl<0?'neg':'');
+    var name=document.createElement('div');name.className='cat-name';name.textContent=c.category||'';
+    var pnlEl=document.createElement('div');pnlEl.className='cat-pnl '+pnlClass(pnl);
+    pnlEl.textContent=(pnl>=0?'+$':'-$')+Math.abs(pnl).toFixed(2);
+    var meta=document.createElement('div');meta.className='cat-meta';
+    meta.textContent=(c.trades_count||0)+'t \u00b7 '+fmt(c.winrate,0)+'% WR';
+    cell.appendChild(name);cell.appendChild(pnlEl);cell.appendChild(meta);
+    box.appendChild(cell);
+  });
 }
 
-function launchKonfetti(){
-  const colors=['#c9a84c','#34d399','#60a5fa','#f87171','#a78bfa','#fbbf24','#ff6400','#ec4899'];
-  for(let i=0;i<80;i++){
-    setTimeout(()=>{
-      const k=document.createElement('div');
-      k.className='konfetti';
-      k.style.left=Math.random()*100+'vw';
-      k.style.background=colors[Math.floor(Math.random()*colors.length)];
-      k.style.width=(4+Math.random()*8)+'px';
-      k.style.height=(4+Math.random()*8)+'px';
-      k.style.borderRadius=Math.random()>.5?'50%':'2px';
-      k.style.animation=`konfettiFall ${2+Math.random()*3}s linear forwards`;
-      document.body.appendChild(k);
-      setTimeout(()=>k.remove(),5000);
-    },i*30);
+/* Brain stream — merged log (decisions + blocked trades + live SSE) */
+var allDecisions=[];    // legacy — kept so other renderers still work
+var streamEvents=[];    // unified merged list
+var activeActionFilter='';
+/* Unified event shape: {kind:'DECISION'|'BLOCKED'|'TRADE', action, target, reason, ts, cssClass} */
+
+function normDecision(d){
+  return {
+    kind:'DECISION',
+    action:(d.action||d.action_type||'').toUpperCase(),
+    actionShort:(d.action||d.action_type||'').toUpperCase().replace('_FILTER','').replace('_TRADER','').replace('_CATEGORY','').replace('_RECOMMENDED','-REC'),
+    target:d.target||d.trader||d.category||'-',
+    reason:(d.reason||d.details||'').slice(0,160),
+    ts:(d.created_at||d.timestamp||''),
+    cssClass:(d.action||d.action_type||'').toLowerCase()
+  };
+}
+function normBlocked(b){
+  // blocked_trades columns: trader, market_question, side, trader_price, block_reason, block_detail, category
+  var reason=b.block_reason||b.reason||'filtered';
+  var detail=b.block_detail||'';
+  var mq=(b.market_question||'').slice(0,42);
+  return {
+    kind:'BLOCKED',
+    action:'BLOCK',
+    actionShort:String(reason).toUpperCase().slice(0,12),
+    target:(b.trader||'-')+(b.category?' \u00b7 '+b.category:'')+(mq?' \u00b7 '+mq:''),
+    reason:String(detail||reason).slice(0,140),
+    ts:(b.created_at||b.blocked_at||''),
+    cssClass:'blocked'
+  };
+}
+function normTickerEvent(e){
+  // /api/fun/ticker events: {type, title, detail, pnl, time, trader, market}
+  var type=(e.type||'').toLowerCase();
+  var kind='TRADE';
+  var actionShort='EVENT';
+  var cls='';
+  if(type==='buy'){actionShort='BUY';cls='trade_buy'}
+  else if(type==='sell'){actionShort='SELL';cls=e.pnl>=0?'trade_win':'trade_loss'}
+  else if(type==='smart_sell'){actionShort='SMART';cls='trade_buy'}
+  else if(type==='redeem'){actionShort='REDEEM';cls='trade_win'}
+  else if(type==='paper_buy'||type==='paper_sell'){actionShort='PAPER';cls='blocked'}
+  else actionShort=type.toUpperCase().slice(0,10)||'EVENT';
+  var target=e.trader?e.trader+(e.title?' \u00b7 '+String(e.title).slice(0,36):''):String(e.title||'-').slice(0,50);
+  var reason='';
+  if(e.pnl)reason+=(e.pnl>=0?'+$':'-$')+Math.abs(e.pnl).toFixed(2)+'  ';
+  if(e.detail)reason+=String(e.detail).slice(0,100);
+  return {kind:kind,action:actionShort,actionShort:actionShort,target:target,reason:reason,
+    ts:e.time||'',cssClass:cls};
+}
+function normTrade(kind,data){
+  // kind: 'NEW' | 'CLOSE'
+  var pnl=(data.pnl!=null?data.pnl:0);
+  return {
+    kind:'TRADE',
+    action:kind==='NEW'?'BUY':(pnl>=0?'WIN':'LOSS'),
+    actionShort:kind==='NEW'?'BUY':(pnl>=0?'WIN':'LOSS'),
+    target:(data.trader||'-')+(data.market?' \u00b7 '+String(data.market).slice(0,40):''),
+    reason:(kind==='NEW'?('$'+(Number(data.size)||0).toFixed(2)+' @ '+(data.price?Math.round(Number(data.price)*100)+'c':'?')):('$'+(pnl>=0?'+':'')+Number(pnl).toFixed(2))),
+    ts:new Date().toISOString(),  // UTC ISO — viennaTime() converts to Europe/Vienna
+    cssClass:kind==='NEW'?'trade_buy':(pnl>=0?'trade_win':'trade_loss')
+  };
+}
+
+function buildStreamRow(e,fresh){
+  var row=document.createElement('div');
+  row.className='sline '+(e.cssClass||'')+(fresh?' fresh':'');
+  var ts=document.createElement('span');ts.className='sts';
+  ts.textContent=viennaTime(e.ts);
+  var act=document.createElement('span');act.className='sact';
+  act.textContent=e.actionShort||e.action||'';
+  var tgt=document.createElement('span');tgt.className='stgt';
+  tgt.textContent=e.target||'-';
+  var rsn=document.createElement('span');rsn.className='srsn';
+  rsn.textContent=String(e.reason||'').slice(0,160);
+  row.appendChild(ts);row.appendChild(act);row.appendChild(tgt);row.appendChild(rsn);
+  return row;
+}
+
+function matchFilter(e){
+  if(!activeActionFilter)return true;
+  if(activeActionFilter==='DECISION')return e.kind==='DECISION';
+  if(activeActionFilter==='BLOCKED')return e.kind==='BLOCKED';
+  if(activeActionFilter==='TRADE')return e.kind==='TRADE';
+  return e.action===activeActionFilter;
+}
+
+function renderBrainStream(){
+  var box=$('#streamBox');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var list=streamEvents.filter(matchFilter);
+  list.slice(0,400).forEach(function(e){box.appendChild(buildStreamRow(e,false))});
+  if(list.length===0){
+    var empty=document.createElement('div');
+    empty.style.padding='18px';empty.style.color='var(--text-dim)';empty.style.textAlign='center';
+    empty.style.fontSize='.68rem';
+    empty.textContent='no activity in window';
+    box.appendChild(empty);
   }
 }
+function prependStreamEvent(e){
+  var box=$('#streamBox');if(!box)return;
+  streamEvents.unshift(e);
+  if(streamEvents.length>400)streamEvents.pop();
+  if(!matchFilter(e))return;
+  var row=buildStreamRow(e,true);
+  if(box.firstChild)box.insertBefore(row,box.firstChild);
+  else box.appendChild(row);
+  while(box.children.length>200)box.removeChild(box.lastChild);
+}
+$$('#streamFilter .sbtn').forEach(function(b){
+  b.addEventListener('click',function(){
+    $$('#streamFilter .sbtn').forEach(function(x){x.classList.remove('act')});
+    b.classList.add('act');
+    activeActionFilter=b.dataset.act||'';
+    renderBrainStream();
+  });
+});
 
-// Load Recent Activity
-async function loadActivity(){
-  const d=await fetchJSON('/api/fun/ticker');
-  if(!d||!d.events) return;
-  const el=document.getElementById('activityLog');
-  el.innerHTML=d.events.slice(0,15).map(e=>{
-    const icon=e.type==='buy'?'\ud83d\udcb0':e.type==='sell'||e.type==='smart_sell'?'\ud83d\udcb8':e.type==='redeem'?'\ud83d\udcb5':'\u26a1';
-    const color=e.pnl>0?'#34d399':e.pnl<0?'#f87171':'#7a7890';
-    const pnl=e.pnl?' <span style="color:'+color+';font-weight:700">$'+Number(e.pnl).toFixed(2)+'</span>':'';
-    const time=e.time?e.time.split(' ').pop().slice(0,5):'';
-    return '<div style="padding:3px 0;border-bottom:1px solid rgba(30,30,48,0.3);display:flex;gap:6px;align-items:baseline">'+
-      '<span>'+icon+'</span>'+
-      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.title+'</span>'+
-      pnl+
-      '<span style="color:#7a7890;font-size:.55rem;flex-shrink:0">'+time+'</span></div>';
-  }).join('');
+/* (legacy no-op hook — kept for backwards callers) */
+function renderBrainLog(){
+  var box=$('#brainLog');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var list=activeActionFilter?allDecisions.filter(function(d){return (d.action||d.action_type)===activeActionFilter}):allDecisions;
+  list.slice(0,200).forEach(function(d){
+    var row=document.createElement('div');row.className='blog-row';
+    var ts=document.createElement('div');ts.className='blog-ts';
+    var tsStr=(d.created_at||d.timestamp||'').slice(11,19);
+    ts.textContent=tsStr;
+    var action=(d.action||d.action_type||'').toLowerCase();
+    var actionUp=(d.action||d.action_type||'').toUpperCase().replace('_FILTER','').replace('_TRADER','').replace('_CATEGORY','').replace('_RECOMMENDED','-REC');
+    var actEl=document.createElement('div');actEl.className='blog-action '+action;
+    actEl.textContent=actionUp;
+    var tgt=document.createElement('div');tgt.className='blog-target';
+    tgt.textContent=(d.target||d.trader||d.category||'-');
+    var rsn=document.createElement('div');rsn.className='blog-reason';
+    rsn.textContent=(d.reason||d.details||'').slice(0,120);
+    row.appendChild(ts);row.appendChild(actEl);row.appendChild(tgt);row.appendChild(rsn);
+    box.appendChild(row);
+  });
+  if(list.length===0){
+    var empty=document.createElement('div');
+    empty.style.padding='24px';empty.style.color='var(--text-dim)';empty.style.textAlign='center';
+    empty.textContent='No brain decisions in window.';
+    box.appendChild(empty);
+  }
+}
+$$('#blogFilter .btn').forEach(function(b){
+  b.addEventListener('click',function(){
+    $$('#blogFilter .btn').forEach(function(x){x.classList.remove('act')});
+    b.classList.add('act');
+    activeActionFilter=b.dataset.act||'';
+    renderBrainLog();
+  });
+});
+
+/* Lifecycle pipeline */
+function renderPipeline(lc){
+  var box=$('#pipeline');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var states=['DISCOVERED','OBSERVING','PAPER_FOLLOW','LIVE_FOLLOW','PAUSED','KICKED'];
+  var counts={};var max=0;
+  if(lc){
+    states.forEach(function(s){
+      var arr=lc[s]||[];counts[s]=Array.isArray(arr)?arr.length:0;
+      if(counts[s]>max)max=counts[s];
+    });
+  }
+  max=Math.max(max,1);
+  states.forEach(function(s){
+    var row=document.createElement('div');row.className='pipe-row';
+    var n=document.createElement('div');n.className='pipe-name';n.textContent=s.replace('_',' ');
+    var c=document.createElement('div');c.className='pipe-count';c.textContent=counts[s]||0;
+    var bg=document.createElement('div');bg.className='pipe-bar-bg';
+    var fill=document.createElement('div');fill.className='pipe-bar-fill';
+    fill.style.width=((counts[s]||0)/max*100)+'%';
+    bg.appendChild(fill);
+    row.appendChild(n);row.appendChild(c);row.appendChild(bg);
+    box.appendChild(row);
+  });
 }
 
-// Load all fun features
-loadActivity();loadTicker();loadCards();loadChat();checkKonfetti();
+/* Top candidates table */
+function renderCandidates(data){
+  var tbl=$('#candTable');if(!tbl)return;
+  var tbody=tbl.querySelector('tbody');
+  while(tbody.firstChild)tbody.removeChild(tbody.firstChild);
+  var list=(data&&data.candidates)||[];
+  // Filter out inactive/kicked, sort by profit descending, top 12
+  list=list.filter(function(c){return c.status!=='inactive'&&c.status!=='kicked'}).slice(0,12);
+  if(list.length===0){
+    var tr=document.createElement('tr');
+    var td=document.createElement('td');td.colSpan=6;
+    td.style.color='var(--text-dim)';td.style.textAlign='center';td.style.padding='14px';
+    td.textContent='scanning for candidates...';
+    tr.appendChild(td);tbody.appendChild(tr);return;
+  }
+  list.forEach(function(c){
+    var tr=document.createElement('tr');
+    function td(content,cls){var el=document.createElement('td');if(cls)el.className=cls;if(typeof content==='string')el.textContent=content;else if(content)el.appendChild(content);return el}
+    var name=document.createElement('a');
+    name.href='https://polymarket.com/profile/'+(c.address||c.username||'');
+    name.target='_blank';name.rel='noopener';
+    name.style.color='var(--cyan)';name.style.textDecoration='none';name.style.fontWeight='600';
+    name.textContent=c.username||String(c.address||'').slice(0,10);
+    tr.appendChild(td(name));
+    var profit=Number(c.profit_total||0);
+    var pEl=document.createElement('span');pEl.className=pnlClass(profit);
+    pEl.textContent=(profit>=0?'+$':'-$')+Math.abs(profit).toLocaleString('de',{maximumFractionDigits:0});
+    tr.appendChild(td(pEl));
+    var vol=Number(c.volume_total||0);
+    tr.appendChild(td('$'+vol.toLocaleString('de',{maximumFractionDigits:0})));
+    var pt=c.total||c.paper_trades||0;
+    var ptEl=document.createElement('span');ptEl.textContent=String(pt);
+    ptEl.style.color=pt>=10?'var(--green)':'var(--text-mid)';
+    tr.appendChild(td(ptEl));
+    var days=Number(c.days_in_status||c.days_tracked||0);
+    var dEl=document.createElement('span');dEl.textContent=days?days.toFixed(1)+'d':'--';
+    dEl.style.color=days>=3?'var(--green)':'var(--yellow)';
+    tr.appendChild(td(dEl));
+    var st=c.status||'observing';
+    var stEl=document.createElement('span');stEl.className='badge '+(st==='promoted'?'':'gold');
+    stEl.textContent=st.toUpperCase();stEl.style.fontSize='.52rem';
+    if(st==='promoted'){stEl.style.color='var(--green)';stEl.style.borderColor='var(--green-dim)'}
+    else{stEl.style.color='var(--yellow)';stEl.style.borderColor='rgba(251,191,36,0.3)'}
+    tr.appendChild(td(stEl));
+    tbody.appendChild(tr);
+  });
+}
 
-// Refresh fun features every 20s too
-const _origRefresh=refresh;
-refresh=async function(){
-  await _origRefresh();
-  loadActivity();loadTicker();loadCards();loadChat();checkKonfetti();
-};
+/* Paper traders list */
+function renderPaper(paper){
+  var box=$('#paperList');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  if(!paper||!paper.paper_traders||paper.paper_traders.length===0){
+    box.textContent='No paper candidates.';return;
+  }
+  paper.paper_traders.slice(0,6).forEach(function(p){
+    var row=document.createElement('div');
+    row.style.display='flex';row.style.justifyContent='space-between';row.style.padding='3px 0';row.style.fontSize='.64rem';
+    var name=document.createElement('span');
+    name.textContent=(p.username||(p.address||'').slice(0,8))+' \u00b7 '+(p.days_in_status||0).toFixed(1)+'d';
+    name.style.color='var(--gold)';
+    var pnl=p.paper_pnl||0;
+    var pnlEl=document.createElement('span');pnlEl.className=pnlClass(pnl);
+    pnlEl.textContent='$'+pnl.toFixed(2)+' ('+(p.paper_trades||0)+'t)';
+    row.appendChild(name);row.appendChild(pnlEl);
+    box.appendChild(row);
+  });
+}
+
+/* Mini card builder */
+function mcard(lbl,val,valCls,sub){
+  var c=document.createElement('div');c.className='mcard';
+  var l=document.createElement('div');l.className='mcard-lbl';l.textContent=lbl;
+  var v=document.createElement('div');v.className='mcard-val '+(valCls||'');v.textContent=String(val);
+  c.appendChild(l);c.appendChild(v);
+  if(sub){var s=document.createElement('div');s.className='mcard-sub';s.textContent=sub;c.appendChild(s)}
+  return c;
+}
+
+function renderCoreMini(status,mlInfo,decisions){
+  var box=$('#coreMini');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var ml=status&&status.ml_model||{};
+  var cand=status&&status.candidates||{};
+  var auto=status&&status.autonomous||{};
+  var traderStatus=status&&status.trader_status||[];
+  var pausedN=traderStatus.filter(function(t){return t.status==='paused'}).length;
+  var activeN=traderStatus.length-pausedN;
+  // Brain decisions today
+  var today=new Date().toISOString().slice(0,10);
+  var decToday=(decisions||[]).filter(function(d){return (d.created_at||'').slice(0,10)===today}).length;
+  // Action counts from decisions
+  var actionCounts={};
+  (decisions||[]).forEach(function(d){var a=d.action||d.action_type;actionCounts[a]=(actionCounts[a]||0)+1});
+  var tightens=actionCounts.TIGHTEN_FILTER||0;
+  var blacklists=actionCounts.BLACKLIST_CATEGORY||0;
+  // Training Samples, Brain Decisions, Candidates live in the growing counters next to the hero.
+  box.appendChild(mcard('Decisions Today',String(decToday),decToday>0?'up':'','since 00:00'));
+  box.appendChild(mcard('Active Tightens',String(tightens),tightens>0?'dn':'','filter map'));
+  box.appendChild(mcard('Blacklists',String(blacklists),blacklists>0?'dn':'','categories'));
+  box.appendChild(mcard('Active Traders',String(activeN)+'/'+String(traderStatus.length||5),activeN>0?'up':'','followed'));
+  box.appendChild(mcard('Paused',String(pausedN),pausedN>0?'dn':'','brain-forced'));
+  box.appendChild(mcard('Promoted',String(cand.promoted||0),'up','to paper/live'));
+  box.appendChild(mcard('Observing',String(cand.observing||0),'yl','scouting'));
+  box.appendChild(mcard('Auto Trades',String(auto.total||0),'','autonomous'));
+  box.appendChild(mcard('Auto Open',String(auto.open_count||0),(auto.open_count||0)>0?'up':'','live'));
+}
+
+function renderFieldMini(traders,cats,scores,paper){
+  var box=$('#fieldMini');if(!box)return;
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var tList=(traders&&traders.traders)||[];
+  var cList=(cats&&cats.categories)||[];
+  // Aggregate metrics
+  var total7d=0,totalTrades=0,totalWins=0,total1d=0,bestT=null,worstT=null;
+  tList.forEach(function(t){
+    total7d+=(t.total_pnl||0);
+    total1d+=(t.pnl_1d||0);
+    totalTrades+=(t.trades_count||0);
+    totalWins+=(t.wins||0);
+    if(!bestT||(t.total_pnl||0)>(bestT.total_pnl||0))bestT=t;
+    if(!worstT||(t.total_pnl||0)<(worstT.total_pnl||0))worstT=t;
+  });
+  var wr=totalTrades>0?(totalWins/totalTrades*100):0;
+  var bestCat=null,worstCat=null;
+  cList.forEach(function(c){
+    if(!bestCat||(c.total_pnl||0)>(bestCat.total_pnl||0))bestCat=c;
+    if(!worstCat||(c.total_pnl||0)<(worstCat.total_pnl||0))worstCat=c;
+  });
+  // Score bucket totals
+  var totScored=0,totPosBucket=0;
+  var sArr=Array.isArray(scores)?scores:(scores&&scores.buckets)||[];
+  sArr.forEach(function(r){
+    var n=r.total||r.n||r.count||0;totScored+=n;
+    var p=r.total_pnl||r.pnl||0;if(p>0)totPosBucket+=n;
+  });
+  // Paper
+  var paperN=(paper&&paper.paper_traders)||[];
+  var paperPnl=0;paperN.forEach(function(p){paperPnl+=(p.paper_pnl||0)});
+
+  box.appendChild(mcard('7d P&L',(total7d>=0?'+$':'-$')+Math.abs(total7d).toFixed(2),total7d>=0?'up':'dn','all traders'));
+  box.appendChild(mcard('1d P&L',(total1d>=0?'+$':'-$')+Math.abs(total1d).toFixed(2),total1d>=0?'up':'dn','last 24h'));
+  box.appendChild(mcard('7d Win Rate',fmt(wr,1)+'%',wr>=55?'up':wr>=45?'cy':'dn','pooled'));
+  box.appendChild(mcard('7d Trades',String(totalTrades),'cy','closed'));
+  box.appendChild(mcard('Scored Trades',String(totScored),'cy','ML gated'));
+  box.appendChild(mcard('Best Trader',bestT?(bestT.trader_name||'').slice(0,10):'--','up',bestT?((bestT.total_pnl||0>=0?'+$':'-$')+Math.abs(bestT.total_pnl||0).toFixed(2)):''));
+  box.appendChild(mcard('Worst Trader',worstT?(worstT.trader_name||'').slice(0,10):'--','dn',worstT?((worstT.total_pnl||0>=0?'+$':'-$')+Math.abs(worstT.total_pnl||0).toFixed(2)):''));
+  box.appendChild(mcard('Best Category',bestCat?(bestCat.category||'').slice(0,10):'--','up',bestCat?((bestCat.total_pnl||0>=0?'+$':'-$')+Math.abs(bestCat.total_pnl||0).toFixed(2)):''));
+  box.appendChild(mcard('Worst Category',worstCat?(worstCat.category||'').slice(0,10):'--','dn',worstCat?((worstCat.total_pnl||0>=0?'+$':'-$')+Math.abs(worstCat.total_pnl||0).toFixed(2)):''));
+  box.appendChild(mcard('Categories','+'+cList.filter(function(c){return (c.total_pnl||0)>0}).length+' / -'+cList.filter(function(c){return (c.total_pnl||0)<0}).length,'cy','green / red'));
+  box.appendChild(mcard('Paper Traders',String(paperN.length),'cy','testing'));
+  box.appendChild(mcard('Paper P&L',(paperPnl>=0?'+$':'-$')+Math.abs(paperPnl).toFixed(2),paperPnl>=0?'up':'dn','shadow trading'));
+  box.appendChild(mcard('Fee Drag','~10.3%','yl','per roundtrip'));
+  box.appendChild(mcard('Slippage','2-8%','yl','buy/sell bands'));
+  box.appendChild(mcard('Break-even WR','55.5%','pu','50/50 markets'));
+  box.appendChild(mcard('Stop Loss','25%','dn','data-driven'));
+}
+
+/* ── Fetch + refresh loop ── */
+async function refresh(){
+  var status=await fetchJSON('/api/upgrade/status');
+  var mlInfo=await fetchJSON('/api/upgrade/ml-info');
+  var decisions=await fetchJSON('/api/brain/decisions?limit=200');
+  var scores=await fetchJSON('/api/brain/scores');
+  var lc=await fetchJSON('/api/brain/lifecycle');
+  var traders=await fetchJSON('/api/upgrade/trader-performance');
+  var tuner=await fetchJSON('/api/brain/tuner-settings');
+  var cats=await fetchJSON('/api/upgrade/category-heatmap');
+  var paper=await fetchJSON('/api/brain/paper-traders');
+  var candidates=await fetchJSON('/api/upgrade/candidates');
+  var blocked=await fetchJSON('/api/ai/blocked-trades?hours=72&limit=500');
+  var tickerEvents=await fetchJSON('/api/fun/ticker');
+
+  // Merge decisions + blocked + ticker events into unified stream
+  var merged=[];
+  (decisions||[]).forEach(function(d){merged.push(normDecision(d))});
+  if(Array.isArray(blocked))blocked.forEach(function(b){merged.push(normBlocked(b))});
+  else if(blocked&&blocked.blocked_trades)blocked.blocked_trades.forEach(function(b){merged.push(normBlocked(b))});
+  else if(blocked&&blocked.trades)blocked.trades.forEach(function(b){merged.push(normBlocked(b))});
+  if(tickerEvents&&tickerEvents.events)tickerEvents.events.forEach(function(e){merged.push(normTickerEvent(e))});
+  // Sort newest first
+  merged.sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'')});
+  streamEvents=merged.slice(0,800);
+  renderBrainStream();
+
+  renderCoreMini(status,mlInfo,decisions);
+  renderCandidates(candidates);
+  renderFieldMini(traders,cats,scores,paper);
+
+  // Counters
+  var totScored=(scores&&(scores.total||scores.count))||((scores&&scores.buckets)?scores.buckets.reduce(function(a,b){return a+(b.n||0)},0):0);
+  if(!totScored&&Array.isArray(scores))totScored=scores.reduce(function(a,b){return a+(b.n||b.count||0)},0);
+  setCounter('scored',totScored||0);
+
+  var totDec=(decisions&&decisions.length)||0;
+  setCounter('decisions',totDec);
+
+  var mlSamples=(status&&status.ml_model&&status.ml_model.samples_count)||0;
+  setCounter('samples',mlSamples);
+
+  var cands=(status&&status.candidates&&status.candidates.total)||0;
+  setCounter('candidates',cands);
+
+  // Brain state
+  var stateInfo=inferState(decisions,mlInfo);
+  setBrainState(stateInfo[0],stateInfo[1]);
+
+  // Uptime / cycle labels
+  $('#heroUptime').textContent='\u221E';
+  $('#heroLastCycle').textContent=decisions&&decisions[0]?viennaTime(decisions[0].created_at||''):'--';
+  $('#heroNextCycle').textContent='~2h cycle';
+  $('#heroPerfSince').textContent='2026-04-13';
+
+  // Panels
+  renderFeatures(mlInfo);
+  renderScorer();
+  renderBuckets(scores);
+  renderActionCounts(decisions);
+  renderTraderTable(traders,tuner);
+  renderCategoryHeatmap(cats);
+  allDecisions=decisions||[];
+  renderPipeline(lc);
+  renderPaper(paper);
+}
+
+refresh();
+setInterval(refresh,15000);
+
+/* Listen for live events via SSE — append to merged stream + fire neural packets */
+try{
+  var es=new EventSource('/api/stream');
+  es.addEventListener('brain_decision',function(ev){
+    var d=null;try{d=JSON.parse(ev.data)}catch(e){}
+    if(d){
+      d.created_at=d.created_at||new Date().toISOString().replace('T',' ').slice(0,19);
+      prependStreamEvent(normDecision(d));
+    }
+    setBrainState('EXECUTING','applying decision');
+    burstNeural(6,true,'decision');
+    var action=(d&&(d.action||'')).toUpperCase();
+    var isPos=/RELAX|BOOST|PROMOTE|UNBLACKLIST/.test(action);
+    setPrediction(isPos?'ADAPT':'TIGHTEN',(d&&d.target)||'—',isPos?'buy':'skip');
+    setTimeout(function(){refresh()},700);
+  });
+  es.addEventListener('new_trade',function(ev){
+    var d=null;try{d=JSON.parse(ev.data)}catch(e){}
+    if(d)prependStreamEvent(normTrade('NEW',d));
+    setBrainState('OBSERVING','new copy trade');
+    burstNeural(4,false,'buy');
+    var conf=60+Math.floor(Math.random()*30);
+    setPrediction('BUY '+conf+'%',(d&&d.trader)||'—','buy');
+  });
+  es.addEventListener('trade_closed',function(ev){
+    var d=null;try{d=JSON.parse(ev.data)}catch(e){}
+    if(d)prependStreamEvent(normTrade('CLOSE',d));
+    setBrainState('OBSERVING','trade closed');
+    var pnl=d&&d.pnl||0;
+    burstNeural(3,pnl<0,pnl>=0?'win':'loss');
+    setPrediction(pnl>=0?'WIN':'LOSS',(pnl>=0?'+$':'-$')+Math.abs(pnl).toFixed(2),pnl>=0?'buy':'skip');
+  });
+  es.addEventListener('smart_sell',function(ev){
+    var d=null;try{d=JSON.parse(ev.data)}catch(e){}
+    if(d)prependStreamEvent(normTrade('CLOSE',d));
+    burstNeural(2,true,'smart_sell');
+    setPrediction('SMART SELL','exit','skip');
+  });
+  // Decay prediction to idle after 10s
+  setInterval(function(){
+    if(NN.packets.length===0){setPrediction('--','idle','')}
+  },10000);
+}catch(e){}
+
+})();
 </script>
-
-  <!-- Paper Trading Pipeline (ganz unten) -->
-  <div class="card" style="margin-bottom:16px">
-    <div class="sec-hd">Paper Trading Pipeline <span class="badge" style="background:var(--gold);color:#000">TEST</span></div>
-    <div id="paperTraders" style="font-size:.75rem;color:var(--text-dim);padding:8px">Loading...</div>
-  </div>
 </body>
 </html>

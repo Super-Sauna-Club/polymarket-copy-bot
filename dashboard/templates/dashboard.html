@@ -418,7 +418,7 @@ tr:hover{background:rgba(201,168,76,0.03)}
       <button class="sfx-btn" id="sfxBtn" onclick="togSfxPanel()"><span id="sfxIco">&#128264;</span> Sound</button>
       <button class="sfx-btn" id="lockBtn" onclick="togLock()" title="Unlock to enable manual close"><span id="lockIco">&#128274;</span></button>
       <button class="sfx-btn" id="wideBtn" onclick="togWide()" title="Switch layout">&#9724; Desktop</button>
-      {% with active='copy' %}{% include '_nav.html' %}{% endwith %}
+      {% with active='dashboard' %}{% include '_nav.html' %}{% endwith %}
     </div>
   </header>
 
@@ -1711,5 +1711,8 @@ function closeTrade(tradeId,btn){
   // No demo on load — only on full hour
 })();
 </script>
+<!-- Shared terminal chrome: popup slot + SSE popup manager -->
+<div class="popup-slot"></div>
+<script src="/static/terminal.js"></script>
 </body>
 </html>
