@@ -1,82 +1,9 @@
 {
-  "last_iteration_ts": "2026-04-13T15:41:00Z",
-  "last_trade_id_seen": 3175,
-  "last_blocked_id_seen": 538857,
-  "last_score_id_seen": 908,
-  "last_brain_decision_id_seen": 492,
-  "last_settings_hash": "3a5adaaa9b819717",
-  "prior_portfolio_total": 90.39,
-  "prior_wallet": 67.47,
-  "prior_positions_onchain": 22.92,
-  "prior_today_pnl": -9.86,
-  "iteration_count": 35,
-  "scorer_feedback_coverage": 0.605,
-  "scorer_feedback_total": 124,
-  "scorer_feedback_with_outcome": 75,
-  "zero_close_session_list": [
-    {"id": 3035, "trader": "KING7777777", "category": "nba", "pnl": -0.37, "market": "Spurs spread"},
-    {"id": 3036, "trader": "KING7777777", "category": "nba", "pnl": -0.55, "market": "Jazz/Lakers O/U"},
-    {"id": 3128, "trader": "KING7777777", "category": "cs", "pnl": -2.35, "market": "HEROIC Academy Map 1"},
-    {"id": 3129, "trader": "KING7777777", "category": "cs", "pnl": -2.27, "market": "HEROIC Academy Map 2"},
-    {"id": 3150, "trader": "KING7777777", "category": "cs", "pnl": -2.11, "market": "ex-RUBY vs Metizport BO3", "closed_iter_35": true}
-  ],
-  "zero_close_total_loss": -9.87,
-  "closed_positions_today": {
-    "count": 12,
-    "realized_pnl": -9.86,
-    "wins": 1,
-    "first_win": "#3146 KING LoL Nongshim +$0.56",
-    "5_zero_closes": 5
-  },
-  "iter_34_correction": {
-    "claim": "systemic APScheduler failure — brain and reconcile dropped",
-    "actual": "scheduler is alive, brain fired at 13:11:55 with 4 decisions, reconcile at 13:13:54, outcome at 13:12:33, auto_tuner at 13:11:55",
-    "cause_of_error": "iter 34 grep window and pattern too narrow; runs were outside the grep time window"
-  },
-  "brain_cycle_13_11_55": {
-    "decisions": [
-      {"id": 489, "action": "TIGHTEN_FILTER", "target": "KING7777777", "reason": "Brain: 11 BAD_PRICE losses for KING7777777"},
-      {"id": 490, "action": "PAUSE_TRADER", "target": "sovereign2013", "reason": "5 consecutive losses", "effect": "logged-only"},
-      {"id": 491, "action": "PAUSE_TRADER", "target": "xsaghav", "reason": "7d PnL $-57.90 < -$20", "effect": "logged-only"},
-      {"id": 492, "action": "PAUSE_TRADER", "target": "fsavhlc", "reason": "7d PnL $-21.05 < -$20", "effect": "logged-only"}
-    ],
-    "cross_cycle_dedup_verified": "TIGHTEN KING last at 09:28:57 (#481), 3h window expired by 13:11:55 — new row allowed as designed",
-    "mutex_unverifiable_this_cycle": "no RELAX attempted because trigger not met, so mutex didn't need to fire"
-  },
-  "auto_tuner_settings_writer_confirmed": {
-    "log_line": "[TUNER] Settings written — copy_trader will reload on next scan",
-    "ts": "2026-04-13 13:11:55",
-    "settings_hash_before": "ffca70f76934079d",
-    "settings_hash_after": "3a5adaaa9b819717",
-    "note": "auto_tuner runs right after brain in the 2h cycle; rewrites TIER-based MAP entries for every historical trader. This (combined with lifecycle bypass fixed in 60158e2) is what reverted my roster cleanup."
-  },
-  "block_oscillation": {
-    "iter_31": 0.85,
-    "iter_32": 10.5,
-    "iter_33": 13.0,
-    "iter_34": 1.74,
-    "iter_35": 22.7,
-    "pattern": "not monotonic — oscillates with match slate density + retired-trader activity bursts"
-  },
-  "trader_snapshots": {
-    "KING7777777": {"n": 128, "wins": 51, "pnl": -16.62, "delta": -3.85, "cause": "#3150 -$2.11 + window rotation lost a win"},
-    "Jargs": {"n": 17, "wins": 8, "pnl": -10.67},
-    "xsaghav": {"n": 179, "wins": 77, "pnl": -61.11, "delta": -3.21, "cause": "2 trades + 2 wins rotated out of 7d window"},
-    "sovereign2013": {"n": 170, "wins": 78, "pnl": -43.75, "delta": -0.13},
-    "fsavhlc": {"n": 20, "wins": 8, "pnl": -21.05}
-  },
-  "scheduled_jobs_status": {
-    "brain": "ALIVE — last cycle 13:11:55, 4 decisions fired",
-    "reconcile": "ALIVE — last run 13:13:54",
-    "outcome_tracker": "ALIVE — last 13:12:33, Tracked 100 blocked trade outcomes",
-    "auto_tuner": "ALIVE — last 13:11:55, wrote settings.env",
-    "ml_trainer": "UNCLEAR — no recent log lines, possibly long interval"
-  },
-  "retired_roster_damage_so_far": {
-    "realized_losses_from_retired_this_session": -0.71,
-    "failed_attempts_blocked": "hundreds per iter",
-    "still_not_cleaned": true,
-    "auto_tuner_keeps_writing_filter_maps_for_them": true
-  },
-  "notes": "Iter 35: #3150 closed ZERO -$2.11 (5th zero-close of session, cumulative -$9.87). Scheduler IS alive — iter 34 diagnosis was wrong. Brain ran 13:11:55 with 4 decisions. Auto_tuner writes settings post-brain (settings_hash changed). Blocks oscillating not trending. KING 7d -$16.62 (window rotation + #3150 loss). Portfolio $90.39."
+  "last_iteration_ts": null,
+  "last_trade_id_seen": 0,
+  "last_brain_decision_id_seen": 0,
+  "prior_portfolio_total": null,
+  "trader_snapshots": {},
+  "iteration_count": 0,
+  "notes": "Initial state. Ralph loop will populate this on first run."
 }
