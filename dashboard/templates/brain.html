@@ -351,10 +351,12 @@ async function refresh(){
       totalWins+=(t.wins||0);totalTrades+=cnt;
       if(pnl>bestPnl) bestPnl=pnl;
       const pl=getPowerLevel(wr,pnl,cnt);
-      // Streak (approximate from last trades)
-      const streak=pnl>0&&wr>55?Math.floor((wr-50)/5):0;
-      if(streak>maxStreak) maxStreak=streak;
-      const isOnFire=streak>=3;
+      // Real streak from API
+      const wStreak=t.win_streak||0;
+      const lStreak=t.loss_streak||0;
+      const streak=wStreak>0?wStreak:-lStreak;
+      if(wStreak>maxStreak) maxStreak=wStreak;
+      const isOnFire=wStreak>=3;
       const kelly=pnl>0?fmt(0.063*wr/50,2)+'x':'0.5x';
       const pnl1d=t.pnl_1d||0;const wr1d=t.winrate_1d||0;const copied=t.copied_trades||0;
       return `<tr${isOnFire?' class="on-fire"':''}>
@@ -362,7 +364,7 @@ async function refresh(){
         <td style="font-weight:600"><a href="https://polymarket.com/profile/${t.trader_name}" target="_blank" style="color:var(--gold);text-decoration:none">${t.trader_name}</a> ${isOnFire?'&#x1F525;':''}</td>
         <td style="font-size:.7rem;font-weight:600">${copied}</td>
         <td><span class="power-level ${pl.cls}">${pl.power}</span> <span style="font-size:.55rem;color:var(--text-dim)">${pl.tier}</span></td>
-        <td>${streak>0?'&#x1F525;'.repeat(Math.min(streak,5)):'--'}</td>
+        <td>${wStreak>=3?'&#x1F525;'.repeat(Math.min(wStreak,5)):lStreak>=3?'&#x1F480;'.repeat(Math.min(lStreak,5)):wStreak>0?'&#x2B50;'.repeat(wStreak):lStreak>0?'&#x274C;'.repeat(lStreak):'--'}</td>
         <td style="color:${wr1d>=60?'var(--green)':wr1d>=40?'var(--gold)':'var(--red)'}">${t.trades_1d>0?fmt(wr1d,1)+'%':'--'}</td>
         <td class="${pnlClass(pnl1d)}">$${fmt(pnl1d)}</td>
         <td>${fmt(wr,1)}%</td>
