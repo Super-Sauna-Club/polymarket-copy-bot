@@ -508,8 +508,8 @@ def _check_trade_limit():
         from bot.order_executor import get_wallet_balance
         cash = get_wallet_balance()
     except Exception:
-        logger.warning("Wallet balance check failed — skipping trade limit check")
-        return True  # Lieber traden als wegen API-Fehler pausieren
+        logger.warning("Wallet balance check failed — blocking trades (fail-closed)")
+        return False  # PATCH-034: fail-closed — don't trade on unknown balance
 
     # Cash unter/gleich Floor -> STOP
     if cash <= dynamic_floor:
@@ -840,7 +840,7 @@ def _position_diff_scan(address: str, username: str, balance: float,
                         pass
 
             entry_price = round(min(entry_price_raw + ENTRY_SLIPPAGE, config.MAX_ENTRY_PRICE_CAP), 4)
-            size = _calculate_position_size(entry_price, balance, trader_name=username)
+            size = _calculate_position_size(entry_price, balance, portfolio_value=portfolio_value, trader_name=username)
             # Cap to match/event remaining budget
             if _diff_remaining is not None and size > _diff_remaining:
                 size = round(_diff_remaining, 2)
@@ -939,6 +939,8 @@ def _position_diff_scan(address: str, username: str, balance: float,
                     trade_id = db.create_copy_trade(trade)
                 except Exception as _ie:
                     logger.warning("[DIFF] DB insert failed (duplicate?): %s", _ie)
+                    continue
+                if not trade_id:
                     continue
             if trade_id:
                 new_trades += 1
