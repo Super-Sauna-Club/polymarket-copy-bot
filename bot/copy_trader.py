@@ -431,7 +431,10 @@ def _calculate_position_size(entry_price: float, cash: float, trader_ratio: floa
 
     size = base * price_mult * clamped_ratio
     size = min(size, MAX_POSITION_SIZE, available)  # never exceed cash
-    return round(max(MIN_TRADE_SIZE, size), 2)
+    # PATCH-030: if available < MIN_TRADE_SIZE, return 0 to block the trade
+    if available < MIN_TRADE_SIZE:
+        return 0
+    return round(max(MIN_TRADE_SIZE, min(size, available)), 2)
 
 
 CASH_FLOOR = config.CASH_FLOOR
@@ -2609,6 +2612,9 @@ def update_copy_positions():
                             _miss_resp = None
                             if LIVE_MODE and trade_cid:
                                 _miss_resp = sell_shares(trade_cid, trade["side"], _close_price)
+                                if not _miss_resp:
+                                    logger.warning("[MISS-CLOSE] Sell failed, keeping open: %s", trade["market_question"][:40])
+                                    continue  # PATCH-030: dont close DB if sell failed
                             if db.close_copy_trade(trade["id"], _pnl, close_price=_close_price):
                                 if _miss_resp:
                                     _correct_sell_pnl(trade, _miss_resp, trade["id"])
