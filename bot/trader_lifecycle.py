@@ -153,12 +153,14 @@ def _check_paper_to_live():
                                   json.dumps({"paper_trades": paper_trades, "paper_wr": paper_wr,
                                               "paper_pnl": paper_pnl}),
                                   "New live trader added")
-        elif paper_trades >= PAPER_MAX_TRADES:
+        # PATCH-038b: Kick after 7 days with negative PnL (configurable via PAPER_MAX_DAYS)
+        _paper_max_days = float(getattr(config, "PAPER_MAX_DAYS", 7))
+        if _days_in_paper >= _paper_max_days and paper_pnl <= 0:
             db.update_lifecycle_status(t["address"], "KICKED",
-                                      "Paper failed after %d trades: %.1f%% WR, $%.2f PnL" % (
-                                          paper_trades, paper_wr, paper_pnl))
-            logger.info("[LIFECYCLE] %s: KICKED (paper failed after %d trades, %.1f%% WR)",
-                        t.get("username", t["address"][:12]), paper_trades, paper_wr)
+                                      "Paper failed after %.0f days: %d trades, $%.2f PnL" % (
+                                          _days_in_paper, paper_trades, paper_pnl))
+            logger.info("[LIFECYCLE] %s: KICKED (paper negative after %.0fd, $%.2f PnL)",
+                        t.get("username", t["address"][:12]), _days_in_paper, paper_pnl)
             db.log_brain_decision("KICK_TRADER", t.get("username", t["address"][:12]),
                                   "Paper failed after %d trades" % paper_trades,
                                   json.dumps({"paper_trades": paper_trades, "paper_wr": paper_wr,
