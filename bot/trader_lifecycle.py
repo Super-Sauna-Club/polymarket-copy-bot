@@ -113,13 +113,19 @@ def _check_paper_to_live():
         paper_wr = t.get("paper_wr", 0) or 0
         paper_pnl = t.get("paper_pnl", 0) or 0
         pause_count = t.get("pause_count", 0) or 0
-        if pause_count > 0:
-            min_trades = PAPER_REHAB_MIN_TRADES
-            min_wr = PAPER_REHAB_MIN_WR
-        else:
-            min_trades = PAPER_MIN_TRADES
-            min_wr = PAPER_MIN_WR
-        if paper_trades >= min_trades and paper_wr >= min_wr and paper_pnl > 0:
+        # PATCH-038: 3 days in paper + PnL > 0 + 10 trades (configurable via PAPER_MIN_DAYS)
+        _paper_min_days = float(getattr(config, "PAPER_MIN_DAYS", 3))
+        _paper_min_trades = 10
+        _status_changed = t.get("status_changed_at", "")
+        _days_in_paper = 0
+        if _status_changed:
+            try:
+                from datetime import datetime as _dt
+                _changed_dt = _dt.strptime(_status_changed, "%Y-%m-%d %H:%M:%S")
+                _days_in_paper = (_dt.now() - _changed_dt).total_seconds() / 86400
+            except Exception:
+                _days_in_paper = 0
+        if _days_in_paper >= _paper_min_days and paper_trades >= _paper_min_trades and paper_pnl > 0:
             if not _auto_promote:
                 # Mirror the pause_trader policy at line 63-64: settings.env is
                 # managed manually. Skip both the status flip and the

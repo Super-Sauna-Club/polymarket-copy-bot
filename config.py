@@ -252,6 +252,7 @@ MAX_RESOLVE_HOURS = int(os.getenv("MAX_RESOLVE_HOURS", "24"))
 # to be silently auto-followed. Now gated: default false, user must explicitly
 # enable OR add the wallet manually via dashboard/settings.
 AUTO_DISCOVERY_AUTO_PROMOTE = os.getenv('AUTO_DISCOVERY_AUTO_PROMOTE', 'false').lower() in ('true', '1', 'yes')
+PAPER_MIN_DAYS = float(os.getenv('PAPER_MIN_DAYS', '3'))
 
 # --- Performance Since ---
 # ISO timestamp. When set, all trader/category performance aggregations
