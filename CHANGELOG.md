@@ -2,6 +2,50 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-13 (Mittag) — All 6 open ralph-loop findings fixed
+
+Ralph-loop ran 24 iterations overnight + morning, surfacing 6 open findings carried over from the previous session. All fixed, tested (30/30 unit tests green), deployed to prod, and smoke-verified on the live server.
+
+### 1. BRAIN_CYCLIC_SPAM → cross-cycle dedup in `log_brain_decision`
+
+`database/db.py` `log_brain_decision()` gained `dedup_hours: int = 3` parameter. Before INSERT, SELECT on `(action, target, created_at >= cutoff)` and skip if match exists. Pass `dedup_hours=0` to disable. Six consecutive brain cycles writing byte-identical rows (TIGHTEN KING / PAUSE sov / PAUSE xsaghav / PAUSE fsavhlc / RELAX KING) now collapse to one row per 3h window.
+
+### 2. EVENT_TIMING re-block spam → in-memory TTL cache on `log_blocked_trade`
+
+`database/db.py` got `_blocked_dedup_cache` (process-local dict) with `_BLOCKED_DEDUP_TTL_SEC=60` and `_BLOCKED_DEDUP_MAX_SIZE=20000`. Key is `(trader, condition_id, block_reason)`. Same key within 60s skips the INSERT silently. Cache flushes completely when oversized (acceptable cost vs. dragging a per-entry LRU into the hot path). Previously `sovereign2013 + 0x14d57e73 + exposure_limit` wrote a row every 10s scan = 360/hour. Now: 1 row per minute max.
+
+### 3. BRAIN_DATA_DIVERGENCE → false alarm, no code change
+
+Investigated `db.get_trader_rolling_pnl()` (db.py:1045). It intentionally uses verified-only mode when >=10 trades have `usdc_received + actual_size IS NOT NULL`. Brain reports KING +$29.17 from 20 verified trades; my naive ralph SELECT summed all 127 closed `pnl_realized` including 107 historical broken-path rows. **Brain is correct, ralph monitoring query was naive.** Documented — no code fix.
+
+### 4. ML_ACCURACY_SUSPICIOUS → COPY-ONLY diagnostics + time-split fix
+
+`bot/ml_scorer.py` `_build_training_data()` had a subtle bug: it concatenated copy_rows then blocked_rows, breaking the chronological 80/20 split. Now merges both sources by `created_at` ASC and returns a 5-tuple `(X, y, is_copy, copy_count, blocked_count)` with an `is_copy` marker aligned to rows.
+
+`train_model()` now slices the test set by `is_copy_test` and computes COPY-ONLY test accuracy + confusion matrix (TP/FP/TN/FN/precision/recall). Logs:
+```
+[ML] COPY-ONLY test subset (n=X, W win/L loss): acc=X% baseline=X% | TP=... FP=... TN=... FN=... | prec=X rec=X
+```
+This exposes whether the 94.9% headline is driven by the blocked_trades population (where extreme-price markets trivially win) vs. actual copy-trade predictive power.
+
+### 5. WHALE_AUTO_COPY_PATH → gated behind `AUTO_DISCOVERY_AUTO_PROMOTE`
+
+`bot/auto_discovery.py:397` used to unconditionally call `_add_followed_trader()` + `db.add_followed_wallet()` when a DISCOVERED wallet met WR+PnL thresholds. This silently followed two whale wallets (`0x3e5b23e9...` and `0x6bab41a0...`) that produced live copy_trades (#3124-#3127, combined -$0.81).
+
+Fix: new config flag `AUTO_DISCOVERY_AUTO_PROMOTE` (default `false`). When false, logs `"meets promote criteria but AUTO_PROMOTE=false — review manually"` and leaves the wallet in DISCOVERED state. User must explicitly enable or add via dashboard. Also manually `UPDATE wallets SET followed=0` for the two previously-auto-followed wallets.
+
+### 6. DB_VS_WALLET_POSITION_DIVERGENCE → scheduled reconciliation job
+
+New `reconcile_db_vs_wallet()` in `main.py`. Fetches on-chain positions from `data-api.polymarket.com/positions?user=<funder>`, computes `{ghost_cids}` (on-chain but not in DB-open) and `{orphan_cids}` (DB-open but not on-chain), logs counts + first 3 samples of each category, and estimated ghost USD value. APScheduler runs it every 30min starting 7min after bot start.
+
+### Tests
+
+New file `tests/test_log_dedup.py` with 12 regression tests covering both dedup mechanisms: first-call writes, within-TTL skipped, different key still writes, simulated 500-iter scan loop keeps 1 row, simulated 5 brain cycles dedup to 5 rows, `dedup_hours=0` disables guard. Updated `tests/test_ml_time_split.py` to expect the new 5-tuple and assert `COPY-ONLY` appears in training logs. All 30/30 unit tests pass.
+
+### Production smoke verification
+
+Post-deploy, ran a Python smoke test against the live server confirming each fix is loaded: AUTO_PROMOTE=False, `_blocked_dedup_cache` exists, `log_brain_decision` signature has `dedup_hours=3`, `_build_training_data` returns 5 values, `reconcile_db_vs_wallet` function exists, scheduler has `reconcile_db_wallet` job. All PASS. Bot running clean at $91.69, 0 errors.
+
 ## 2026-04-13 (Morgen) — Feedback-loop gap patch + trailing-stop extended disable
 
 Two critical production bugs found during ~15h overnight ralph-loop monitoring of Round 4 work.

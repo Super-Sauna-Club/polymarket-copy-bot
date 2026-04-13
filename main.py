@@ -187,6 +187,77 @@ def track_blocked_outcomes():
         logger.warning("Outcome tracker error: %s", e)
 
 
+def reconcile_db_vs_wallet():
+    """Reconcile copy_trades open positions against actual on-chain wallet
+    holdings. Detects DB_VS_WALLET_POSITION_DIVERGENCE: positions held on
+    chain but not tracked in copy_trades (ghost positions from broken
+    historical paths) and copy_trades marked open without an on-chain
+    holding (orphaned DB rows).
+
+    Runs every 30 min. Only LOGS findings — does not auto-modify the DB
+    (too risky to import positions or close orphans without user review).
+    """
+    try:
+        import requests as _rq
+        from database.db import get_connection as _gc
+        funder = config.POLYMARKET_FUNDER
+        if not funder:
+            return
+        # Fetch live on-chain positions
+        try:
+            _r = _rq.get("https://data-api.polymarket.com/positions",
+                         params={"user": funder, "limit": 500, "sizeThreshold": 0},
+                         timeout=15)
+            if not _r.ok:
+                return
+            chain_positions = _r.json() or []
+        except Exception as _e:
+            logger.debug("[RECONCILE] positions fetch failed: %s", _e)
+            return
+
+        chain_cids = {p.get("conditionId", "") for p in chain_positions if p.get("conditionId") and float(p.get("currentValue", 0) or 0) > 0.10}
+
+        # DB open copy_trades
+        with _gc() as _conn:
+            db_open = _conn.execute(
+                "SELECT id, condition_id, market_question, actual_size FROM copy_trades "
+                "WHERE status='open' AND condition_id != ''"
+            ).fetchall()
+        db_cids = {r["condition_id"] for r in db_open}
+
+        # Ghost: on chain but not in DB
+        ghost_cids = chain_cids - db_cids
+        # Orphan: in DB open but not on chain
+        orphan_cids = db_cids - chain_cids
+
+        ghost_value = sum(
+            float(p.get("currentValue", 0) or 0)
+            for p in chain_positions
+            if p.get("conditionId") in ghost_cids
+        )
+
+        if ghost_cids or orphan_cids:
+            logger.info("[RECONCILE] %d ghost (on-chain not in DB, $%.2f value), %d orphan (DB open not on chain). DB open=%d, chain=%d",
+                        len(ghost_cids), ghost_value, len(orphan_cids), len(db_open), len(chain_cids))
+            # Log a few sample ghost titles for debugging
+            if ghost_cids:
+                _samples = [p for p in chain_positions if p.get("conditionId") in ghost_cids][:3]
+                for _s in _samples:
+                    logger.info("[RECONCILE]   ghost: %s ($%.2f) — %s",
+                                _s.get("conditionId", "")[:14],
+                                float(_s.get("currentValue", 0) or 0),
+                                (_s.get("title") or "")[:50])
+            if orphan_cids:
+                _orphans = [r for r in db_open if r["condition_id"] in orphan_cids][:3]
+                for _o in _orphans:
+                    logger.info("[RECONCILE]   orphan: #%d %s ($%.2f size)",
+                                _o["id"], (_o["market_question"] or "")[:50], _o["actual_size"] or 0)
+        else:
+            logger.debug("[RECONCILE] OK — DB open (%d) matches chain (%d)", len(db_open), len(chain_cids))
+    except Exception as e:
+        logger.warning("Reconcile error: %s", e)
+
+
 def ai_analyze():
     """Run Claude AI analysis on blocked vs executed trades (every 6h)."""
     from bot.ai_analyzer import analyze_and_recommend
@@ -650,6 +721,15 @@ def main():
         minutes=30,
         id="outcome_tracker",
         next_run_time=datetime.now() + timedelta(minutes=5),
+    )
+    # DB-vs-wallet reconciliation: detect ghost positions (on-chain not in
+    # DB) and orphan rows (DB open not on chain). Log-only — no auto-fix.
+    scheduler.add_job(
+        reconcile_db_vs_wallet,
+        "interval",
+        minutes=30,
+        id="reconcile_db_wallet",
+        next_run_time=datetime.now() + timedelta(minutes=7),
     )
     # AI Analysis: Claude analyzes blocked vs executed trades (every 6 hours)
     if config.ANTHROPIC_API_KEY:
