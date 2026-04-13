@@ -2,6 +2,54 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-13 (Morgen) — Feedback-loop gap patch + trailing-stop extended disable
+
+Two critical production bugs found during ~15h overnight ralph-loop monitoring of Round 4 work.
+
+### 1. Feedback loop missing call sites (commit `26099b1`)
+
+Round 4 Task 2 patched `update_trade_score_outcome` into 3 close paths in `copy_trader.py` (resolved-at-0.99/0.01, stop-loss, trailing-stop). Overnight analysis showed the real bot closes trades via **8 additional code paths**, none of which were calling the feedback helper. Concrete failure: on 2026-04-13 #3128 (KING7777777 CS Map 1 HEROIC Academy, -$2.35 total loss) closed via the `main.py` AUTO-CLOSE-lost periodic price check, and the matching `trade_scores` row #743 stayed at `outcome_pnl=NULL` until I manually backfilled it. Feedback coverage was stuck at 59/742 for 15+ ralph iterations because most closes bypass the patched paths entirely.
+
+Patched sites:
+- `bot/copy_trader.py` FAST-SELL (trader exited → we sell, line 1581)
+- `bot/copy_trader.py` FAST-SELL cascade (secondary same-cid closes, line 1590)
+- `bot/copy_trader.py` TAKE-PROFIT (line 2434)
+- `bot/copy_trader.py` trader-closed-it fallback (line 2481)
+- `bot/copy_trader.py` Gamma API fallback resolved (line 2523)
+- `bot/copy_trader.py` miss-close (line 2565)
+- `main.py` AUTO-CLOSE lost (line 286) — added `wallet_username` to the SELECT so the helper can match
+- `main.py` AUTO-CLOSE won (line 325) — same
+
+All call the same try/except pattern and use `db.update_trade_score_outcome(cid, trader, pnl)`. Silent debug-log on exception. Score `trade_id` linkage still null at write time (happens in scorer.log_trade_score), but `(cid, trader)` match on newest NULL-outcome row is reliable — no window filter since NO_REBUY_MINUTES=120 guarantees one NULL row per pair.
+
+### 2. Trailing stop extended disable — cover thin-book US sports (same commit)
+
+Piff's esports disable (cs/lol/valorant/dota) was introduced in Round 4 because trailing-stop fills were walking the book below the -20c max slippage config on thin orderbooks. Analysis of today's real trades showed **the exact same pattern on NBA markets**:
+
+| Trade | Market | Entry | Peak | Quote @ trigger | Actual fill | Loss |
+|---|---|---|---|---|---|---|
+| #3035 | Spurs spread (nba) | 0.51 | 0.67 | 0.55 | ~0.34 | -$0.37 |
+| #3036 | Jazz/Lakers O/U (nba) | 0.51 | 0.665 | 0.54 | ~0.27 | -$0.55 |
+
+Both triggered correctly (peak − 12c margin), both filled ~20-27c below quote = 50% slippage = trailing stop actually destroyed realized PnL instead of protecting it. Combined peak-unrealized was +$0.57, combined realized was -$0.92. $1.49 destroyed on $2.25 capital (**66%** value destruction peak-to-exit).
+
+Extended `_ts_thin_book` list to include `nba`, `mlb`, `nhl` alongside esports. Variable renamed from `_ts_is_esports` to `_ts_thin_book` to reflect broader semantics. TRAILING_STOP_ENABLED still checked; only these categories are excluded.
+
+### Side note: manual backfill of #743
+
+Before the code patches, I manually ran `UPDATE trade_scores SET outcome_pnl=-2.35, trade_id=3128 WHERE id=743` to unstick the 15-iteration feedback coverage stall. Feedback coverage went from 59/743 → 60/755 (new scores arrived in parallel). Going forward, the code patches above should keep coverage growing organically without manual intervention.
+
+### Ralph loop findings still open (not fixed this commit)
+
+- **BRAIN_CYCLIC_SPAM**: 6 consecutive brain cycles wrote the byte-identical 5 decisions (TIGHTEN KING / PAUSE sov / PAUSE xsaghav / PAUSE fsavhlc / RELAX KING). Need cross-cycle dedup in `log_brain_decision` — skip if the same `(action, target, reason)` was written in the last N hours.
+- **BRAIN_DATA_DIVERGENCE**: brain reports KING7777777 7d pnl +$31.52 / 53% WR across 6 cycles; ralph SELECT on same window shows -$6 to -$10 / 41%. `db.get_trader_rolling_pnl` is reading something different. Worth grepping the helper to find the discrepancy.
+- **EVENT_TIMING stuck at ~540**: same pre-game markets re-blocked every scan for 10+ iters without dedup. A 5-min TTL cache on `(trader, cid)` would eliminate thousands of redundant `blocked_trades` inserts.
+- **ML_ACCURACY_SUSPICIOUS**: training logs show 94.9% test accuracy vs 65.3% baseline (29.6pp gap). Probable feature leakage via `entry_price`/`category` correlation with `blocked_trades.would_have_won` (most training data is extreme-price markets where high prices win trivially). Live evidence: the ML penalty demoted score #743 (KING CS) from BOOST (79.4) to EXECUTE (64), predicting <30% win prob — which happened to be correct this one time, but sample=1. Morning report should include a confusion-matrix check on the 614-copy-trades subset only.
+- **WHALE_AUTO_COPY_PATH**: `auto_discovery` produces real copy_trades from DISCOVERED-status wallets (#3124-#3127 from `0x3e5b23e9f7`, combined -$0.81). Decision pending whether this is intentional.
+- **DB_VS_WALLET_POSITION_DIVERGENCE**: wallet snapshot shows $17 in positions while `copy_trades WHERE status='open'` shows 0 rows. Reconciliation job needed.
+
+---
+
 ## 2026-04-12 (Spaet-Nacht) — Merge piff-custom PATCH-023..026 + HEDGE_WAIT parse fix
 
 Pulled piff's full patch series (PATCH-001..026) into main via merge commit `74b66d5`. Piff had merged our Round 4 into his branch (`piff-custom`) and then applied four patch commits with bug fixes to the Round 4 work:
