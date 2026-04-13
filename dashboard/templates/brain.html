@@ -337,11 +337,14 @@ async function refresh(){
 
   // Trader performance with power levels
   const tp=await fetchJSON('/api/upgrade/trader-performance');
+  const tuner=await fetchJSON('/api/brain/tuner-settings');
   let bestPnl=0, maxStreak=0, totalWins=0, totalTrades=0;
   if(tp&&tp.traders){
     const tbody=document.getElementById('tTraders');
     tbody.innerHTML=tp.traders.map(t=>{
       const status=t.trader_status||'active';
+      const tn=(t.trader_name||'').toLowerCase();
+      if(tuner&&tuner.traders&&tuner.traders[tn]){t._tuner=tuner.traders[tn].changes_summary||'';}
       const dot=`<span class="status-dot status-${status}"></span>`;
       const wr=t.winrate||0;const pnl=t.total_pnl||0;const cnt=t.trades_count||0;
       totalWins+=(t.wins||0);totalTrades+=cnt;
@@ -364,7 +367,7 @@ async function refresh(){
         <td>${fmt(wr,1)}%</td>
         <td class="${pnlClass(pnl)}">$${fmt(pnl)}</td>
         <td style="font-size:.65rem">${kelly}</td>
-        <td style="font-size:.65rem">${t.reason||status}</td>
+        <td style="font-size:.65rem">${t._tuner||''} <span style="opacity:.6">${t.reason||status}</span></td>
       </tr>`;
     }).join('');
   }
