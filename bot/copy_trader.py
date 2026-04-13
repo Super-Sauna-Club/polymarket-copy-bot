@@ -329,7 +329,7 @@ _CATEGORY_KEYWORDS = {
             "lions", "packers", "texans", "bengals", "steelers", "broncos", "chargers", "rams",
             "seahawks", "bears", "vikings", "saints", "falcons", "buccaneers", "commanders",
             "cardinals", "colts", "jaguars", "titans", "raiders", "jets", "patriots", "panthers", "giants"],
-    "tennis": ["tennis", "atp", "wta", "roland garros", "wimbledon", "us open tennis",
+    "tennis": ["tennis", "atp", "wta", "roland garros", "wimbledon", "us open tennis", "barcelona open",
                "australian open", "monte carlo", "madrid open", "rome open", "indian wells",
                "miami open", "campinas", "sarasota", "monza", "challenger",
                "upper austria", "linz",  # WTA Linz tournament
@@ -348,7 +348,7 @@ _CATEGORY_KEYWORDS = {
                "basavareddy", "draxl", "moutet", "atmane", "popyrin", "cilic"],
     "soccer": ["soccer", "football", "premier league", "la liga", "bundesliga", "serie a",
                "ligue 1", "champions league", "ucl", "europa league", "mls",
-               "bayern", "barcelona", "madrid", "arsenal", "liverpool", "manchester",
+               "bayern", "fc barcelona", "barcelona fc", "barca", "madrid", "arsenal", "liverpool", "manchester",
                "chelsea", "tottenham", "juventus", "inter milan", "ac milan", "psg",
                "freiburg", "dortmund", "southampton", "liga mx", "copa",
                "calcio", "genoa", "sassuolo", "napoli", "lazio", "roma", "fiorentina",
@@ -935,11 +935,11 @@ def _position_diff_scan(address: str, username: str, balance: float,
                     _apply_fill_details(trade, order_resp, size, entry_price)
                     size = trade["size"]
 
-            try:
-                trade_id = db.create_copy_trade(trade)
-            except Exception as _ie:
-                logger.warning("[DIFF] DB insert failed (duplicate?): %s", _ie)
-                continue
+                try:
+                    trade_id = db.create_copy_trade(trade)
+                except Exception as _ie:
+                    logger.warning("[DIFF] DB insert failed (duplicate?): %s", _ie)
+                    continue
             if trade_id:
                 new_trades += 1
                 total_invested += size
@@ -1589,9 +1589,10 @@ def copy_followed_wallets():
         if new_sells:
             open_by_cid = {t["condition_id"]: t for t in _cached_open_trades if t["condition_id"] and t["wallet_address"] == address}
             for sell in new_sells:
-                _last_processed_ts = max(_last_processed_ts, sell.get("timestamp", 0))
                 sell_cid = sell.get("condition_id", "")
                 if not sell_cid or sell_cid in _already_sold_cids:
+                    # Safe to bump ts for skipped/duplicate sells
+                    _last_processed_ts = max(_last_processed_ts, sell.get("timestamp", 0))
                     continue
                 if sell_cid in open_by_cid:
                     our_trade = open_by_cid[sell_cid]
@@ -1604,8 +1605,9 @@ def copy_followed_wallets():
                     if LIVE_MODE and sell_cid:
                         sell_resp = sell_shares(sell_cid, our_trade["side"], sell_price)
                         if not sell_resp:
-                            logger.warning("[FAST-SELL] Sell failed, keeping position open: %s", our_trade["market_question"][:40])
-                            _already_sold_cids.add(sell_cid)
+                            logger.warning("[FAST-SELL] Sell failed, will RETRY next scan: %s", our_trade["market_question"][:40])
+                            # Do NOT bump _last_processed_ts — event stays unconsumed for retry
+                            # Do NOT add to _already_sold_cids — allow retry within same scan
                             continue
                     # Atomic DB close — only if WE are the one closing (prevents double close)
                     if not db.close_copy_trade(our_trade["id"], pnl, close_price=sell_price):
@@ -1624,6 +1626,7 @@ def copy_followed_wallets():
                     except Exception as _score_e:
                         logger.debug("[FEEDBACK] update_trade_score_outcome failed: %s", _score_e)
                     _already_sold_cids.add(sell_cid)
+                    _last_processed_ts = max(_last_processed_ts, sell.get("timestamp", 0))
                     # Close ALL other open trades on same condition_id — sell each one too
                     _other_on_cid = [t for t in _cached_open_trades if t.get("condition_id") == sell_cid and t.get("id") != our_trade["id"]]
                     for _ot in _other_on_cid:
@@ -1645,6 +1648,9 @@ def copy_followed_wallets():
                         })
                     except Exception:
                         pass
+                else:
+                    # No matching open trade — safe to consume this sell event
+                    _last_processed_ts = max(_last_processed_ts, sell.get("timestamp", 0))
 
         # Position-Diff: Fallback für Trades die der Activity-Feed verpasst hat
         if config.POSITION_DIFF_ENABLED:
@@ -2495,6 +2501,42 @@ def update_copy_positions():
 
 
                     else:
+                        # --- STOP-LOSS CHECK (even when trader closed / position not in open) ---
+                        _sl_ep = _get_entry_price(trade)
+                        _sl_cur = trade.get("current_price") or _sl_ep
+                        try:
+                            from bot.ws_price_tracker import price_tracker
+                            _sl_live = price_tracker.get_price(trade_cid, trade.get("side", "YES"))
+                            if _sl_live and _sl_live > 0:
+                                _sl_cur = _sl_live
+                        except Exception:
+                            pass
+                        _sl_trader2 = (trade.get("wallet_username") or "").lower()
+                        _sl_pct2 = _STOP_LOSS_MAP.get(_sl_trader2, config.STOP_LOSS_PCT)
+                        if _sl_pct2 > 0 and _sl_ep > 0 and _sl_cur > 0:
+                            _sl_loss = (_sl_ep - _sl_cur) / _sl_ep
+                            if _sl_loss >= _sl_pct2:
+                                _sl_pnl2, _ = _calc_pnl(trade, _sl_cur)
+                                _sl_resp2 = None
+                                if LIVE_MODE and trade_cid:
+                                    _sl_resp2 = sell_shares(trade_cid, trade["side"], _sl_cur)
+                                    if not _sl_resp2:
+                                        logger.warning("[STOP-LOSS] Sell failed (trader closed path), keeping open: %s", trade["market_question"][:40])
+                                        continue
+                                if not db.close_copy_trade(trade["id"], _sl_pnl2):
+                                    continue
+                                if _sl_resp2:
+                                    _correct_sell_pnl(trade, _sl_resp2, trade["id"])
+                                logger.info("[STOP-LOSS] #%d closed at %.0f%% loss (trader closed, price dropped): $%.2f | %s",
+                                            trade["id"], _sl_loss * 100, _sl_pnl2, trade["market_question"][:40])
+                                db.log_activity("sell", "LOSS", "Stop-loss triggered (trader closed path)",
+                                                "#%d %s | P&L $%+.2f" % (trade["id"], trade["market_question"][:35], _sl_pnl2), round(_sl_pnl2, 2))
+                                try:
+                                    db.update_trade_score_outcome(trade_cid, trade.get("wallet_username","") or "", _sl_pnl2)
+                                except Exception:
+                                    pass
+                                continue
+
                         # --- NOT IN OPEN: Check if trader closed it ---
                         if trade_cid and trade_cid in closed_cids:
                             closed_pos = next((p for p in closed_positions if p.get("condition_id") == trade_cid), None)

@@ -132,8 +132,14 @@ def check_trader_exits():
                         logger.info("[SMART-SELL] Force-closed after %d fails at %.0fc: %s",
                                     _sell_fail_count[_fid], current*100, our_trade["market_question"][:40])
                         _sell_fail_count.pop(_fid, None)
+                    elif _sell_fail_count[_fid] >= 10:
+                        # PATCH-032: force-close after 10 fails at ANY price (prevents stuck positions)
+                        closed = db.close_copy_trade(_fid, pnl, close_price=current)
+                        logger.info("[SMART-SELL] Force-closed after %d fails (any price) at %.0fc: %s",
+                                    _sell_fail_count[_fid], current*100, our_trade["market_question"][:40])
+                        _sell_fail_count.pop(_fid, None)
                     else:
-                        logger.warning("[SMART-SELL] Sell failed (%d/5), keeping open: %s",
+                        logger.warning("[SMART-SELL] Sell failed (%d/10), keeping open: %s",
                                        _sell_fail_count[_fid], our_trade["market_question"][:40])
                         closed = False
                 if closed:
