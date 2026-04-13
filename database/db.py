@@ -13,6 +13,9 @@ import config
 def init_db():
     os.makedirs(os.path.dirname(config.DB_PATH), exist_ok=True)
     with get_connection() as conn:
+        # PATCH-034: WAL pragma moved to init_db()
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-8192")
         conn.executescript(SCHEMA)
         if SCHEMA_UPGRADE:
             conn.executescript(SCHEMA_UPGRADE)
@@ -54,7 +57,7 @@ def init_db():
 def get_connection():
     conn = sqlite3.connect(config.DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    # PATCH-034: WAL pragma moved to init_db()
     conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
