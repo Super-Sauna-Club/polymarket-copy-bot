@@ -11,6 +11,8 @@ from database import db
 from bot.wallet_scanner import fetch_wallet_positions
 import config
 
+_sell_fail_count = {}  # PATCH-029: consecutive sell failure counter
+
 logger = logging.getLogger(__name__)
 
 # Cooldown: cid -> timestamp, verhindert doppelte Sells

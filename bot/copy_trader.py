@@ -301,9 +301,8 @@ def _reload_maps():
             _CATEGORY_BLACKLIST[name] = cats
 
     # PATCH-026: hot-reload HEDGE_WAIT_TRADERS
-    _hw_raw = vals.get("HEDGE_WAIT_TRADERS", "")
-    if _hw_raw:
-        config.HEDGE_WAIT_TRADERS = _hw_raw
+    # PATCH-029: unconditional reload
+    config.HEDGE_WAIT_TRADERS = vals.get("HEDGE_WAIT_TRADERS", config.HEDGE_WAIT_TRADERS)
 
     logger.info("[RELOAD] Settings maps refreshed (%d trader configs)", len(_BET_SIZE_MAP))
 
