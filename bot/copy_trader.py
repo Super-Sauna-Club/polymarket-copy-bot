@@ -2505,8 +2505,8 @@ def update_copy_positions():
                         _sl_ep = _get_entry_price(trade)
                         _sl_cur = trade.get("current_price") or _sl_ep
                         try:
-                            from bot.ws_price_tracker import price_tracker
-                            _sl_live = price_tracker.get_price(trade_cid, trade.get("side", "YES"))
+                            from bot import ws_price_tracker as _ws_pt
+                            _sl_live = _ws_pt.price_tracker.get_price(trade_cid, trade.get("side", "YES"))
                             if _sl_live and _sl_live > 0:
                                 _sl_cur = _sl_live
                         except Exception:
