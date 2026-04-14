@@ -138,6 +138,12 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 .fp-leg.fp-keep::before{content:"";width:9px;height:9px;background:var(--green);border-radius:2px}
 .fp-leg.fp-review::before{content:"";width:9px;height:9px;background:var(--gold);border-radius:2px}
 .fp-leg.fp-insuff::before{content:"";width:9px;height:9px;background:var(--text-dim);border-radius:2px;opacity:.5}
+/* Meta pill severity colors — bright red when at least one filter is
+   over-blocking winners (LOOSEN), green when everything's clean, dim
+   otherwise. Overrides the base .pill styling via higher specificity. */
+.pill.fp-meta-alert{background:rgba(248,113,113,0.18);border:1px solid rgba(248,113,113,0.55);color:var(--red);text-shadow:0 0 8px rgba(248,113,113,0.35)}
+.pill.fp-meta-ok{background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.45);color:var(--green)}
+.pill.fp-meta-neutral{opacity:.7}
 .ml-cell{background:var(--bg3);border:1px solid var(--border);padding:10px 8px;text-align:center;
   position:relative;overflow:hidden;min-width:0}
 .ml-cell::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
@@ -2089,7 +2095,19 @@ function renderFilterPrecision(data){
   }
   var rows=data.rows||[];
   var m=data.meta||{};
-  if(meta)meta.textContent=(rows.length+' filters · '+(m.total_verified_rows||0)+' verified rows');
+  // Count recommendations so the meta pill can colorize the severity.
+  var loosenN=0,keepN=0,reviewN=0;
+  rows.forEach(function(r){
+    if(r.recommendation==='LOOSEN')loosenN++;
+    else if(r.recommendation==='KEEP')keepN++;
+    else if(r.recommendation==='REVIEW')reviewN++;
+  });
+  if(meta){
+    var txt=rows.length+' filters · '+(m.total_verified_rows||0)+' verified rows';
+    if(loosenN>0)txt+=' · '+loosenN+' LOOSEN';
+    meta.textContent=txt;
+    meta.className='pill'+(loosenN>0?' fp-meta-alert':(keepN>0?' fp-meta-ok':' fp-meta-neutral'));
+  }
   if(!rows.length){
     var tr2=document.createElement('tr');
     var td2=document.createElement('td');
