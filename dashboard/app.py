@@ -1554,6 +1554,15 @@ def api_upgrade_status():
             "ORDER BY trained_at DESC LIMIT 1"
         ).fetchone()
         result["ml_model"] = dict(ml) if ml else None
+        # Live count of eligible training samples (closed copy_trades with pnl),
+        # so the dashboard counter reflects reality between 6h retrain cycles
+        # instead of staying frozen on the training-time snapshot.
+        if result["ml_model"] is not None:
+            live = conn.execute(
+                "SELECT COUNT(*) AS n FROM copy_trades "
+                "WHERE status='closed' AND pnl_realized IS NOT NULL"
+            ).fetchone()
+            result["ml_model"]["samples_available"] = int(live["n"] or 0) if live else 0
 
     # Candidates count
     with db.get_connection() as conn:

@@ -2048,7 +2048,9 @@ async function refresh(){
   var totDec=(decisions&&decisions.length)||0;
   setCounter('decisions',totDec);
 
-  var mlSamples=(status&&status.ml_model&&status.ml_model.samples_count)||0;
+  // Prefer live eligible count over the training-time snapshot so the
+  // counter reflects new closes as they happen (not just at 6h retrain).
+  var mlSamples=(status&&status.ml_model&&(status.ml_model.samples_available||status.ml_model.samples_count))||0;
   setCounter('samples',mlSamples);
 
   var cands=(status&&status.candidates&&status.candidates.total)||0;
