@@ -1562,13 +1562,19 @@ function renderPaperSummary(data){
   var tbody=tbl.querySelector('tbody');
   var countEl=$('#paperSummaryCount');
   while(tbody.firstChild)tbody.removeChild(tbody.firstChild);
-  var list=(data&&data.paper_traders)||[];
-  if(countEl)countEl.textContent=list.length+' traders';
+  var allList=(data&&data.paper_traders)||[];
+  // Show only the formally promoted/paper-follow traders, like piff's view.
+  // The full observing-set still lives in the per-trade Live Proving Ground table below.
+  var list=allList.filter(function(p){
+    var s=String(p.status||'').toUpperCase();
+    return s==='PROMOTED'||s==='PAPER_FOLLOW'||s==='LIVE_FOLLOW';
+  });
+  if(countEl)countEl.textContent=list.length+' promoted';
   if(list.length===0){
     var tr=document.createElement('tr');
     var td=document.createElement('td');td.colSpan=14;
     td.style.color='var(--text-dim)';td.style.textAlign='center';td.style.padding='14px';
-    td.textContent='no traders in paper trading';
+    td.textContent='no promoted traders yet';
     tr.appendChild(td);tbody.appendChild(tr);return;
   }
   list.forEach(function(p){
