@@ -2,7 +2,99 @@
 
 Session-level notes. For full commit history see `git log`.
 
-## 2026-04-14 (latest) — Hard-cap _get_max_copies at 1 to match DB UNIQUE index
+## 2026-04-14 (latest) — Outcome tracker: DESC order + limit 500 to unblock Filter Precision Audit
+
+After the MAX_DAILY_TRADES removal (earlier today) turned on the full
+block-logging flow again, I looked at the Filter Precision Audit panel
+to see if it would start recommending "LOOSEN" on aggressive filters
+(e.g. xsaghav getting 60 blocks per 25 minutes, mostly `price_range`
+and `conviction_ratio`, even though xsaghav is all-time verified +$91).
+The panel only showed 3 buckets: `category_blacklist` KEEP,
+`event_timing` NO_CONFIDENT, `min_trader_usd` INSUFFICIENT. Everything
+else missing.
+
+### Why
+
+`outcome_tracker.track_outcomes` calls
+`db.get_blocked_trades_unchecked(limit=100)` every 30 min. The DB
+function used `ORDER BY created_at ASC LIMIT ?` — FIFO. With blocked
+volume at 6500-150k/day and tracker capacity at 4800/day, the queue
+was in permanent overflow. The tracker was stuck on the oldest 2026-04-10
+`category_blacklist` rows from id≈17k onwards, never reaching the more
+recent reasons. Evidence:
+
+```
+Unchecked blocked_trades per reason (2026-04-14):
+  category_blacklist  307628   min_id=17221  oldest=Apr 10 23:16
+  event_timing        102446   min_id=17233  oldest=Apr 10 23:16
+  price_range          65373   min_id=36296  oldest=Apr 11 00:35  (never reached)
+  exposure_limit       37144   min_id=40112  oldest=Apr 11 00:51  (never reached)
+  no_rebuy             14073   min_id=42368  oldest=Apr 11 01:00  (never reached)
+  min_trader_usd        3218
+  conviction_ratio      2180   min_id=442771 oldest=Apr 12 20:53  (far out of reach)
+```
+
+Label rate per reason showed the damage:
+```
+  category_blacklist    4.5%  labeled
+  event_timing          2.4%  labeled
+  min_trader_usd        2.2%  labeled
+  max_copies           13.0%  labeled
+  price_range         0.003%  labeled  (2 rows out of 65k)
+  exposure_limit        0%    labeled
+  conviction_ratio      0%    labeled
+  no_rebuy              0%    labeled
+```
+
+Because `_build_block_training_data` filters `WHERE would_have_won IS
+NOT NULL`, the block-model and Filter Precision Audit literally could
+not see any of the zero-labeled reasons. They were structurally blind.
+
+### Fix
+
+- `database/db.py::get_blocked_trades_unchecked` — flip `ORDER BY` from
+  `ASC` to `DESC`. Tracker now processes newest unchecked rows first.
+  Historical backlog from Apr 10-11 stays unlabeled, which is fine —
+  those markets are long resolved, and the Filter Precision Audit
+  already drops stale `category_blacklist` rows via its own stale-filter
+  anyway (13,619 stale rows dropped per audit call today).
+
+- `bot/outcome_tracker.py::track_outcomes` — bump `limit` from 100 to
+  500 per run. At 2 runs/hour that's ~24k labels/day vs old 4800/day.
+  Each row costs ~0.2s (rate limit sleep), so 500 rows take ~100s per
+  30min run — 94% idle on the interval, no overlap risk.
+
+### Expected effects
+
+- Tracker starts labeling NEW unchecked rows at ~1000/hour across all
+  reasons proportionally to their current inflow rate.
+- Within 1-2 hours the reasons that currently have 0 labels
+  (`price_range`, `exposure_limit`, `conviction_ratio`, `no_rebuy`)
+  should have 50-200 labels each.
+- Next `ml_train` cycle (6h interval from main.py apscheduler, or
+  manually triggerable) retrains `ml_block` on the expanded dataset
+  and re-exposes the new reasons to Filter Precision Audit's
+  `min_samples=100` threshold.
+- Filter Precision Audit panel on `/brain` dashboard should show 6-8
+  buckets instead of 3 within ~1 day.
+- Actionable signal for xsaghav: if `price_range`/`exposure_limit`
+  blocks on winning traders show high WR in the labeled slice, the
+  LOOSEN recommendation will surface automatically.
+
+### What was not done
+
+- **No stratified sampling** (e.g. round-robin by reason) — kept the
+  single-field ORDER BY for simplicity. The DESC flip already solves
+  the visibility problem for new reasons, and we can revisit if
+  coverage skew becomes an issue later.
+- **No deletion of the historical backlog** — the 480k stale rows
+  stay in the table. They're not processed but don't interfere with
+  the audit (stale-filter already handles them) and serve as
+  historical record.
+
+---
+
+## 2026-04-14 (later) — Hard-cap _get_max_copies at 1 to match DB UNIQUE index
 
 Immediately after removing `MAX_DAILY_TRADES=30` and fixing the compound slowdown (previous entry), the bot resumed active copying and uncapped a latent bug that the daily cap had been masking for 2 days: `sqlite3.IntegrityError: UNIQUE constraint failed: copy_trades.condition_id, copy_trades.wallet_address` firing every 10s on sovereign2013 positions.
 

@@ -971,12 +971,26 @@ def get_blocked_trades_since(hours: int = 24, limit: int = 2000) -> list:
 
 
 def get_blocked_trades_unchecked(limit: int = 500) -> list:
-    """Get blocked trades that haven't had their outcome checked yet."""
+    """Get blocked trades that haven't had their outcome checked yet.
+
+    Ordered DESC (newest first) instead of ASC. Rationale: the labeling
+    backlog is ~480k rows (2026-04-14) and grows faster than the tracker
+    processes it (6500-150k/day new vs 4800/day tracker capacity at old
+    limit=100). ASC meant the tracker was eternally stuck on Apr 10-11
+    category_blacklist rows from id=17221 forward, never reaching the
+    more recent block_reason rows. As a consequence, Filter Precision
+    Audit was structurally blind to price_range / exposure_limit /
+    conviction_ratio / no_rebuy because those reasons had 0 labeled
+    rows despite 2-65k total entries each. DESC processes the newest
+    unchecked rows first — relevant for training, current regime,
+    filter audit panel — while the historical backlog of long-resolved
+    markets is allowed to stay unlabeled (it's stale anyway).
+    """
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT * FROM blocked_trades WHERE outcome_price IS NULL "
             "AND condition_id != '' "
-            "ORDER BY created_at ASC LIMIT ?", (limit,)
+            "ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
 

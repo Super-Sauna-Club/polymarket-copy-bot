@@ -127,7 +127,13 @@ def track_outcomes():
     except Exception as e:
         logger.debug("[OUTCOME] backfill error: %s", e)
 
-    unchecked = db.get_blocked_trades_unchecked(limit=100)
+    # limit=500 gives ~24k labels/day at the 30min schedule, vs 4800
+    # at the old 100-limit. Combined with the DESC ordering in db.py,
+    # Filter Precision Audit gets enough labeled samples per block_reason
+    # (min_samples=100) within 1-2 hours to show new buckets. The 0.2s
+    # sleep per row means 500 rows take ~100s per run — still 94% idle
+    # on the 30min interval, so no risk of overlap.
+    unchecked = db.get_blocked_trades_unchecked(limit=500)
     if not unchecked:
         return 0
 
