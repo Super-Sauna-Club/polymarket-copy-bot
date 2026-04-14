@@ -132,9 +132,18 @@ def _classify_losses():
 
 
 def _execute_loss_actions(classifications: dict, impacts: dict):
-    # BAD_CATEGORY: collapse to unique (trader, category) pairs so we write
-    # one brain_decisions row and one settings update per UNIQUE rule, not
-    # one per affected loss. Previously 5 identical losses wrote 5 rows.
+    # BAD_CATEGORY: collapse to unique (trader, category) pairs so we log
+    # one recommendation per UNIQUE rule, not one per affected loss.
+    #
+    # 2026-04-14: DISABLED auto-writing category_blacklist entries — same
+    # pattern as auto-pause/throttle/kick per piff-philosophy. The brain's
+    # classifier reads the `category` column which is empty for ~97% of
+    # rows, so it operates on sparse unreliable data and kept overwriting
+    # manual cleanups within minutes. Manual blacklist edits (based on
+    # verified backfilled PnL, which is cleaner signal) were consistently
+    # reverted every 2h cycle. Now we only LOG a BLACKLIST_RECOMMENDED
+    # brain_decisions row so the user can see what the brain would suggest,
+    # without writing to settings.env.
     cat_pairs = set()
     for loss in classifications.get("BAD_CATEGORY", []):
         trader = loss.get("wallet_username", "")
@@ -142,8 +151,15 @@ def _execute_loss_actions(classifications: dict, impacts: dict):
         if trader and category:
             cat_pairs.add((trader, category))
     for trader, category in sorted(cat_pairs):
-        _add_category_blacklist(trader, category,
-                               "Brain: %s WR < 40%% in %s" % (trader, category))
+        try:
+            db.log_brain_decision(
+                "BLACKLIST_RECOMMENDED", "%s/%s" % (trader, category),
+                "Brain: %s WR < 40%% in %s — DISABLED, manual review" % (trader, category),
+                "", "Review CATEGORY_BLACKLIST_MAP manually"
+            )
+        except Exception:
+            pass
+        logger.info("[BRAIN] Would blacklist %s for %s — DISABLED, manual managed", category, trader)
 
     # BAD_PRICE: still needs at least 3 losses to trigger, but tighten each
     # trader only once per cycle regardless of how many losses they had.

@@ -2,7 +2,51 @@
 
 Session-level notes. For full commit history see `git log`.
 
-## 2026-04-14 (latest) — Close-path atomic usdc_received (audit Step 1+4)
+## 2026-04-14 (latest) — Disable auto-write of CATEGORY_BLACKLIST_MAP
+
+Per piff-philosophy: `CATEGORY_BLACKLIST_MAP` joins `PAUSE_TRADER` / `THROTTLE_TRADER` / `KICK_TRADER` on the list of brain auto-actions that are disabled and must be managed manually. Manual edits were being overwritten every 2h cycle.
+
+### Why
+
+After the backfill session, manually cleaning `CATEGORY_BLACKLIST_MAP` to match verified per-(trader, category) PnL (xsaghav:cs +$70.51, sovereign2013:nba +$41.39, fsavhlc:geopolitics +$19.80, etc.) and restarting the bot, the Brain Engine fired its startup-triggered cycle ~5 minutes later and re-added most of the removed entries. The brain classifier reads `pnl_realized` which for the majority of historical rows still reflects pre-backfill formula estimates, so the auto-add sees losses that are actually verified wins.
+
+Two write paths were silently undoing the manual cleanup:
+
+1. **`bot/brain.py::_add_category_blacklist`** — called from `_execute_loss_actions` when a loss is classified as `BAD_CATEGORY`. Writes directly to `settings.env::CATEGORY_BLACKLIST_MAP`.
+
+2. **`bot/auto_tuner.py::_update_blacklist_setting`** — called from `auto_tune()` at the end of each brain cycle. Does a MERGE of (existing blacklist ∪ computed blacklist), so entries removed from the map get re-added if `_get_category_blacklist(trader)` returns them based on full-history `pnl_realized`.
+
+### Changes
+
+- `bot/brain.py::_execute_loss_actions` — no longer calls `_add_category_blacklist`; instead logs a `BLACKLIST_RECOMMENDED` row in `brain_decisions` for dashboard visibility. The computed recommendation is preserved, only the settings write is disabled.
+
+- `bot/auto_tuner.py::auto_tune` — the call to `_update_blacklist_setting(content, blacklist_map)` is replaced with an info log `[TUNER] Would blacklist (DISABLED, manual): {...}`. The per-trader bl computation still runs (visible in the existing `[TUNER] trader: TIER | ... bl: [...]` log line), just not persisted.
+
+### What still works
+
+- `_revert_obsolete_blacklists` in brain.py still runs each cycle and removes entries where 7d verified data shows the category is actually profitable (≥3 trades, WR ≥50%, PnL ≥0). That's the auto-recovery side and stays enabled — it can only REMOVE stale entries, not add new ones.
+
+- Per-trader blacklists are shown on `/brain` dashboard's `[TUNER]` section so the user can see what the brain would recommend.
+
+- `BLACKLIST_RECOMMENDED` rows in `brain_decisions` table are visible in the stream for post-hoc review.
+
+### Manual blacklist applied this session
+
+After cleanup based on verified post-backfill per-(trader, category) PnL:
+
+```
+CATEGORY_BLACKLIST_MAP=KING7777777:lol|valorant,sovereign2013:nhl,xsaghav:dota
+```
+
+Reduced from 13 entries to 4. The removed entries all had verified positive PnL (xsaghav:cs +$70.51, sovereign2013:nba +$41.39 / :tennis +$14.90 / :mlb +$7.14, fsavhlc:geopolitics +$19.80, etc.). Only verified losers retained: xsaghav:dota −$38.81, KING:lol −$19.65, KING:valorant −$9.14, sovereign:nhl −$5.92.
+
+### Files touched
+
+- `bot/brain.py` — `_execute_loss_actions` no longer auto-writes blacklist
+- `bot/auto_tuner.py` — `auto_tune` no longer calls `_update_blacklist_setting`
+- `settings.env` (on server, not committed) — `CATEGORY_BLACKLIST_MAP` manually cleaned per above
+
+## 2026-04-14 — Close-path atomic usdc_received (audit Step 1+4)
 
 Structural fix for the 87%-NULL `usdc_received` bug that drove the backfill work earlier in the session. The root cause (per `docs/close_logic_audit.md`) was that `close_copy_trade()` didn't accept `usdc_received`, forcing callers into a 2-step `close_copy_trade() → update_closed_trade_pnl()` pattern. Any error or early-return between the two steps left the row with `usdc_received=NULL` permanently.
 

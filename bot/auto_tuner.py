@@ -412,8 +412,18 @@ def auto_tune():
             new_lines.append(line)
     content = "\n".join(new_lines)
 
-    # CATEGORY_BLACKLIST_MAP
-    content = _update_blacklist_setting(content, blacklist_map)
+    # CATEGORY_BLACKLIST_MAP — 2026-04-14: DISABLED auto-write, matches
+    # piff-philosophy for auto-pause/throttle/kick. The auto_tuner's
+    # blacklist computation reads full-history pnl_realized which still
+    # contains pre-backfill formula-based losses, so it re-adds entries
+    # for categories that are actually profitable on the verified subset
+    # (e.g. xsaghav:cs +$70 verified was re-blacklisted every cycle). The
+    # computed recommendations are still LOGGED above for visibility,
+    # just not written to settings.env. Manual CATEGORY_BLACKLIST_MAP
+    # edits stick now.
+    if blacklist_map:
+        logger.info("[TUNER] Would blacklist (DISABLED, manual): %s",
+                    dict(sorted(blacklist_map.items())))
 
     if content != old_content:
         from bot.settings_lock import write_settings
