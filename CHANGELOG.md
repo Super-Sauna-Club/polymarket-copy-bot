@@ -2,7 +2,113 @@
 
 Session-level notes. For full commit history see `git log`.
 
-## 2026-04-14 (latest) — Partial-ghost share detection in reconcile + dashboard
+## 2026-04-14 (latest) — Heal id=3547 Angels ghost + dashboard reads actual_size from DB
+
+Two small follow-ups to the partial-ghost detection commit (39b5f22).
+
+### 1. Manual DB heal: id=3547 actual_size / shares_held / actual_entry_price
+
+User approved a one-time manual UPDATE on `copy_trades` to make the
+Angels row reflect the real on-chain position. Pre-update the row
+had `actual_size=$1.00, shares_held=1.7318, actual_entry_price=0.578`
+— the one buy the DB successfully INSERTed before the UNIQUE race
+swallowed the next 48. Post-update the row matches the data-api
+snapshot at 21:17 UTC: `actual_size=$48.37, shares_held=84.8558,
+actual_entry_price=0.5699`.
+
+Why manual not auto: DB writes against copy_trades require explicit
+user consent per memory/user_preferences. The partial-ghost detection
+from 39b5f22 was read-only by design; healing is a separate deliberate
+operation. Backup taken at `/tmp/db_backups/scanner.db.pre_id3547_
+heal.1776201426` before the UPDATE in case revert is needed.
+
+SQL applied:
+
+```sql
+BEGIN;
+UPDATE copy_trades
+   SET actual_size=48.3677,
+       shares_held=84.8558,
+       actual_entry_price=0.5699
+ WHERE id=3547;
+COMMIT;
+```
+
+Revert SQL (stashed here in case needed):
+
+```sql
+UPDATE copy_trades
+   SET actual_size=1.0,
+       shares_held=1.731753,
+       actual_entry_price=0.57745
+ WHERE id=3547;
+```
+
+Verification post-UPDATE:
+- `SELECT * FROM copy_trades WHERE id=3547` → new values confirmed
+- `sum_open_shares_held_by_cid_side(cid, "Under")` → 84.8558 (matches
+  chain)
+- Manual `reconcile_db_vs_wallet()` trigger no longer flags this
+  market as partial-ghost (still reports the 28 set-level ghosts
+  which are a different category).
+
+Side effects by design:
+- Post-resolution `close_copy_trade` math will compute against the
+  real basis: Under wins → `pnl_realized = 84.86 - 48.37 = +$36.49`,
+  Over wins → `pnl_realized = 0 - 48.37 = -$48.37`. Pre-heal the row
+  would have shown ±$1 which is meaningless for trader_performance
+  stats, ml_scorer training, and the Filter Precision Audit.
+- `trader_performance.total_pnl` for sovereign2013 will re-aggregate
+  correctly on the next brain cycle.
+- `ml_copy` training at the next 6h retrain will see this row with
+  the real outcome magnitude (±$48) instead of the truncated ±$1.
+
+What was deliberately NOT updated:
+- `entry_price` stays at 0.55 (the original signal price from the
+  copy_scan `[NEW]` log, not the effective fill price).
+- `size` stays at 1.00 (the original planned bet size from
+  BET_SIZE_PCT * equity). Keeping these two untouched preserves the
+  distinction between "what the bot planned" and "what actually
+  happened on chain". The `actual_*` fields carry the real state.
+
+### 2. dashboard/app.py: SELECT missing columns from copy_trades
+
+Unrelated pre-existing bug discovered while verifying the heal:
+`/api/live-data` was computing `_open_match.get("actual_size")` but
+the SQL query at line 211 only selected `id, condition_id,
+wallet_username, created_at, closed_at, size, entry_price, status`.
+It never selected `actual_size`, `actual_entry_price`, or
+`shares_held`, so `_open_match.get("actual_size")` always returned
+None and the fallback chain fell through to the planned `size` field
+and `entry_price` instead of the effective values.
+
+Post-fix the SELECT also pulls `actual_size, actual_entry_price,
+shares_held, side`, and the downstream code in the same endpoint
+(which already has `_actual_size = _open_match.get("actual_size") if
+_open_match else None` and a fallback cascade) now gets real values
+instead of None.
+
+Measured effect on the healed Angels row:
+
+```
+pre-fix:   size=1.00   entry_price=0.55   pnl_unrealized=-0.05
+post-fix:  size=48.37  entry_price=0.5699 pnl_unrealized=-3.81
+```
+
+The `pnl_unrealized=-3.81` number is exactly the mark-to-market loss
+on $48.37 at a price drop 0.57 → 0.525. Matches chain `pnl=-3.82`
+within rounding.
+
+This bug has been latent probably forever (or since `actual_*`
+columns were added to the schema), but only became visible now
+because the Angels row is the first one in production with a large
+delta between the "planned" `size` (1.00) and the "actual"
+`actual_size` (48.37). Normal trades have size ≈ actual_size so the
+fallback happened to produce the right number by accident.
+
+---
+
+## 2026-04-14 (later) — Partial-ghost share detection in reconcile + dashboard
 
 Backstop for the blind spot that hid the 2026-04-14 Angels ghost
 position. Commit `0d6f2be` prevents future ghost races via the

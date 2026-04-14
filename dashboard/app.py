@@ -209,7 +209,8 @@ def api_live_data():
         with get_connection() as _conn:
             for _row in _conn.execute(
                 "SELECT id, condition_id, wallet_username, created_at, closed_at, "
-                "size, entry_price, status FROM copy_trades "
+                "size, entry_price, actual_size, actual_entry_price, shares_held, "
+                "side, status FROM copy_trades "
                 "WHERE condition_id != '' AND status != 'baseline' "
                 "ORDER BY created_at DESC"
             ).fetchall():
