@@ -37,6 +37,47 @@ The whole `copy_scan` tick is wrapped in try/except that catches the error and a
 - **Auto-tuner** continues to write `sovereign2013:2.0` etc. into settings.env every 2h. Harmless with the hard cap but misleading in the dashboard. Proper fix: patch `bot/auto_tuner.py` to emit `min(tier_val, 1)` OR change the schema to allow per-side open rows (cond, wallet, side) — deferred.
 - **Root schema question**: is there any scenario where we want multiple open rows per (market, trader)? If the intent was "average in" on double-downs, the correct model is to UPDATE the existing row's size, not INSERT a second row. That's a bigger refactor.
 
+### ⚠️ Heads-up for piff: schema drift between models.py and live DB
+
+While validating that piff can pull main cleanly, I found a drift that has nothing directly to do with my fixes but changes how the hard-cap lands on different DBs:
+
+**`database/models.py:233`** (source of truth):
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_copy_trades_open_dedup
+  ON copy_trades(condition_id, wallet_address, side) WHERE status='open';
+```
+
+**Server live DB** (as of 2026-04-14 on kohle.supersauna.club):
+```sql
+CREATE UNIQUE INDEX idx_copy_trades_open_dedup
+  ON copy_trades(condition_id, wallet_address) WHERE status='open';
+```
+
+The index was widened to include `side` in the code at some point, but `CREATE INDEX IF NOT EXISTS` is a no-op when an index with that name already exists — so the old 2-column version sticks on any DB that wasn't freshly initialized after the code change. Our server DB was initialized earlier and still has the 2-column version.
+
+**Why it matters for piff**:
+
+- **Intent of the code**: a trader can legitimately hold YES + NO on the same market (hedge position). Auto-tuner writing `sovereign2013:2.0` into `MAX_COPIES_PER_MARKET_MAP` reflects that intent.
+- **Reality on 2-column DBs** (ours): only 1 open row per (cond, wallet) — ANY second insert trips the UNIQUE constraint regardless of side. Hard-cap at 1 is correct.
+- **Reality on 3-column DBs** (fresh init after the code change): 1 YES + 1 NO can coexist. Hard-cap at 1 silently *reduces* functionality — you'd lose the ability to hedge.
+
+**How piff should check their own DB state**:
+
+```bash
+sqlite3 database/scanner.db \
+  "SELECT sql FROM sqlite_master WHERE name='idx_copy_trades_open_dedup'"
+```
+
+- **Output ends with `(condition_id, wallet_address)`** → same as our server, pull + run is correct, the hard-cap matches your DB reality.
+- **Output ends with `(condition_id, wallet_address, side)`** → your DB is already side-aware. My hard-cap will block hedging. You have two choices:
+  1. Revert the `_get_max_copies` hard-cap locally on your branch and keep the auto-tuner's 2.0 values working as intended.
+  2. Accept the reduction for now — it's only a loss if you actually make use of YES+NO hedging.
+
+**Recommended path forward (both sides)**: a proper migration that DROPs and re-CREATEs the index with `side`, plus reverting the hard-cap. That's a separate, deliberate session — not bundled into the current perf fix — because it changes observable behavior (YES+NO coexistence enabled) and needs a careful scan of all queries that assume "1 open row per (cond, wallet)" (e.g. `update_copy_positions` fallback lookup at `main.py:319-322` uses `WHERE condition_id=? AND status='open'` with `.fetchone()` — this would become ambiguous under side-aware coexistence).
+
+No action required from piff for the current commits. Read this heads-up, check your DB, decide on your side.
+
+
 ---
 
 ## 2026-04-14 (later) — Remove MAX_DAILY_TRADES cap + fix update_prices compound slowdown
