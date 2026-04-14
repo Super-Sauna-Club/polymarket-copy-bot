@@ -253,7 +253,13 @@ def paper_follow_candidates():
         pass
 
     filters = _load_settings_filters()
-    candidates = db.get_all_candidates("observing")
+    # 2026-04-14: include promoted candidates too. Previously this was
+    # `get_all_candidates("observing")` which stopped paper-tracking a
+    # candidate at the exact moment we decided to promote them — so
+    # promoted traders (our highest-confidence bucket) never accumulated
+    # paper_trades post-promotion. Caught by piff on his side where
+    # denizz was stuck at 0 new paper_trades after promotion.
+    candidates = db.get_active_candidates()
     for cand in candidates[:20]:
         address = cand["address"]
         try:

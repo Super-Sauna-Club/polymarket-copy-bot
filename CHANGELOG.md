@@ -2,7 +2,237 @@
 
 Session-level notes. For full commit history see `git log`.
 
-## 2026-04-14 (latest) — Magnitude-aware price range calibrator + B3 staged rollout
+## 2026-04-14 (latest) — Prevent buy_shares ghost-share race + fix paper_follow for promoted candidates
+
+Two related fixes spawned by a live incident earlier this afternoon.
+While investigating a sudden $3.57 wallet drop, I traced the cause to
+a single Angels vs Yankees O/U 9.5 chain position worth **$44.55**
+against an **initialValue of $48.37** — far larger than any of our
+documented buy paths should have produced at $1/trade size.
+
+### The Angels ghost-share incident
+
+Timeline of 2026-04-14 16:34-16:43 UTC:
+
+- 16:29:12 — restart with `MAX_DAILY_TRADES=0` (commit `b41e76e`),
+  but `_get_max_copies` hard-cap (commit `6acbe00`) not yet deployed.
+- 16:32-16:33 — sovereign2013 opens ~14 position signals on the
+  Angels/Yankees market (alternating Under @ 55c and Over @ 43c).
+  copy_trader logs `[NEW]` for each.
+- 16:34:16 — first ORDER BUY: `$1.00 @ 55c (limit 57c) | Under | FILLED`.
+  `db.create_copy_trade` succeeds → `id=3547` row created.
+- 16:35:20 → 16:42:56 — **40+ more buys fire at $1/10s cadence**,
+  every single one `Under @ 55c FILLED`. Each one:
+  1. `count_copies_for_market(sov, cid)` returned 1 (the existing
+     id=3547 row).
+  2. `_get_max_copies('sovereign2013')` returned **2** (from the
+     auto-tuner-written `MAX_COPIES_PER_MARKET_MAP=sovereign2013:2.0`,
+     before our hard-cap commit).
+  3. Check `1 < 2` passed, scan proceeds to `buy_shares`.
+  4. **`buy_shares` succeeds on-chain** — real USDC spent, shares
+     credited to the wallet at `POLYMARKET_FUNDER`.
+  5. `db.create_copy_trade(trade)` fires → raises
+     `sqlite3.IntegrityError: UNIQUE constraint failed:
+     copy_trades.condition_id, copy_trades.wallet_address` from
+     `idx_copy_trades_open_dedup`.
+  6. copy_scan's outer try/except swallows the exception and logs
+     `[ERROR] Error in copy scan: UNIQUE constraint failed`.
+  7. Next 10s tick repeats. Over and over.
+- 16:43:08 — restart with `_get_max_copies` hard-cap (commit `6acbe00`).
+  Now returns 1 → `count < 1` is False → every buy attempt skips
+  before reaching `buy_shares`. Bleeding stopped.
+
+**Damage audit**: Chain snapshot at 19:43 shows `size=84.8558` shares
+of Under with `avgPrice=0.5699, initialValue=48.3677`. DB
+`copy_trades` has ONE row for this market (`id=3547`, shares=1.73).
+
+  ~47 missing shares ≈ ~$47 of on-chain spend with no DB tracking.
+
+The shares are real, held in the wallet, and will resolve along with
+the Angels/Yankees game today. Three possible outcomes:
+
+  Under wins (total < 9.5):  85 × $1 = +$84.86 → +$36.49 profit
+  Over wins (total >= 9.5):  85 × $0 =    $0   → -$48.37 loss
+  Unresolved / timeout:      price drift continues
+
+At the time of analysis (19:43 UTC) the market was pricing Under at
+52.5c, implying ~52% chance of payout. This is effectively a 45%-of-
+portfolio coinflip we never intended.
+
+### Root cause (architectural)
+
+`bot/copy_trader.py` has FIVE buy_shares call sites (pending queue,
+position diff, event_wait, hedge_wait, activity scan). All five follow
+the same pattern:
+
+```python
+with _buy_lock:
+    if count_copies_for_market(...) >= _get_max_copies(...):
+        continue
+    if LIVE_MODE:
+        order_resp = buy_shares(...)          # <-- spends real USDC
+        if not order_resp: continue
+        _apply_fill_details(...)
+    trade_id = db.create_copy_trade(trade)    # <-- can raise IntegrityError
+```
+
+The order is: check, buy on-chain, write DB. If the DB write raises
+`IntegrityError` (because the existing open row pre-check used
+`count_copies_for_market` which doesn't match the UNIQUE partial
+index exactly), the on-chain buy has already happened.
+
+Why didn't the count check match? `count_copies_for_market` counts
+`status='open' OR (status='closed' AND closed_at > -NO_REBUY_MINUTES)`.
+It's compared against `_get_max_copies(trader)` which pulls from the
+auto-tuner-written map. Before this morning's `min(val, 1)` hard-cap,
+auto_tuner was writing `sovereign2013:2.0`, `KING7777777:3.0` etc.
+based on tier classification. The DB `idx_copy_trades_open_dedup` is
+a hard UNIQUE partial index on `(condition_id, wallet_address) WHERE
+status='open'`, which allows **exactly 1** open row. So `max=2` with
+`count=1` green-lights an insert that the DB will then reject.
+
+The `_get_max_copies` hard-cap I deployed at 16:43 prevents this
+today by forcing max=1 regardless of what auto_tuner writes, but the
+**underlying race is still latent**: if anyone ever lifts the hard-
+cap (e.g. to enable YES+NO hedging after a schema migration to
+`(cond, wallet, side)`), or if the count check drifts from the DB
+index semantics for any other reason, the same `buy_shares → fail
+INSERT → ghost shares` cascade returns.
+
+### Fix (this commit, defense-in-depth)
+
+New helper `database/db.py::has_open_trade_for_market(wallet, cid)`
+which matches the UNIQUE partial index semantics EXACTLY:
+
+```python
+SELECT 1 FROM copy_trades
+WHERE wallet_address=? AND condition_id=? AND status='open'
+LIMIT 1
+```
+
+Returns `True` iff an INSERT with `status='open'` for the same
+`(wallet_address, condition_id)` would violate the index. Both the
+2-column (current live) and 3-column (models.py) index variants are
+compatible — the 3-column just needs an additional side filter which
+can be added later.
+
+Applied as a pre-check at all 5 buy paths BEFORE `buy_shares()` is
+called. Each site now looks like:
+
+```python
+with _buy_lock:
+    if count_copies_for_market(...) >= _get_max_copies(...):
+        continue
+    if db.has_open_trade_for_market(wallet, cid):   # NEW
+        continue                                     # skip before spending USDC
+    if LIVE_MODE:
+        order_resp = buy_shares(...)                 # safe now
+        ...
+    trade_id = db.create_copy_trade(trade)           # INSERT cannot raise
+```
+
+The 5 patched call sites in `bot/copy_trader.py`:
+
+  - 657  pending-buy queue (`[PENDING]` log)
+  - 961  position-diff / DIFF path
+  - 1326 event_wait path
+  - 1520 hedge_wait / conviction path
+  - 2197 activity scan / main path
+
+### Piff's paper_follow_candidates fix (bundled)
+
+Parallel report from piff during the incident: his side has `denizz`
+in `status='promoted'` but 0 new paper_trades. Traced to
+`bot/auto_discovery.py:256`:
+
+```python
+candidates = db.get_all_candidates("observing")
+```
+
+Hard-filtered to observing only, so candidates never get paper-
+scanned once we decide to promote them. Fixed with a new
+`db.get_active_candidates()` that returns both `observing` and
+`promoted` statuses, excluding `inactive`. The intent of the paper-
+scan loop is "track our highest-confidence candidates most closely",
+and promoted are exactly that group, so this matches the original
+intent.
+
+`auto_discovery.paper_follow_candidates()` now calls
+`get_active_candidates()` in place of the hardcoded observing filter.
+
+### TDD coverage
+
+Two new test files, all strict-RED-before-GREEN cycled:
+
+`tests/test_has_open_trade.py` — 6 tests:
+  - `test_returns_true_when_open_row_exists`
+  - `test_returns_false_when_no_rows_exist`
+  - `test_returns_false_when_only_closed_row_exists`
+  - `test_returns_false_when_only_baseline_row_exists`
+  - `test_returns_false_when_open_row_is_different_wallet`
+  - `test_returns_false_when_open_row_is_different_market`
+
+`tests/test_active_candidates.py` — 1 test:
+  - `test_get_active_candidates_returns_observing_and_promoted`
+
+All 7 new tests RED-verified (AttributeError: function doesn't exist)
+before implementation, all GREEN after. Full test suite post-fix:
+73 pass / 2 pre-existing failures unrelated to this change
+(`test_brain_dedup.py` + `test_log_dedup.py` — both tracing back to
+this morning's `brain._execute_loss_actions` disable commit
+`11ed9e8`).
+
+### Live verification
+
+Post-deploy at 19:56:00 UTC:
+
+  - `db.has_open_trade_for_market('0xdead', 'nonexistent')` → False ✓
+  - `db.get_active_candidates()` → 38 rows
+    (35 observing + 3 promoted, inactive excluded)
+  - Promoted sample: `0x3e5b23e9f7 status=promoted paper_trades=88`,
+    `0x6bab41a0dc status=promoted paper_trades=118`,
+    `0xbaa2bcb5 status=promoted paper_trades=41`
+  - 0 errors / 0 tracebacks since restart
+  - update_prices cycle stable
+
+### What this fix does NOT do
+
+- **Does not recover the $48 Angels ghost exposure.** Those shares
+  are real, held in the wallet, and will resolve with the game
+  today. At 52.5c implied probability, expected value is roughly
+  `0.525 × $84.86 + 0.475 × $0 - $48.37 = +$-3.82`, which is
+  literally the current mark-to-market delta — the loss is already
+  priced in. If Under wins it's +$36.49 vs the drawn position.
+  Nothing in code can undo the ghost shares.
+
+- **Does not add compensation on IntegrityError.** If the DB INSERT
+  still somehow raises (e.g. a different index we don't know about),
+  the bot will log the exception and continue but the on-chain buy
+  stays. A more defensive version would `sell_shares` on the orphan
+  immediately, but that adds its own risks (slippage, cascading
+  fills) and the pre-check should make this path cold-dead.
+
+- **Does not touch the `_get_max_copies` hard-cap.** That stays as
+  belt-and-suspenders even with the pre-check. Two layers cheap.
+
+- **Does not audit autonomous_scan / paper_follow buy paths for the
+  same race.** Those paths don't call `buy_shares` directly
+  (paper_follow is genuinely paper, autonomous_trades table is
+  empty, meaning autonomous_signals never fires a real buy). If that
+  ever changes, the same pre-check must be added there.
+
+### Revert path
+
+- Delete both `has_open_trade_for_market` calls in a buy path →
+  pre-check gone, structure-of-latent-race returns.
+- Remove the `get_active_candidates` call in auto_discovery →
+  paper-scan goes back to observing-only.
+- Both reverts are safe at runtime (bot continues to function), they
+  just re-introduce the bugs the fix is addressing.
+
+---
+
+## 2026-04-14 (later) — Magnitude-aware price range calibrator + B3 staged rollout
 
 Option B for the MIN/MAX_ENTRY_PRICE_MAP problem (Option A was the
 earlier commit that disabled the auto-write as a stopgap). Replaces

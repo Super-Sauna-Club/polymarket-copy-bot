@@ -469,6 +469,35 @@ def is_trade_duplicate(wallet_address: str, market_question: str, condition_id: 
         return row["cnt"] > 0
 
 
+def has_open_trade_for_market(wallet_address: str, condition_id: str) -> bool:
+    """Exact match of idx_copy_trades_open_dedup semantics.
+
+    Returns True if there is already a row in copy_trades with
+    `status='open'` for this (wallet_address, condition_id) pair —
+    meaning an INSERT with the same keys would fail the UNIQUE partial
+    index. The 5 buy paths in copy_trader.py call this BEFORE
+    `buy_shares()` so a real order is never placed when the DB would
+    then reject the tracking row.
+
+    Historical context (2026-04-14): the copy_trader buy paths had a
+    race where buy_shares ran first and create_copy_trade afterwards,
+    so if the DB INSERT raised IntegrityError from this same index, the
+    on-chain order had already filled and created a ghost share pile
+    the bot couldn't see. A single 9-minute window on the Angels vs
+    Yankees O/U 9.5 market left ~$48 of Under shares with no DB row.
+    This function is the defensive pre-check that prevents that
+    scenario by refusing to even start the buy.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM copy_trades "
+            "WHERE wallet_address=? AND condition_id=? AND status='open' "
+            "LIMIT 1",
+            (wallet_address, condition_id),
+        ).fetchone()
+        return row is not None
+
+
 def count_copies_for_market(wallet_address: str, condition_id: str) -> int:
     """Wie viele aktive Kopien haben wir von diesem Markt/Trader?
     Counts OPEN trades + trades closed within NO_REBUY_MINUTES (min 30min) to prevent rapid re-entry.
@@ -1301,6 +1330,23 @@ def get_all_candidates(status=None):
             rows = conn.execute(
                 "SELECT * FROM trader_candidates ORDER BY paper_pnl DESC"
             ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_active_candidates():
+    """Candidates in any actively-tracked stage: observing OR promoted.
+
+    paper_follow_candidates used to fetch only observing, which silently
+    stopped paper-trade collection as soon as a candidate was promoted.
+    That's exactly backwards — promoted candidates are the ones we have
+    the most confidence in and want MORE data on, not less.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM trader_candidates "
+            "WHERE status IN ('observing', 'promoted') "
+            "ORDER BY paper_pnl DESC"
+        ).fetchall()
         return [dict(r) for r in rows]
 
 

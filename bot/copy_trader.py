@@ -654,6 +654,14 @@ def _process_pending_buys(balance: float, total_invested: float) -> int:
                         logger.info("[PENDING] Max copies (re-check under lock), skipping: %s", trade_data["market_question"][:40])
                         expired_keys.append(cid)
                         continue
+                    # DB-reality pre-check: idx_copy_trades_open_dedup blocks any
+                    # 2nd open row for this (wallet, cond). If a row already
+                    # exists, the INSERT below would raise IntegrityError AFTER
+                    # buy_shares had already filled on-chain → ghost shares.
+                    if db.has_open_trade_for_market(_pb_addr, cid):
+                        logger.info("[PENDING] Open row exists (DB dedup), skipping: %s", trade_data["market_question"][:40])
+                        expired_keys.append(cid)
+                        continue
                     order_resp = buy_shares(cid, trade_data["side"], size, trade_data["entry_price"])
                     if not order_resp:
                         logger.warning("[PENDING] Order failed, skipping: %s", trade_data["market_question"][:40])
@@ -950,6 +958,9 @@ def _position_diff_scan(address: str, username: str, balance: float,
             # LIVE MODE: Echte Order platzieren
             with _buy_lock:
                 if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
+                    continue
+                # DB-reality pre-check: see has_open_trade_for_market docstring.
+                if cid and db.has_open_trade_for_market(address, cid):
                     continue
                 if LIVE_MODE and cid:
                     try:
@@ -1319,6 +1330,10 @@ def copy_followed_wallets():
                         if _ew_cid and db.count_copies_for_market(td["wallet_address"], _ew_cid) >= _get_max_copies(td.get("wallet_username", "")):
                             _ew_expired.append(_ew_cid)
                             continue
+                        # DB-reality pre-check: see has_open_trade_for_market docstring.
+                        if _ew_cid and db.has_open_trade_for_market(td["wallet_address"], _ew_cid):
+                            _ew_expired.append(_ew_cid)
+                            continue
                         if LIVE_MODE and _ew_cid:
                             from bot.order_executor import get_wallet_balance as _gwb_ew
                             if _gwb_ew() < _ew_size:
@@ -1511,6 +1526,9 @@ def copy_followed_wallets():
                     }
                     with _buy_lock:
                         if td["cid"] and db.count_copies_for_market(td["address"], td["cid"]) >= _get_max_copies(td.get("username", "") or td.get("wallet_username", "")):
+                            continue
+                        # DB-reality pre-check: see has_open_trade_for_market docstring.
+                        if td["cid"] and db.has_open_trade_for_market(td["address"], td["cid"]):
                             continue
                         if LIVE_MODE and td["cid"]:
                             from bot.order_executor import get_wallet_balance as _gwb2
@@ -2175,6 +2193,14 @@ def copy_followed_wallets():
                 # Re-check limits under lock (another thread may have bought in the meantime)
                 if cid and db.count_copies_for_market(address, cid) >= _get_max_copies(username):
                     logger.info("[LOCK] Max copies reached (concurrent): %s", question[:40])
+                    continue
+                # DB-reality pre-check: see has_open_trade_for_market docstring.
+                # Prevents the "buy_shares succeeds on-chain, create_copy_trade
+                # fails UNIQUE constraint" ghost-share race that happened on
+                # 2026-04-14 16:34-16:43 leaving ~$48 of Angels Under shares
+                # off-book.
+                if cid and db.has_open_trade_for_market(address, cid):
+                    logger.info("[LOCK] Open row exists (DB dedup): %s", question[:40])
                     continue
 
                 if LIVE_MODE and cid:
