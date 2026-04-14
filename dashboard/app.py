@@ -1494,10 +1494,14 @@ def api_category_heatmap():
 
 @app.route("/api/upgrade/ml-info")
 def api_ml_info():
-    """ML-Modell Info und Training-History."""
+    """ML-Modell Info und Training-History. Filters to model_name='ml_copy'
+    so the dashboard's ML Health card reads the live-decision model, not
+    the block-audit model whose copy_only_accuracy is always NULL."""
     with db.get_connection() as conn:
         training = conn.execute(
-            "SELECT * FROM ml_training_log ORDER BY trained_at DESC LIMIT 5"
+            "SELECT * FROM ml_training_log "
+            "WHERE COALESCE(model_name,'ml_copy')='ml_copy' "
+            "ORDER BY trained_at DESC LIMIT 5"
         ).fetchall()
     return jsonify({"training_history": [dict(r) for r in training]})
 
@@ -1541,10 +1545,13 @@ def api_upgrade_status():
         traders = conn.execute("SELECT * FROM trader_status").fetchall()
         result["trader_status"] = [dict(r) for r in traders]
 
-    # ML model
+    # ML model (copy-model only — the block-audit model's row has
+    # copy_only_accuracy=NULL and would confuse the dashboard)
     with db.get_connection() as conn:
         ml = conn.execute(
-            "SELECT * FROM ml_training_log ORDER BY trained_at DESC LIMIT 1"
+            "SELECT * FROM ml_training_log "
+            "WHERE COALESCE(model_name,'ml_copy')='ml_copy' "
+            "ORDER BY trained_at DESC LIMIT 1"
         ).fetchone()
         result["ml_model"] = dict(ml) if ml else None
 
