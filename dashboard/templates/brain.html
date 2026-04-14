@@ -93,8 +93,8 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 .stream-net-row{display:grid;grid-template-columns:1.7fr 1fr;gap:10px;margin-bottom:12px}
 @media(max-width:1100px){.stream-net-row{grid-template-columns:1fr}}
 .stream-net-row .stream-wrap{margin-bottom:0}
-.stream-net-row .stream-box{height:260px}
-.stream-net-row .neural-host{background:var(--bg2);border:1px solid var(--border);position:relative;overflow:hidden;display:flex;flex-direction:column;height:300px}
+.stream-net-row .stream-box{height:198px}
+.stream-net-row .neural-host{background:var(--bg2);border:1px solid var(--border);position:relative;overflow:hidden;display:flex;flex-direction:column;height:238px}
 .stream-net-row .neural-host .panel-title{padding:8px 14px 6px;margin:0;border-bottom:1px solid var(--border);font-size:.64rem}
 .stream-net-row .neural-box{height:auto;flex:1;min-height:0}
 
@@ -747,7 +747,9 @@ html.wide .app{max-width:none;padding:0 10px 8px}
   text-overflow:ellipsis
 }
 .sline .stgt{
-  flex:3 1 0 !important;
+  /* Target absorbs ALL leftover width so lines always fill the box.
+     Ellipsis kicks in if the content would overflow. */
+  flex:1 1 auto !important;
   max-width:none !important;
   min-width:0 !important;
   font-size:.76rem !important;
@@ -756,13 +758,17 @@ html.wide .app{max-width:none;padding:0 10px 8px}
   text-overflow:ellipsis
 }
 .sline .srsn{
-  flex:2 1 0 !important;
+  /* Reason hugs the right edge at content width. Short reasons don't
+     leave a gap; long reasons get capped at 45% of the row. */
+  flex:0 1 auto !important;
   min-width:0 !important;
+  max-width:45% !important;
   font-size:.72rem !important;
   color:var(--text-mid);
   white-space:nowrap;
   overflow:hidden;
-  text-overflow:ellipsis
+  text-overflow:ellipsis;
+  text-align:right
 }
 
 /* ── 14. SKELETON LOADERS — pulse while async data loads ─────────────── */
@@ -1020,7 +1026,7 @@ html.wide .app{max-width:none;padding:0 10px 8px}
         </span>
       </div>
       <div class="neural-box">
-        <svg viewBox="0 0 420 260" preserveAspectRatio="xMidYMid meet" id="funnelSvg"></svg>
+        <svg viewBox="0 0 420 180" preserveAspectRatio="xMidYMid meet" id="funnelSvg"></svg>
       </div>
     </div>
   </div>
@@ -1261,15 +1267,15 @@ function buildFunnel(){
   FL.svg=svg;FL.stages=[];
   while(svg.firstChild)svg.removeChild(svg.firstChild);
   var ns='http://www.w3.org/2000/svg';
-  // viewBox is 420 × 260 — wider aspect than before so boxes can be
-  // much taller without cropping. cy sits at vertical centre.
-  var W=420,H=260,cy=130;
-  // Huge boxes (72 × 200). Width budget: 5 × 72 = 360, leaving 60 for
-  // 4 gaps + 2 × pad = 12 gap + 6 pad on each side. 10-11px gaps for
-  // the arrow markers between stages.
-  var BW=72,BH=200;
+  // viewBox 420 × 180 — flatter aspect so the row reads as a proper
+  // horizontal funnel instead of a stack of tall cells.
+  var W=420,H=180,cy=90;
+  // Balanced boxes (68 × 130). 5 × 68 = 340, leaving 80 for gaps and
+  // padding: pad 12 each side + 4 × 14 gap = 80. The wider gap gives
+  // the arrows room to breathe.
+  var BW=68,BH=130;
   var halfBW=BW/2;
-  var pad=6;
+  var pad=12;
   var step=(W-2*pad-BW)/(FUNNEL_STAGES.length-1);
 
   // <defs><marker id="fnArrow"><polygon/></marker></defs>
@@ -1322,27 +1328,27 @@ function buildFunnel(){
     g.appendChild(box);
     // Label at the top of the box
     var lbl=document.createElementNS(ns,'text');
-    lbl.setAttribute('x',x);lbl.setAttribute('y',cy-64);
+    lbl.setAttribute('x',x);lbl.setAttribute('y',cy-40);
     lbl.setAttribute('text-anchor','middle');
-    lbl.setAttribute('font-size','11');
+    lbl.setAttribute('font-size','10');
     lbl.setAttribute('font-family','Fira Code,monospace');
     lbl.setAttribute('fill','#c9a84c');
-    lbl.setAttribute('letter-spacing','1.6');
+    lbl.setAttribute('letter-spacing','1.4');
     lbl.setAttribute('font-weight','700');
     lbl.textContent=s.label;
     g.appendChild(lbl);
     // Divider under the label
     var div=document.createElementNS(ns,'line');
-    div.setAttribute('x1',x-halfBW+10);div.setAttribute('x2',x+halfBW-10);
-    div.setAttribute('y1',cy-54);div.setAttribute('y2',cy-54);
+    div.setAttribute('x1',x-halfBW+8);div.setAttribute('x2',x+halfBW-8);
+    div.setAttribute('y1',cy-30);div.setAttribute('y2',cy-30);
     div.setAttribute('stroke','rgba(201,168,76,0.25)');
     div.setAttribute('stroke-width','0.6');
     g.appendChild(div);
     // Big count number centred in the box
     var cnt=document.createElementNS(ns,'text');
-    cnt.setAttribute('x',x);cnt.setAttribute('y',cy+14);
+    cnt.setAttribute('x',x);cnt.setAttribute('y',cy+10);
     cnt.setAttribute('text-anchor','middle');
-    cnt.setAttribute('font-size','42');
+    cnt.setAttribute('font-size','32');
     cnt.setAttribute('font-family','Fira Code,monospace');
     cnt.setAttribute('font-weight','700');
     cnt.setAttribute('fill','#e8e4dc');
@@ -1350,19 +1356,19 @@ function buildFunnel(){
     g.appendChild(cnt);
     // Bottom divider
     var div2=document.createElementNS(ns,'line');
-    div2.setAttribute('x1',x-halfBW+10);div2.setAttribute('x2',x+halfBW-10);
-    div2.setAttribute('y1',cy+46);div2.setAttribute('y2',cy+46);
+    div2.setAttribute('x1',x-halfBW+8);div2.setAttribute('x2',x+halfBW-8);
+    div2.setAttribute('y1',cy+30);div2.setAttribute('y2',cy+30);
     div2.setAttribute('stroke','rgba(201,168,76,0.18)');
     div2.setAttribute('stroke-width','0.6');
     g.appendChild(div2);
     // Subtitle at the bottom
     var sub=document.createElementNS(ns,'text');
-    sub.setAttribute('x',x);sub.setAttribute('y',cy+72);
+    sub.setAttribute('x',x);sub.setAttribute('y',cy+47);
     sub.setAttribute('text-anchor','middle');
-    sub.setAttribute('font-size','8');
+    sub.setAttribute('font-size','7');
     sub.setAttribute('font-family','Fira Code,monospace');
     sub.setAttribute('fill','#7a7890');
-    sub.setAttribute('letter-spacing','0.8');
+    sub.setAttribute('letter-spacing','0.7');
     sub.textContent='events 1h';
     g.appendChild(sub);
     svg.appendChild(g);
@@ -2446,19 +2452,37 @@ function mcard(lbl,val,valCls,sub){
   return c;
 }
 
-function renderCoreMini(status,mlInfo,decisions,tradersData){
+function renderCoreMini(status,mlInfo,decisions,tradersData,followedList){
   var box=$('#coreMini');if(!box)return;
   while(box.firstChild)box.removeChild(box.firstChild);
   var ml=status&&status.ml_model||{};
   var cand=status&&status.candidates||{};
   var auto=status&&status.autonomous||{};
-  // Authoritative trader count comes from /api/upgrade/trader-performance (the
-  // actual followed-traders list). status.trader_status only has rows for soft
-  // throttle/pause entries which is a subset.
-  var traderList=(tradersData&&tradersData.traders)||[];
-  var totalN=traderList.length;
-  var pausedN=traderList.filter(function(t){return (t.trader_status||'')==='paused'}).length;
+  // Ground truth follow list from /api/wallets/followed. trader_performance
+  // has stale rows from previously-followed traders, so we can't trust its
+  // length as "currently active" count. We still pull trader_performance rows
+  // to look up per-trader status, but only for the wallets that ARE followed.
+  var perfList=(tradersData&&tradersData.traders)||[];
+  var followedNames={};
+  (followedList||[]).forEach(function(w){
+    var n=(w.username||w.address||'').toLowerCase();
+    if(n)followedNames[n]=true;
+  });
+  var totalN=(followedList||[]).length;
+  // If the fetch failed fall back to the perfList count so we never show 0
+  if(!totalN)totalN=perfList.length;
+  // Paused = perf rows with status==='paused' whose username matches the follow list
+  var pausedN=perfList.filter(function(t){
+    if((t.trader_status||'')!=='paused')return false;
+    var n=(t.trader_name||'').toLowerCase();
+    return !Object.keys(followedNames).length||followedNames[n];
+  }).length;
   var activeN=totalN-pausedN;
+  // 24h P&L aggregate: use the follow-list-filtered trader_performance rows
+  var traderList=perfList.filter(function(t){
+    if(!Object.keys(followedNames).length)return true;
+    return followedNames[(t.trader_name||'').toLowerCase()];
+  });
   // Brain decisions today
   var today=new Date().toISOString().slice(0,10);
   var decToday=(decisions||[]).filter(function(d){return (d.created_at||'').slice(0,10)===today}).length;
@@ -2562,6 +2586,10 @@ async function refresh(){
   var blocked=await fetchJSON('/api/ai/blocked-trades?hours=72&limit=500');
   var tickerEvents=await fetchJSON('/api/fun/ticker');
   var filterPrec=await fetchJSON('/api/brain/filter-precision');
+  // Authoritative followed-wallet list — trader_performance has stale
+  // rows from previously-followed traders, so we fetch the actual
+  // follow list to show the true "active traders" count.
+  var followed=await fetchJSON('/api/wallets/followed');
 
   // Merge decisions + blocked + ticker events into unified stream
   var merged=[];
@@ -2579,7 +2607,7 @@ async function refresh(){
   // Live decision funnel: recompute counts off the fresh streamEvents buffer
   updateFunnel();
 
-  renderCoreMini(status,mlInfo,decisions,traders);
+  renderCoreMini(status,mlInfo,decisions,traders,followed);
   renderCandidates(candidates);
   renderPaperSummary(paper);
   renderPaperTrades(paperTradesList);
