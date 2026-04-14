@@ -1,12 +1,18 @@
 """
 ML Scorer — lernt aus historischen Trades welche gewinnen/verlieren.
 Trainiert alle 6h automatisch. RandomForest auf echten Trade-Daten.
+
+Feature engineering (refactored 2026-04-14): 8 features instead of the
+prior 5 (3 of which were broken / noise). Trader identity goes in via
+per-trader rolling stats (winrate / pnl / trades). Conviction signal via
+bet/avg ratio (copy rows only, blocked rows default to 1.0 so the model
+can't trivially identify the data source). Category collapsed into two
+fee-relevant features. Time + side dropped as noise.
 """
 import logging
 import os
 import pickle
 import time
-from datetime import datetime
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
@@ -17,41 +23,132 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ml_model.pkl")
 MIN_TRAINING_SAMPLES = 50
-CATEGORY_MAP = {"cs": 1, "lol": 2, "valorant": 3, "dota": 4, "nhl": 5, "nba": 6, "nfl": 7,
-                "mlb": 8, "tennis": 9, "soccer": 10, "cricket": 11, "geopolitics": 12, "politics": 13}
+
+# Categories with 10% Polymarket fee — systematically worse EV
+_HIGH_FEE_CATEGORIES = {"cs", "lol", "valorant", "dota"}
+# Ordinal fee band: 0 = 0% fee, 1 = ~5%, 2 = 10% (esports)
+_FEE_BAND_MAP = {
+    "nhl": 0, "politics": 0, "geopolitics": 0,
+    "nba": 1, "nfl": 1, "mlb": 1, "tennis": 1, "soccer": 1, "cricket": 1,
+    "cs": 2, "lol": 2, "valorant": 2, "dota": 2,
+}
+
+# 8 feature names — kept in sync with _get_features() return order
+FEATURE_NAMES = [
+    "entry_price",
+    "price_dist_from_50",
+    "trader_wr_7d",
+    "trader_pnl_7d",
+    "trader_trades_7d",
+    "bet_vs_avg",
+    "high_fee_cat",
+    "fee_band",
+]
 
 _model = None
 _model_loaded = False
+_trader_stats_cache = None
+_trader_stats_cache_ts = 0
+_TRADER_STATS_TTL = 300  # seconds — predict() hits this cache
 
 
-def _get_features(trade: dict) -> list:
-    """Extract feature vector from a trade dict.
+def _load_trader_stats() -> dict:
+    """Load per-trader rolling 7d stats once. Returns dict keyed by lowercase
+    trader_name. Used by training (one call per train_model run) and by
+    predict (cached for _TRADER_STATS_TTL seconds via _get_trader_stats_cached)."""
+    stats = {}
+    try:
+        with db.get_connection() as conn:
+            for r in conn.execute(
+                "SELECT trader_name, winrate, total_pnl, trades_count "
+                "FROM trader_performance WHERE period='7d'"
+            ).fetchall():
+                name = (r["trader_name"] or "").strip().lower()
+                if not name:
+                    continue
+                stats[name] = {
+                    "wr": float(r["winrate"] or 0),
+                    "pnl": float(r["total_pnl"] or 0),
+                    "trades": int(r["trades_count"] or 0),
+                    "avg_bet": 0.0,
+                }
+            for r in conn.execute(
+                "SELECT LOWER(wallet_username) AS name, AVG(actual_size) AS ab "
+                "FROM copy_trades WHERE actual_size > 0 GROUP BY LOWER(wallet_username)"
+            ).fetchall():
+                name = r["name"]
+                if not name:
+                    continue
+                if name in stats:
+                    stats[name]["avg_bet"] = float(r["ab"] or 0)
+                else:
+                    stats[name] = {"wr": 0, "pnl": 0, "trades": 0, "avg_bet": float(r["ab"] or 0)}
+    except Exception as e:
+        logger.debug("[ML] _load_trader_stats failed: %s", e)
+    return stats
 
-    REMOVED size + fee_bps as features: they were data-source markers
-    rather than predictive signal. copy_trades have size>0 and fee_bps
-    set, blocked_trades have size=0 and fee_bps=0. The model trivially
-    learned `size==0 → predict by category` (blocked_trades have 28%
-    win rate). This inflated test accuracy to 92% while teaching nothing
-    about WHY trades win or lose. With these features removed, accuracy
-    will be lower but actually meaningful.
+
+def _get_trader_stats_cached() -> dict:
+    """Predict-path version with TTL cache."""
+    global _trader_stats_cache, _trader_stats_cache_ts
+    now = time.time()
+    if _trader_stats_cache is None or now - _trader_stats_cache_ts > _TRADER_STATS_TTL:
+        _trader_stats_cache = _load_trader_stats()
+        _trader_stats_cache_ts = now
+    return _trader_stats_cache
+
+
+def _stats_for(trader_stats: dict, trader_name: str) -> dict:
+    """Lookup helper with safe defaults."""
+    if not trader_stats or not trader_name:
+        return {"wr": 0.0, "pnl": 0.0, "trades": 0, "avg_bet": 0.0}
+    return trader_stats.get(trader_name.strip().lower(),
+                            {"wr": 0.0, "pnl": 0.0, "trades": 0, "avg_bet": 0.0})
+
+
+def _get_features(trade: dict, trader_stats: dict = None) -> list:
+    """Extract 8-feature vector from a trade dict + the trader's rolling stats.
+
+    `trade` keys consumed: entry_price / actual_entry_price, category,
+    actual_size, trader_name (or wallet_username for the lookup).
+
+    `trader_stats` is the per-trader dict returned by _stats_for(). When
+    None (e.g. unknown trader), trader features default to 0 and
+    bet_vs_avg defaults to 1.0 (neutral).
     """
     entry = trade.get("actual_entry_price") or trade.get("entry_price") or 0.5
-    cat = CATEGORY_MAP.get((trade.get("category") or "").lower(), 0)
-    side = 1 if (trade.get("side") or "YES").upper() == "YES" else 0
+    cat_lc = (trade.get("category") or "").lower()
 
-    # Time features
-    hour = 12
-    dow = 3
-    try:
-        created = trade.get("created_at") or ""
-        if created:
-            dt = datetime.strptime(created[:19], "%Y-%m-%d %H:%M:%S")
-            hour = dt.hour
-            dow = dt.weekday()
-    except Exception:
-        pass
+    # 1. entry_price (continuous 0..1)
+    f1 = float(entry)
+    # 2. distance from coin-flip — captures non-linear extremity edge
+    f2 = abs(f1 - 0.5)
 
-    return [entry, cat, side, hour, dow]
+    # 3-5. Trader rolling stats
+    s = trader_stats or {"wr": 0.0, "pnl": 0.0, "trades": 0, "avg_bet": 0.0}
+    f3 = float(s.get("wr") or 0.0)
+    f4 = float(s.get("pnl") or 0.0)
+    f5 = float(s.get("trades") or 0)
+
+    # 6. Conviction: this bet relative to the trader's average.
+    #    For copy_trades we use actual_size; for blocked rows actual_size
+    #    is 0 so we fall back to 1.0 (neutral) — avoids a copy-vs-blocked
+    #    leakage marker. The bot's prior fix removed `size` for the same
+    #    reason. Clamped to [0, 10] so a freak bet can't dominate splits.
+    actual_size = trade.get("actual_size") or 0
+    avg_bet = float(s.get("avg_bet") or 0)
+    if actual_size and avg_bet > 0:
+        f6 = float(actual_size) / avg_bet
+        if f6 > 10.0:
+            f6 = 10.0
+    else:
+        f6 = 1.0
+
+    # 7-8. Category as fee proxy (the only thing category actually predicts)
+    f7 = 1 if cat_lc in _HIGH_FEE_CATEGORIES else 0
+    f8 = _FEE_BAND_MAP.get(cat_lc, 1)  # default to medium-fee band
+
+    return [f1, f2, f3, f4, f5, f6, f7, f8]
 
 
 def _build_training_data():
@@ -72,40 +169,85 @@ def _build_training_data():
       - is_copy: bool vector, True for rows sourced from copy_trades
       - copy_count, blocked_count: total counts
     """
+    # Trader stats at TRAINING time use chronological per-row accumulation
+    # from copy_trades themselves — this gives us point-in-time correct
+    # stats per row instead of relying on the (sparsely populated)
+    # trader_performance table. Leakage-free because each row only sees
+    # the stats AS THEY WERE before that row's outcome.
     with db.get_connection() as conn:
-        copy_rows = conn.execute(
-            "SELECT actual_entry_price, entry_price, category, side, "
-            "actual_size, size, fee_bps, created_at, pnl_realized "
-            "FROM copy_trades WHERE status = 'closed' AND pnl_realized IS NOT NULL "
+        copy_rows = [dict(r) for r in conn.execute(
+            "SELECT wallet_username, actual_entry_price, entry_price, category, "
+            "side, actual_size, size, fee_bps, created_at, pnl_realized "
+            "FROM copy_trades WHERE status='closed' AND pnl_realized IS NOT NULL "
             "ORDER BY created_at ASC"
-        ).fetchall()
-        blocked_rows = conn.execute(
-            "SELECT trader_price, category, side, created_at, would_have_won "
+        ).fetchall()]
+        blocked_rows = [dict(r) for r in conn.execute(
+            "SELECT trader, trader_price, category, side, created_at, would_have_won "
             "FROM blocked_trades WHERE would_have_won IS NOT NULL "
             "ORDER BY created_at ASC"
-        ).fetchall()
+        ).fetchall()]
 
-    # Merge chronologically. Each entry is (created_at, is_copy, features, label).
-    merged = []
-
+    events = []
     for r in copy_rows:
-        d = dict(r)
-        features = _get_features(d)
-        label = 1 if (d.get("pnl_realized") or 0) > 0 else 0
-        merged.append((d.get("created_at") or "", True, features, label))
-
+        events.append((r.get("created_at") or "", "copy", r))
     for r in blocked_rows:
-        # Map blocked_trades schema to the dict shape _get_features expects.
-        # size/fee_bps removed from features (was leakage marker).
-        d = {
-            "entry_price": r["trader_price"] or 0.5,
-            "category": r["category"] or "",
-            "side": r["side"] or "YES",
-            "created_at": r["created_at"] or "",
+        events.append((r.get("created_at") or "", "blocked", r))
+    events.sort(key=lambda t: t[0])
+
+    trader_running = {}
+
+    def _snapshot(name):
+        s = trader_running.get((name or "").strip().lower())
+        if not s or s["n"] == 0:
+            return {"wr": 0.0, "pnl": 0.0, "trades": 0, "avg_bet": 0.0}
+        return {
+            "wr": (s["wins"] / s["n"]) * 100.0,
+            "pnl": s["pnl_sum"],
+            "trades": s["n"],
+            "avg_bet": (s["size_sum"] / s["size_n"]) if s["size_n"] > 0 else 0.0,
         }
-        features = _get_features(d)
-        label = int(r["would_have_won"])
-        merged.append((d["created_at"], False, features, label))
+
+    def _accumulate(name, pnl, size):
+        key = (name or "").strip().lower()
+        if not key:
+            return
+        s = trader_running.setdefault(key, {"wins": 0, "losses": 0, "pnl_sum": 0.0,
+                                            "n": 0, "size_sum": 0.0, "size_n": 0})
+        if pnl > 0:
+            s["wins"] += 1
+        elif pnl < 0:
+            s["losses"] += 1
+        s["pnl_sum"] += float(pnl or 0)
+        s["n"] += 1
+        try:
+            sz = float(size or 0)
+            if sz > 0:
+                s["size_sum"] += sz
+                s["size_n"] += 1
+        except Exception:
+            pass
+
+    merged = []
+    for ts_str, kind, r in events:
+        if kind == "copy":
+            name = r.get("wallet_username") or ""
+            snap = _snapshot(name)
+            features = _get_features(r, snap)
+            label = 1 if (r.get("pnl_realized") or 0) > 0 else 0
+            merged.append((ts_str, True, features, label))
+            _accumulate(name, r.get("pnl_realized") or 0, r.get("actual_size") or 0)
+        else:  # blocked
+            name = r.get("trader") or ""
+            snap = _snapshot(name)
+            d = {
+                "entry_price": r.get("trader_price") or 0.5,
+                "category": r.get("category") or "",
+                "side": r.get("side") or "YES",
+                "created_at": r.get("created_at") or "",
+            }
+            features = _get_features(d, snap)
+            label = int(r.get("would_have_won") or 0)
+            merged.append((ts_str, False, features, label))
 
     # Sort by created_at (ISO timestamp strings compare chronologically)
     merged.sort(key=lambda t: t[0])
@@ -202,8 +344,7 @@ def train_model():
     else:
         logger.info("[ML] COPY-ONLY test subset too small (n=%d < 5) to compute meaningful diagnostics", n_copy_test)
 
-    feature_names = ["entry_price", "category", "side", "hour", "day_of_week"]
-    importances = sorted(zip(feature_names, model.feature_importances_), key=lambda x: -x[1])
+    importances = sorted(zip(FEATURE_NAMES, model.feature_importances_), key=lambda x: -x[1])
 
     logger.info("[ML] Trained on %d samples (%d copy + %d blocked) | Train: %.1f%% | Test: %.1f%% | Baseline: %.1f%%",
                 total, copy_count, blocked_count,
@@ -265,16 +406,27 @@ def _load_model():
 
 
 def predict(trade_data: dict) -> float:
-    """Predict win probability for a trade. Returns 0.0-1.0 or -1 if no model."""
+    """Predict win probability for a trade. Returns 0.0-1.0 or -1 if no model.
+
+    `trade_data` should include `trader_name` (or `wallet_username`) so the
+    ML scorer can look up the trader's rolling stats. If missing, predicts
+    with neutral defaults — still works but loses the trader-edge signal.
+    """
     if not _load_model():
         return -1
 
     try:
-        features = np.array([_get_features(trade_data)])
+        all_stats = _get_trader_stats_cached()
+        name = trade_data.get("trader_name") or trade_data.get("wallet_username") or ""
+        ts = _stats_for(all_stats, name)
+        features = np.array([_get_features(trade_data, ts)])
         proba = _model.predict_proba(features)[0]
-        # proba[1] = probability of winning
         win_prob = proba[1] if len(proba) > 1 else 0.5
         return round(float(win_prob), 3)
+    except ValueError as e:
+        # Pickle vs. current feature-count mismatch — old model needs retraining
+        logger.warning("[ML] Feature shape mismatch (old model?), waiting for retrain: %s", e)
+        return -1
     except Exception as e:
         logger.debug("[ML] Prediction error: %s", e)
         return -1

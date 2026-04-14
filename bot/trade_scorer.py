@@ -209,9 +209,14 @@ def score(trader_name: str, condition_id: str, side: str, entry_price: float,
     try:
         from bot.ml_scorer import predict as ml_predict
         ml_prob = ml_predict({
-            "entry_price": entry_price, "category": category,
-            "side": side, "size": trader_size_usd,
-            "fee_bps": 0, "created_at": "",
+            "trader_name": trader_name,
+            "entry_price": entry_price,
+            "category": category,
+            "side": side,
+            "actual_size": trader_size_usd,
+            "size": trader_size_usd,
+            "fee_bps": 0,
+            "created_at": "",
         })
         if ml_prob >= 0:  # -1 = no model available
             components["ml_prediction"] = int(ml_prob * 100)
