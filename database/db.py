@@ -498,6 +498,57 @@ def has_open_trade_for_market(wallet_address: str, condition_id: str) -> bool:
         return row is not None
 
 
+def sum_open_shares_held_by_cid_side(condition_id: str, side: str) -> float:
+    """Sum of shares_held across all open copy_trades rows for a
+    (condition_id, side) pair, regardless of source trader.
+
+    Used by reconcile and /api/live-data partial-ghost detection. The
+    subtlety: `copy_trades.wallet_address` stores the SOURCE trader's
+    wallet (e.g. sovereign2013 at 0xee613b...), NOT our executing wallet
+    (POLYMARKET_FUNDER at 0x53fe4d...). Chain `/positions` returns
+    holdings at the FUNDER, so comparing DB shares_held against chain
+    size must aggregate across ALL source traders — different followed
+    traders can independently buy the same (market, side) and we'd
+    have multiple copy_trades rows covering one on-chain token balance.
+
+    Side matching is case-insensitive because the chain API returns
+    "Under"/"Yes"/"No"/team names with mixed capitalization, and DB
+    rows preserve whatever the source signal carried.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(shares_held), 0) AS tot FROM copy_trades "
+            "WHERE condition_id=? AND LOWER(side)=LOWER(?) AND status='open'",
+            (condition_id, side),
+        ).fetchone()
+        return float(row["tot"] or 0)
+
+
+def sum_open_shares_held_for_market(wallet_address: str, condition_id: str) -> float:
+    """Sum of shares_held across all open copy_trades rows for a (wallet, cond)
+    pair. Returns 0.0 when nothing matches.
+
+    Used by reconcile_db_vs_wallet() and /api/live-data to detect partial-
+    ghost shares — the scenario where on-chain holdings exceed the DB-tracked
+    shares_held sum for the same market. Example: 2026-04-14 Angels/Yankees
+    race left 84 untracked Under shares on-chain (chain size=85.86, db
+    shares_held=1.73) because buy_shares succeeded but create_copy_trade
+    failed the UNIQUE constraint. The set-based ghost check missed it
+    because id=3547 still existed; this helper lets the caller do a
+    share-level comparison on top.
+
+    COALESCE handles legacy rows with NULL shares_held (pre-close-path-fix
+    era) so the sum stays numeric instead of returning None.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(shares_held), 0) AS tot FROM copy_trades "
+            "WHERE wallet_address=? AND condition_id=? AND status='open'",
+            (wallet_address, condition_id),
+        ).fetchone()
+        return float(row["tot"] or 0)
+
+
 def count_copies_for_market(wallet_address: str, condition_id: str) -> int:
     """Wie viele aktive Kopien haben wir von diesem Markt/Trader?
     Counts OPEN trades + trades closed within NO_REBUY_MINUTES (min 30min) to prevent rapid re-entry.

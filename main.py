@@ -24,6 +24,13 @@ logging.basicConfig(
 logger = logging.getLogger("poly-copybot")
 
 
+# Partial-ghost detection thresholds (used in reconcile_db_vs_wallet).
+# Flag a (cond, wallet) market as partial-ghost when chain size exceeds
+# the sum of DB shares_held by MORE than TOLERANCE_PCT and the
+# untracked value is above TOLERANCE_USD. Both must trip. Rationale
+# documented in CHANGELOG entry for the 2026-04-14 Angels incident.
+GHOST_SHARE_TOLERANCE_PCT = 1.10   # chain must exceed DB sum by >10%
+GHOST_SHARE_TOLERANCE_USD = 2.0    # AND value delta must exceed $2
 
 
 
@@ -252,8 +259,61 @@ def reconcile_db_vs_wallet():
                 for _o in _orphans:
                     logger.info("[RECONCILE]   orphan: #%d %s ($%.2f size)",
                                 _o["id"], (_o["market_question"] or "")[:50], _o["actual_size"] or 0)
-        else:
-            logger.debug("[RECONCILE] OK — DB open (%d) matches chain (%d)", len(db_open), len(chain_cids))
+
+        # Share-level partial-ghost pass. The set-based check above only
+        # flags markets entirely missing from the DB. If a market has a
+        # tracked row but on-chain size exceeds sum(shares_held), the
+        # delta is untracked on-chain exposure (e.g. 2026-04-14 Angels
+        # incident: 1 DB row with 1.73 shares, chain holds 85.86).
+        #
+        # NOTE: the sum is keyed on (cond, side) NOT (wallet, cond) —
+        # copy_trades.wallet_address stores the source trader, chain
+        # positions are always at POLYMARKET_FUNDER. Different followed
+        # traders on the same (market, side) produce multiple DB rows
+        # that all sum to the same chain token balance.
+        from database.db import sum_open_shares_held_by_cid_side as _sum_shares
+        partial_ghosts = []
+        for _p in chain_positions:
+            _pcid = _p.get("conditionId", "")
+            if not _pcid or _pcid in ghost_cids:
+                continue  # full ghost already handled
+            _chain_size = float(_p.get("size", 0) or 0)
+            if _chain_size <= 0:
+                continue
+            _side = _p.get("outcome", "") or ""
+            _db_sum = _sum_shares(_pcid, _side)
+            if _db_sum <= 0:
+                continue  # no tracked shares on this side — set-level ghost caught it
+            if _chain_size <= _db_sum * GHOST_SHARE_TOLERANCE_PCT:
+                continue  # within the fee/slippage noise band
+            _cur_price = float(_p.get("curPrice", 0) or 0)
+            _untracked_shares = _chain_size - _db_sum
+            _untracked_value = round(_untracked_shares * _cur_price, 2)
+            if _untracked_value < GHOST_SHARE_TOLERANCE_USD:
+                continue  # below absolute $ floor
+            partial_ghosts.append({
+                "cid": _pcid,
+                "title": _p.get("title") or "",
+                "side": _side,
+                "chain_size": _chain_size,
+                "db_sum": _db_sum,
+                "untracked_shares": _untracked_shares,
+                "untracked_value": _untracked_value,
+            })
+
+        if partial_ghosts:
+            _tot_untracked = sum(_g["untracked_value"] for _g in partial_ghosts)
+            logger.info("[RECONCILE] %d partial-ghost markets ($%.2f untracked shares on otherwise-tracked positions)",
+                        len(partial_ghosts), _tot_untracked)
+            for _g in partial_ghosts[:5]:
+                logger.info("[RECONCILE]   partial: %s %s (chain=%.2f db=%.2f untracked=%.2f ~= $%.2f) — %s",
+                            _g["cid"][:14], (_g.get("side") or "")[:8],
+                            _g["chain_size"], _g["db_sum"],
+                            _g["untracked_shares"], _g["untracked_value"],
+                            _g["title"][:50])
+
+        if not ghost_cids and not orphan_cids and not partial_ghosts:
+            logger.debug("[RECONCILE] OK — DB open (%d) matches chain (%d), no partial ghosts", len(db_open), len(chain_cids))
     except Exception as e:
         logger.warning("Reconcile error: %s", e)
 

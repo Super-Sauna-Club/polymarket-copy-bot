@@ -245,6 +245,31 @@ def api_live_data():
             _shares = _show_size / _show_entry if _show_entry > 0 else 0
             _show_pnl = round(_shares * (cp - _show_entry), 2) if _shares > 0 else round(cv - iv, 2)
 
+            # Partial-ghost detection — chain shares may exceed DB tracked
+            # amount (see 2026-04-14 Angels incident: 85.86 on chain vs 1.73
+            # in DB). Mirrors the reconcile logic so the dashboard shows the
+            # same signal the log emits. Non-zero fields mean this market
+            # has untracked on-chain exposure the user should know about.
+            #
+            # Keyed on (cond, side) not (wallet, cond) because copy_trades.
+            # wallet_address stores the source trader, not the executing
+            # wallet — see sum_open_shares_held_by_cid_side docstring.
+            _ghost_shares = 0.0
+            _ghost_value_usd = 0.0
+            try:
+                _chain_size_raw = float(rp.get("size", 0) or 0)
+                if _open_match and _chain_size_raw > 0:
+                    from database.db import sum_open_shares_held_by_cid_side as _sum_shares_dashboard
+                    _db_sum = _sum_shares_dashboard(_cid, outcome or "")
+                    if _db_sum > 0 and _chain_size_raw > _db_sum * 1.10:
+                        _delta_shares = _chain_size_raw - _db_sum
+                        _delta_value = round(_delta_shares * cp, 2)
+                        if _delta_value >= 2.0:
+                            _ghost_shares = round(_delta_shares, 2)
+                            _ghost_value_usd = _delta_value
+            except Exception:
+                pass  # informational only, never block the endpoint
+
             open_positions.append({
                 "id": _open_match.get("id", hash(_cid) % 10000) if _open_match else hash(_cid) % 10000,
                 "wallet_username": _trader_by_cid.get(_cid, "—"),
@@ -261,6 +286,8 @@ def api_live_data():
                 "pnl_unrealized": _show_pnl,
                 "condition_id": _cid,
                 "created_at": _time_by_cid.get(_cid, ""),
+                "ghost_shares": _ghost_shares,
+                "ghost_value_usd": _ghost_value_usd,
             })
     except Exception:
         pass

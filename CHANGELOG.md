@@ -2,6 +2,161 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-14 (latest) — Partial-ghost share detection in reconcile + dashboard
+
+Backstop for the blind spot that hid the 2026-04-14 Angels ghost
+position. Commit `0d6f2be` prevents future ghost races via the
+`has_open_trade_for_market` pre-check. This commit **surfaces
+existing partial-ghost shares** so an incident can never again hide
+at $44-level on a $106 equity account.
+
+### The blind spot
+
+- Chain: `size=84.86 shares Under, avgPrice=0.5699, currentValue=$44.55`
+- DB: `id=3547 status='open' shares_held=1.73 actual_size=$1.00`
+- `reconcile_db_vs_wallet()` did `ghost_cids = chain_cids - db_cids`.
+  Because id=3547's `condition_id` matched the chain row, the Angels
+  market was classified "tracked"; the 84 untracked shares were
+  invisible.
+- `/api/live-data` joined by `condition_id` and preferred DB
+  `actual_size` as the display size, so the UI showed
+  `pnl_unrealized=-$0.05` for the $1 tracked slice instead of
+  `-$3.82` on the full 85 shares.
+
+### Why the obvious helper doesn't work
+
+First attempt: `sum_open_shares_held_for_market(wallet_address,
+condition_id)` keyed on `(wallet, cond)` — same semantics as
+`has_open_trade_for_market`. Always returned `0.0` for every followed
+trader. Root cause: **`copy_trades.wallet_address` stores the SOURCE
+TRADER's wallet** (sovereign2013 at `0xee613b...`), not our executing
+wallet (`POLYMARKET_FUNDER` at `0x53fe4db...`). Chain `/positions`
+returns holdings at the FUNDER. The wallet-keyed helper was being
+called with the wrong wallet semantic.
+
+Second layer: multiple followed traders can independently open the
+same `(market, side)`. Chain token balance aggregates them into a
+single row per asset. Correct comparison key is `(condition_id,
+side)` across ALL source traders, case-insensitive on side because
+chain API returns mixed capitalization.
+
+### Fix
+
+New helper `database/db.py::sum_open_shares_held_by_cid_side(cid, side)`:
+
+```python
+SELECT COALESCE(SUM(shares_held), 0) FROM copy_trades
+WHERE condition_id=? AND LOWER(side)=LOWER(?) AND status='open'
+```
+
+`main.py::reconcile_db_vs_wallet()` gets a partial-ghost pass
+alongside the existing set-based ghost/orphan check:
+
+```python
+GHOST_SHARE_TOLERANCE_PCT = 1.10   # chain must exceed DB sum by >10%
+GHOST_SHARE_TOLERANCE_USD = 2.0    # AND value delta must exceed $2
+
+for p in chain_positions:
+    if p.cid in ghost_cids: continue  # full ghost already logged
+    db_sum = sum_open_shares_held_by_cid_side(p.cid, p.outcome)
+    if db_sum <= 0: continue
+    if p.size <= db_sum * TOLERANCE_PCT: continue
+    untracked = p.size - db_sum
+    value = untracked * p.curPrice
+    if value < TOLERANCE_USD: continue
+    partial_ghosts.append(...)
+```
+
+New log format (additive, existing `[RECONCILE]` lines unchanged):
+
+```
+[RECONCILE] 1 partial-ghost markets ($43.64 untracked shares on otherwise-tracked positions)
+[RECONCILE]   partial: 0x396b5a2de32f Under (chain=84.86 db=1.73 untracked=83.12 ~= $43.64) — Los Angeles Angels vs. New York Yankees: O/U 9.5
+```
+
+`dashboard/app.py::/api/live-data` gets two new fields per
+`open_trades` entry: `ghost_shares` and `ghost_value_usd`. Both
+`0.0` for clean positions. Non-zero means untracked on-chain
+exposure. Frontend (style session) decides how to badge them.
+
+### TDD coverage
+
+9 tests in `tests/test_partial_ghost_detection.py`, two classes:
+
+**`TestSumOpenSharesHeld`** (5 tests for the wallet-keyed helper,
+kept around for future use cases like matching the UNIQUE index
+semantics directly):
+
+- `test_sum_shares_held_zero_when_no_rows`
+- `test_sum_shares_held_includes_multiple_open_rows`
+- `test_sum_shares_held_excludes_closed_and_baseline_rows`
+- `test_sum_shares_held_excludes_different_wallet_or_market`
+- `test_sum_shares_held_handles_null_shares_field`
+
+**`TestSumByConditionIdSide`** (4 tests for the cid+side helper that
+reconcile and dashboard actually use):
+
+- `test_sums_across_wallets_same_cid_and_side`
+- `test_excludes_other_side_of_same_market`
+- `test_case_insensitive_side_match`
+- `test_returns_zero_when_no_match`
+
+All 9 RED-verified before GREEN (AttributeError: function missing).
+Full suite post-fix: 83 pass / 1 pre-existing failure unrelated.
+
+### Live verification (server, 20:26 UTC)
+
+Manually triggered reconcile in subprocess:
+
+```
+[RECONCILE] 27 ghost (on-chain not in DB, $21.69 value), 0 orphan. DB open=9, chain=36
+[RECONCILE]   ghost: 0xfc9d03a593a9 ($1.66) — Will The Left ...
+[RECONCILE]   ghost: 0xe6a8bdcd0a55 ($3.87) — Will Iran strike ...
+[RECONCILE]   ghost: 0xae6d3d20bc8f ($3.16) — Will Rafael López ...
+[RECONCILE] 1 partial-ghost markets ($43.64 untracked shares on otherwise-tracked positions)
+[RECONCILE]   partial: 0x396b5a2de32f Under (chain=84.86 db=1.73 untracked=83.12 ~= $43.64) — Los Angeles Angels vs. New York Yankees: O/U 9.5
+```
+
+`/api/live-data` Angels O/U 9.5 row:
+
+```json
+{
+  "market_question": "Los Angeles Angels vs. New York Yankees: O/U 9.5",
+  "side": "Under",
+  "size": 1.0,
+  "pnl_unrealized": -0.05,
+  "ghost_shares": 83.12,
+  "ghost_value_usd": 43.64
+}
+```
+
+Other positions (5 sampled) all show `ghost_shares: 0.0,
+ghost_value_usd: 0.0` — no false positives.
+
+### What this commit does NOT do
+
+- **Does not heal the $48 Angels ghost.** Those shares resolve with
+  today's game; no code change undoes them. Healing historical
+  ghosts requires a manual DB UPDATE and is deferred to a separate
+  tool.
+- **Does not update the frontend HTML.** Style session will consume
+  `ghost_shares` / `ghost_value_usd` to draw a visual badge.
+- **Does not change the existing `pnl_unrealized`.** The DB-slice
+  PnL stays as the primary number. Ghost fields are additive
+  context.
+- **Does not touch `shares_held` semantics.** Frozen at buy time.
+  No migration, no auto-recalc.
+
+### Revert path
+
+- Raise `GHOST_SHARE_TOLERANCE_USD` in `main.py` to `1e9` to silence
+  detection without reverting the code.
+- OR drop the `ghost_shares` / `ghost_value_usd` fields from the
+  JSON — additive, safe to remove if a consumer breaks.
+- `git revert <hash>` for full rollback.
+
+---
+
 ## 2026-04-14 (ui) — Nav: rename DailyReport button to AI-Report and disable it
 
 Follow-up to the header harmonisation. User wants the DailyReport nav entry
