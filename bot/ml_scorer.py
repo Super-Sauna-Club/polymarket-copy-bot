@@ -379,9 +379,15 @@ def _build_training_data():
             name = r.get("wallet_username") or ""
             snap = _snapshot(name)
             features = _get_features(r, snap)
-            label = 1 if (r.get("pnl_realized") or 0) > 0 else 0
-            merged.append((ts_str, True, features, label))
-            _accumulate(name, r.get("pnl_realized") or 0, r.get("actual_size") or 0)
+            pnl = r.get("pnl_realized") or 0
+            label = 1 if pnl > 0 else 0
+            # Sample weight = magnitude of dollar outcome, clamped to [0.1, 5.0].
+            # Lower clamp avoids zero-weight rows; upper cap prevents one freak
+            # $10 loss from dominating tree splits. Loss of $0.65 → weight 0.65,
+            # win of $0.05 → weight 0.1, loss of $5.50 → weight 5.0.
+            weight = max(0.1, min(5.0, abs(float(pnl))))
+            merged.append((ts_str, True, features, label, weight))
+            _accumulate(name, pnl, r.get("actual_size") or 0)
         else:  # blocked
             name = r.get("trader") or ""
             snap = _snapshot(name)
@@ -395,16 +401,18 @@ def _build_training_data():
             }
             features = _get_features(d, snap)
             label = int(r.get("would_have_won") or 0)
-            merged.append((ts_str, False, features, label))
+            # Blocked rows have no $ amount, neutral default 1.0 so they
+            # roughly match an average copy_trade weight.
+            merged.append((ts_str, False, features, label, 1.0))
 
-    # Sort by created_at (ISO timestamp strings compare chronologically)
     merged.sort(key=lambda t: t[0])
 
     X = [m[2] for m in merged]
     y = [m[3] for m in merged]
     is_copy = [m[1] for m in merged]
+    weights = [m[4] for m in merged]
 
-    return X, y, is_copy, len(copy_rows), len(blocked_rows)
+    return X, y, is_copy, len(copy_rows), len(blocked_rows), weights
 
 
 def train_model():
@@ -413,7 +421,7 @@ def train_model():
     """
     global _model, _model_loaded
 
-    X, y, is_copy, copy_count, blocked_count = _build_training_data()
+    X, y, is_copy, copy_count, blocked_count, weights = _build_training_data()
     total = copy_count + blocked_count
 
     if total < MIN_TRAINING_SAMPLES:
@@ -423,6 +431,7 @@ def train_model():
     X = np.array(X)
     y = np.array(y)
     is_copy_arr = np.array(is_copy, dtype=bool)
+    weights = np.array(weights, dtype=float)
 
     if len(set(y.tolist())) < 2:
         logger.warning("[ML] Only one class in training data — skipping")
@@ -443,14 +452,25 @@ def train_model():
     split_idx = int(len(X) * 0.8)
     X_train, X_test = X[:split_idx], X[split_idx:]
     y_train, y_test = y[:split_idx], y[split_idx:]
+    weights_train = weights[:split_idx]
     is_copy_test = is_copy_arr[split_idx:]
 
     if len(set(y_train.tolist())) < 2 or len(set(y_test.tolist())) < 2:
         logger.warning("[ML] Time-split produced single-class train/test — skipping")
         return
 
-    model = RandomForestClassifier(n_estimators=100, max_depth=6, min_samples_leaf=5, random_state=42)
-    model.fit(X_train, y_train)
+    # class_weight='balanced' auto-compensates for the 65/35 loss/win skew so
+    # the model can't game accuracy by always predicting the majority class.
+    # sample_weight rows by |pnl_realized| so a $5 loss counts 50× a $0.10 win —
+    # trees learn to avoid big dollar losses instead of maximizing win frequency.
+    model = RandomForestClassifier(
+        n_estimators=100,
+        max_depth=6,
+        min_samples_leaf=5,
+        class_weight='balanced',
+        random_state=42,
+    )
+    model.fit(X_train, y_train, sample_weight=weights_train)
 
     train_acc = model.score(X_train, y_train)
     test_acc = model.score(X_test, y_test)
@@ -578,3 +598,29 @@ def predict(trade_data: dict) -> float:
     except Exception as e:
         logger.debug("[ML] Prediction error: %s", e)
         return -1
+
+
+def get_model_health() -> dict:
+    """Latest training-row health summary used by trade_scorer to decide
+    whether ML adjustments should be applied at all. Returns dict with
+    edge_vs_baseline in signed percentage points (copy_only - baseline).
+    Negative edge → model is worse than always-predict-majority and should
+    be display-only until it earns its keep."""
+    try:
+        with db.get_connection() as conn:
+            r = conn.execute(
+                "SELECT accuracy, copy_only_accuracy, baseline_accuracy, trained_at "
+                "FROM ml_training_log ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if not r:
+            return {"edge_vs_baseline": 0.0, "copy_only": 0.0, "baseline": 0.0, "trained_at": ""}
+        copy_only = float(r["copy_only_accuracy"] or 0)
+        baseline = float(r["baseline_accuracy"] or 0)
+        return {
+            "edge_vs_baseline": (copy_only - baseline) * 100.0,
+            "copy_only": copy_only,
+            "baseline": baseline,
+            "trained_at": r["trained_at"] or "",
+        }
+    except Exception:
+        return {"edge_vs_baseline": 0.0, "copy_only": 0.0, "baseline": 0.0, "trained_at": ""}

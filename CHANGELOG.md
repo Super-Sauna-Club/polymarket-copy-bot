@@ -2,7 +2,34 @@
 
 Session-level notes. For full commit history see `git log`.
 
-## 2026-04-14 (latest) — Paper summary with 1-7d windows + paper events in the stream
+## 2026-04-14 (latest) — ML sample weighting + class balance + self-disabling edge gate
+
+Three linked fixes that make the ML scorer stop actively damaging the trade path when it's worse than baseline, and give it the means to eventually earn its keep.
+
+### Fix 1 — Sample-weight by |pnl_realized|
+
+`bot/ml_scorer.py::_build_training_data()` now returns a sixth element `weights` alongside `(X, y, is_copy, copy_count, blocked_count)`. Copy-trade rows get `weight = clamp(abs(pnl_realized), 0.1, 5.0)` so a $5 loss counts 50× a $0.10 win. Lower clamp keeps $0-PnL rows from vanishing; upper cap stops a single freak $10 loss from dominating tree splits. Blocked rows get a neutral `1.0` (no $ amount available). The model now optimizes for avoiding dollar losses instead of maximizing win frequency — the right objective for asymmetric Polymarket payoffs (small wins, big losses on resolve-to-0).
+
+### Fix 2 — `class_weight='balanced'`
+
+`RandomForestClassifier` in `train_model()` now uses `class_weight='balanced'`, so sklearn auto-compensates for the ~65/35 loss/win skew by weighting the minority (win) class ~1.86×. Combined with Fix 1, wins receive both magnitude weighting and class balancing. The visible effect: test `accuracy` can no longer be gamed by always predicting the majority class — `copy_only_accuracy` vs `baseline_accuracy` is now the only comparison that matters.
+
+### Fix 3 — `get_model_health()` + trade-scorer edge gate
+
+New helper `bot/ml_scorer.py::get_model_health()` reads the latest `ml_training_log` row and returns `{edge_vs_baseline, copy_only, baseline, trained_at}` where `edge_vs_baseline = (copy_only_accuracy - baseline_accuracy) * 100` in signed percentage points.
+
+`bot/trade_scorer.py:208-235` now calls it before touching the score: when `edge_pp < 0` (model is worse than baseline) the `components["ml_prediction"]` field is still populated for the UI, but `total` is NOT modified. When `edge_pp >= 0` the adjustment runs with tighter thresholds (`<0.15 → -15`, `>0.85 → +15`) instead of the old noisy `0.30/0.70` boundary — only extreme-confidence predictions move the needle.
+
+**State after retrain on walter**: copy_only=48.1%, baseline=64.7%, edge=-16.6pp → ML adjustment auto-disabled in live trade decisions. Once copy_only climbs above baseline (from more post-reset data or better features), it reactivates itself without a code change. Self-disabling safety.
+
+### Files touched
+
+- `bot/ml_scorer.py` — `_build_training_data` returns weights, `train_model` uses `class_weight='balanced'` + `sample_weight`, new `get_model_health()` helper
+- `bot/trade_scorer.py` — edge-gate before ML adjustment, thresholds tightened 0.30/0.70 → 0.15/0.85
+
+No schema changes, no frontend touch. Pickle compat preserved (same 11-feature layout).
+
+## 2026-04-14 — Paper summary with 1-7d windows + paper events in the stream
 
 ### Paper summary table expanded per piff's spec
 
