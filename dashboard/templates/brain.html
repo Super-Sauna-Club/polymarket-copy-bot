@@ -113,6 +113,31 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 .core-mid .ml-compact-body{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
 .ml-metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 @media(max-width:900px){.ml-metrics{grid-template-columns:repeat(2,1fr)}}
+/* Filter Precision Audit table */
+.fp-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.72rem}
+.fp-table th{background:var(--bg3);color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;font-size:.56rem;padding:5px 6px;border-bottom:1px solid var(--border);font-weight:600}
+.fp-table th{text-align:right}
+.fp-table th:first-child{text-align:left}
+.fp-table td{padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:right;white-space:nowrap}
+.fp-table td:first-child{text-align:left;font-weight:600}
+.fp-table tr.fp-row-loosen{background:rgba(248,113,113,0.08)}
+.fp-table tr.fp-row-loosen td:first-child{color:var(--red)}
+.fp-table tr.fp-row-keep{background:rgba(52,211,153,0.05)}
+.fp-table tr.fp-row-keep td:first-child{color:var(--green)}
+.fp-table tr.fp-row-review{background:rgba(234,179,8,0.05)}
+.fp-table tr.fp-row-review td:first-child{color:var(--gold)}
+.fp-table tr.fp-row-insuff{opacity:.4}
+.fp-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:.54rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.fp-badge.loosen{background:rgba(248,113,113,0.18);color:var(--red);border:1px solid rgba(248,113,113,0.4)}
+.fp-badge.keep{background:rgba(52,211,153,0.15);color:var(--green);border:1px solid rgba(52,211,153,0.4)}
+.fp-badge.review{background:rgba(234,179,8,0.15);color:var(--gold);border:1px solid rgba(234,179,8,0.4)}
+.fp-badge.insuff{background:var(--bg3);color:var(--text-dim);border:1px solid var(--border)}
+.fp-legend{margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;font-size:.56rem;color:var(--text-dim)}
+.fp-leg{display:inline-flex;align-items:center;gap:5px}
+.fp-leg.fp-loosen::before{content:"";width:9px;height:9px;background:var(--red);border-radius:2px}
+.fp-leg.fp-keep::before{content:"";width:9px;height:9px;background:var(--green);border-radius:2px}
+.fp-leg.fp-review::before{content:"";width:9px;height:9px;background:var(--gold);border-radius:2px}
+.fp-leg.fp-insuff::before{content:"";width:9px;height:9px;background:var(--text-dim);border-radius:2px;opacity:.5}
 .ml-cell{background:var(--bg3);border:1px solid var(--border);padding:10px 8px;text-align:center;
   position:relative;overflow:hidden;min-width:0}
 .ml-cell::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
@@ -541,6 +566,37 @@ html.wide .app{max-width:none;padding:0 10px 8px}
           <div class="ml-feats-lbl">Feature Importance</div>
           <div id="featImp"></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ FILTER PRECISION AUDIT ═══ -->
+  <div class="ml-compact" style="margin-top:14px">
+    <div class="ml-compact-head">
+      <div class="ml-compact-title">Filter Precision Audit</div>
+      <span class="pill" id="fpMeta">—</span>
+    </div>
+    <div class="ml-compact-body">
+      <table class="fp-table" id="fpTable">
+        <thead>
+          <tr>
+            <th style="text-align:left">Filter Reason</th>
+            <th>N</th>
+            <th>Actual WR</th>
+            <th>Conf@0.7</th>
+            <th>Precision</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody id="fpBody">
+          <tr><td colspan="6" style="opacity:.5;padding:10px">loading…</td></tr>
+        </tbody>
+      </table>
+      <div class="fp-legend">
+        <span class="fp-leg fp-loosen">LOOSEN = filter blocks real winners</span>
+        <span class="fp-leg fp-keep">KEEP = filter correctly saves money</span>
+        <span class="fp-leg fp-review">REVIEW = inconclusive</span>
+        <span class="fp-leg fp-insuff">INSUFFICIENT = need more data</span>
       </div>
     </div>
   </div>
@@ -1957,6 +2013,7 @@ async function refresh(){
   var paperEvents=await fetchJSON('/api/brain/paper-events?limit=300');
   var blocked=await fetchJSON('/api/ai/blocked-trades?hours=72&limit=500');
   var tickerEvents=await fetchJSON('/api/fun/ticker');
+  var filterPrec=await fetchJSON('/api/brain/filter-precision');
 
   // Merge decisions + blocked + ticker events into unified stream
   var merged=[];
@@ -2011,6 +2068,61 @@ async function refresh(){
   allDecisions=decisions||[];
   renderPipeline(lc);
   renderPaper(paper);
+  renderFilterPrecision(filterPrec);
+}
+
+/* Filter Precision Audit panel renderer. Takes {rows, meta} from
+   /api/brain/filter-precision and builds a color-coded table. */
+function renderFilterPrecision(data){
+  var body=$('#fpBody');if(!body)return;
+  var meta=$('#fpMeta');
+  while(body.firstChild)body.removeChild(body.firstChild);
+  if(!data||data.meta&&data.meta.error){
+    var tr=document.createElement('tr');
+    var td=document.createElement('td');
+    td.setAttribute('colspan','6');
+    td.style.padding='14px 10px';td.style.opacity='.6';
+    td.textContent=(data&&data.meta&&data.meta.error)||'ml_block model not trained yet — run train_block_model()';
+    tr.appendChild(td);body.appendChild(tr);
+    if(meta)meta.textContent='— not ready';
+    return;
+  }
+  var rows=data.rows||[];
+  var m=data.meta||{};
+  if(meta)meta.textContent=(rows.length+' filters · '+(m.total_verified_rows||0)+' verified rows');
+  if(!rows.length){
+    var tr2=document.createElement('tr');
+    var td2=document.createElement('td');
+    td2.setAttribute('colspan','6');
+    td2.style.padding='14px 10px';td2.style.opacity='.6';
+    td2.textContent='no filter precision data yet';
+    tr2.appendChild(td2);body.appendChild(tr2);return;
+  }
+  rows.forEach(function(r){
+    var tr=document.createElement('tr');
+    var rec=r.recommendation||'REVIEW';
+    if(rec==='LOOSEN')tr.className='fp-row-loosen';
+    else if(rec==='KEEP')tr.className='fp-row-keep';
+    else if(rec==='REVIEW')tr.className='fp-row-review';
+    else tr.className='fp-row-insuff';
+    function cell(txt,align){
+      var td=document.createElement('td');
+      if(align)td.style.textAlign=align;
+      td.textContent=(txt===null||txt===undefined)?'—':txt;
+      return td;
+    }
+    tr.appendChild(cell(r.reason||'unknown','left'));
+    tr.appendChild(cell(r.n));
+    tr.appendChild(cell(fmt(r.actual_win_rate,1)+'%'));
+    tr.appendChild(cell(r.confident_n));
+    tr.appendChild(cell(r.precision_at_conf==null?'—':fmt(r.precision_at_conf,1)+'%'));
+    var badge=document.createElement('span');
+    badge.className='fp-badge '+(rec==='LOOSEN'?'loosen':rec==='KEEP'?'keep':rec==='REVIEW'?'review':'insuff');
+    badge.textContent=rec;
+    var tdRec=document.createElement('td');tdRec.appendChild(badge);
+    tr.appendChild(tdRec);
+    body.appendChild(tr);
+  });
 }
 
 refresh();

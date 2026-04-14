@@ -282,8 +282,12 @@ CREATE TABLE IF NOT EXISTS ml_training_log (
     train_n INTEGER,                -- size of the train slice
     test_n INTEGER,                 -- size of the test slice
     feature_importance TEXT,
-    model_path TEXT
+    model_path TEXT,
+    model_name TEXT DEFAULT 'ml_copy'  -- 'ml_copy' or 'ml_block' (added 2026-04-14)
 );
+-- Note: idx_ml_training_log_model_name is created in db.py::init_db after the
+-- ALTER TABLE migration; putting it here would fail on existing DBs where
+-- model_name doesn't exist yet (CREATE TABLE IF NOT EXISTS is a no-op).
 
 CREATE TABLE IF NOT EXISTS trader_candidates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

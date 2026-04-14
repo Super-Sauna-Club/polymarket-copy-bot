@@ -42,6 +42,8 @@ def init_db():
             "ALTER TABLE ml_training_log ADD COLUMN baseline_accuracy REAL",
             "ALTER TABLE ml_training_log ADD COLUMN train_n INTEGER",
             "ALTER TABLE ml_training_log ADD COLUMN test_n INTEGER",
+            "ALTER TABLE ml_training_log ADD COLUMN model_name TEXT DEFAULT 'ml_copy'",
+            "CREATE INDEX IF NOT EXISTS idx_ml_training_log_model_name ON ml_training_log(model_name)",
         ]:
             try:
                 conn.execute(migration)

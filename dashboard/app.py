@@ -1770,6 +1770,23 @@ def api_paper_events():
         return jsonify({"events": [], "count": 0, "error": str(e)})
 
 
+@app.route("/api/brain/filter-precision")
+def api_filter_precision():
+    """Per-filter-reason precision audit. For each block_reason bucket,
+    reports how many verified blocks the ml_block model would have
+    identified as winners (at confidence >= 0.7) and recommends whether
+    to loosen the filter. Used by the Filter Precision Audit panel on
+    the brain page.
+    Graceful fallback when ml_block is not yet trained (returns empty
+    rows + error meta)."""
+    try:
+        from bot.filter_audit import compute_filter_precision
+        result = compute_filter_precision()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"rows": [], "meta": {"error": str(e), "total_rows": 0}})
+
+
 @app.route("/api/brain/paper-trades-list")
 def api_paper_trades_list():
     """Flat list of individual paper trades (open + closed) joined with candidate

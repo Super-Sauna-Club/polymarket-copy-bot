@@ -29,8 +29,18 @@ from database import db
 
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ml_model.pkl")
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+COPY_MODEL_PATH = os.path.join(_REPO_ROOT, "ml_copy.pkl")
+BLOCK_MODEL_PATH = os.path.join(_REPO_ROOT, "ml_block.pkl")
+# Legacy alias — older code / bot paths that reference MODEL_PATH still
+# point to the live-decision (copy) model. The pre-split ml_model.pkl is
+# also accepted as a fallback so an in-place upgrade doesn't need a retrain.
+MODEL_PATH = COPY_MODEL_PATH
+_LEGACY_MODEL_PATH = os.path.join(_REPO_ROOT, "ml_model.pkl")
 MIN_TRAINING_SAMPLES = 50
+MIN_BLOCK_TRAINING_SAMPLES = 100  # filter-audit model wants more rows
+                                  # than live-decision model, per-reason
+                                  # stats need density
 
 # Single label-encoded category feature in fee-tier hundreds, with gaps so
 # future sports can slot in without renumbering existing IDs (and breaking
@@ -147,8 +157,15 @@ def _trader_id(name: str) -> int:
     h = hashlib.md5(name.strip().lower().encode("utf-8")).hexdigest()
     return int(h[:6], 16) % 1000 + 1  # 1..1000, 0 reserved for unknown
 
+_model_copy = None
+_model_copy_loaded = False
+_model_block = None
+_model_block_loaded = False
+# Backward-compat aliases: external code that still references _model /
+# _model_loaded keeps working — both point to the copy-model state.
 _model = None
 _model_loaded = False
+
 _trader_stats_cache = None
 _trader_stats_cache_ts = 0
 _TRADER_STATS_TTL = 300  # seconds — predict() hits this cache
@@ -321,333 +338,459 @@ def _get_features(trade: dict, trader_stats: dict = None) -> list:
     return [f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10]
 
 
-def _build_training_data():
-    """Build training set from BOTH copy_trades (real outcomes) AND
-    blocked_trades (would_have_won from outcome tracker).
+def _snapshot(trader_running: dict, name: str) -> dict:
+    """Point-in-time trader rolling stats from a running accumulator dict.
+    Module-level so copy and block build functions can share it."""
+    s = trader_running.get((name or "").strip().lower())
+    if not s or s["n"] == 0:
+        return {"wr": 0.0, "pnl": 0.0, "trades": 0, "avg_bet": 0.0}
+    return {
+        "wr": (s["wins"] / s["n"]) * 100.0,
+        "pnl": s["pnl_sum"],
+        "trades": s["n"],
+        "avg_bet": (s["size_sum"] / s["size_n"]) if s["size_n"] > 0 else 0.0,
+    }
 
-    This gives the ML model 6x more training data than copy_trades alone,
-    and lets it learn from trades the filters blocked too.
 
-    The two sources are MERGED chronologically by created_at so the
-    downstream time-split in train_model() produces a time-ordered
-    train/test slice (previously they were concatenated, putting all
-    copy_rows before all blocked_rows regardless of actual date).
+def _accumulate(trader_running: dict, name: str, pnl: float, size: float) -> None:
+    """Update the running accumulator with a new (pnl, size) observation."""
+    key = (name or "").strip().lower()
+    if not key:
+        return
+    s = trader_running.setdefault(key, {"wins": 0, "losses": 0, "pnl_sum": 0.0,
+                                        "n": 0, "size_sum": 0.0, "size_n": 0})
+    if pnl > 0:
+        s["wins"] += 1
+    elif pnl < 0:
+        s["losses"] += 1
+    s["pnl_sum"] += float(pnl or 0)
+    s["n"] += 1
+    try:
+        sz = float(size or 0)
+        if sz > 0:
+            s["size_sum"] += sz
+            s["size_n"] += 1
+    except Exception:
+        pass
 
-    Returns (X, y, is_copy, copy_count, blocked_count):
-      - X: feature matrix, sorted by created_at ASC
-      - y: label vector aligned with X
-      - is_copy: bool vector, True for rows sourced from copy_trades
-      - copy_count, blocked_count: total counts
-    """
-    # Trader stats at TRAINING time use chronological per-row accumulation
-    # from copy_trades themselves — this gives us point-in-time correct
-    # stats per row instead of relying on the (sparsely populated)
-    # trader_performance table. Leakage-free because each row only sees
-    # the stats AS THEY WERE before that row's outcome.
+
+def _build_copy_training_data():
+    """Copy-trade only training set. Chronologically accumulated per-row trader
+    stats so each feature vector reflects trader history *before* that outcome
+    (leakage-free). Returns (X, y, weights).
+
+    Labels: 1 if pnl_realized > 0 else 0.
+    Weights: clamp(|pnl_realized|, 0.1, 5.0) — magnitude-aware so a $5 loss
+    counts 50x a $0.10 win, the right objective for asymmetric Polymarket
+    payoffs."""
     with db.get_connection() as conn:
-        copy_rows = [dict(r) for r in conn.execute(
+        rows = [dict(r) for r in conn.execute(
             "SELECT wallet_username, actual_entry_price, entry_price, category, "
             "side, actual_size, size, fee_bps, created_at, pnl_realized, market_question "
             "FROM copy_trades WHERE status='closed' AND pnl_realized IS NOT NULL "
             "ORDER BY created_at ASC"
         ).fetchall()]
-        blocked_rows = [dict(r) for r in conn.execute(
-            "SELECT trader, trader_price, category, side, created_at, would_have_won, market_question "
-            "FROM blocked_trades WHERE would_have_won IS NOT NULL "
-            "ORDER BY created_at ASC"
-        ).fetchall()]
-
-    events = []
-    for r in copy_rows:
-        events.append((r.get("created_at") or "", "copy", r))
-    for r in blocked_rows:
-        events.append((r.get("created_at") or "", "blocked", r))
-    events.sort(key=lambda t: t[0])
 
     trader_running = {}
-
-    def _snapshot(name):
-        s = trader_running.get((name or "").strip().lower())
-        if not s or s["n"] == 0:
-            return {"wr": 0.0, "pnl": 0.0, "trades": 0, "avg_bet": 0.0}
-        return {
-            "wr": (s["wins"] / s["n"]) * 100.0,
-            "pnl": s["pnl_sum"],
-            "trades": s["n"],
-            "avg_bet": (s["size_sum"] / s["size_n"]) if s["size_n"] > 0 else 0.0,
-        }
-
-    def _accumulate(name, pnl, size):
-        key = (name or "").strip().lower()
-        if not key:
-            return
-        s = trader_running.setdefault(key, {"wins": 0, "losses": 0, "pnl_sum": 0.0,
-                                            "n": 0, "size_sum": 0.0, "size_n": 0})
-        if pnl > 0:
-            s["wins"] += 1
-        elif pnl < 0:
-            s["losses"] += 1
-        s["pnl_sum"] += float(pnl or 0)
-        s["n"] += 1
-        try:
-            sz = float(size or 0)
-            if sz > 0:
-                s["size_sum"] += sz
-                s["size_n"] += 1
-        except Exception:
-            pass
-
-    merged = []
-    for ts_str, kind, r in events:
-        if kind == "copy":
-            name = r.get("wallet_username") or ""
-            snap = _snapshot(name)
-            features = _get_features(r, snap)
-            pnl = r.get("pnl_realized") or 0
-            label = 1 if pnl > 0 else 0
-            # Sample weight = magnitude of dollar outcome, clamped to [0.1, 5.0].
-            # Lower clamp avoids zero-weight rows; upper cap prevents one freak
-            # $10 loss from dominating tree splits. Loss of $0.65 → weight 0.65,
-            # win of $0.05 → weight 0.1, loss of $5.50 → weight 5.0.
-            weight = max(0.1, min(5.0, abs(float(pnl))))
-            merged.append((ts_str, True, features, label, weight))
-            _accumulate(name, pnl, r.get("actual_size") or 0)
-        else:  # blocked
-            name = r.get("trader") or ""
-            snap = _snapshot(name)
-            d = {
-                "entry_price": r.get("trader_price") or 0.5,
-                "category": r.get("category") or "",
-                "market_question": r.get("market_question") or "",
-                "side": r.get("side") or "YES",
-                "created_at": r.get("created_at") or "",
-                "trader_name": name,  # so _trader_id() can hash it
-            }
-            features = _get_features(d, snap)
-            label = int(r.get("would_have_won") or 0)
-            # Blocked rows dominate numerically (13k vs 800 copy rows) and
-            # have a different distribution (they were rejected, so they skew
-            # toward extreme prices / poor traders). Downweight to 0.1 so
-            # they provide regularization signal but don't drown out the
-            # magnitude-weighted copy rows during training.
-            merged.append((ts_str, False, features, label, 0.1))
-
-    merged.sort(key=lambda t: t[0])
-
-    X = [m[2] for m in merged]
-    y = [m[3] for m in merged]
-    is_copy = [m[1] for m in merged]
-    weights = [m[4] for m in merged]
-
-    return X, y, is_copy, len(copy_rows), len(blocked_rows), weights
+    X, y, weights = [], [], []
+    for r in rows:
+        name = r.get("wallet_username") or ""
+        snap = _snapshot(trader_running, name)
+        features = _get_features(r, snap)
+        pnl = r.get("pnl_realized") or 0
+        label = 1 if pnl > 0 else 0
+        weight = max(0.1, min(5.0, abs(float(pnl))))
+        X.append(features)
+        y.append(label)
+        weights.append(weight)
+        _accumulate(trader_running, name, pnl, r.get("actual_size") or 0)
+    return X, y, weights
 
 
-def train_model():
-    """Train ML model on closed copy_trades + outcome-checked blocked_trades.
-    Called every 6h.
+def _build_block_training_data(verified_only: bool = False):
+    """Blocked-trade only training set for the filter-audit model.
+
+    `verified_only` was meant to require real market resolves, but the
+    outcome_tracker writes blocked_trades.outcome_price as the LIVE CLOB
+    price at check time — never the final resolve price. So the column
+    can't distinguish resolved labels from formula-based live-price-fallback
+    labels. The outcome_tracker still applies its own win/loss threshold
+    (entry ± 5% or resolved extremes) before writing `would_have_won`, so
+    we trust its label and take all rows with would_have_won NOT NULL.
+    The `verified_only` arg is kept for API stability but is effectively
+    a no-op (it adds an AND clause that never filters anything today).
+
+    Returns (X, y, weights, reasons):
+      - X: feature matrix with the same 11 feature layout as the copy model
+      - y: would_have_won labels (0/1)
+      - weights: 1.0 constant per row (no dollar magnitude available)
+      - reasons: block_reason string per row, aligns with X — consumed by
+        filter_audit.compute_filter_precision() for per-reason bucketing
     """
-    global _model, _model_loaded
+    where = "would_have_won IS NOT NULL"
+    if verified_only:
+        # Defensive: if the outcome_tracker is ever upgraded to write the
+        # actual resolve price, the resolved-subset can be isolated here.
+        where += " AND outcome_price IS NOT NULL AND (outcome_price <= 0.01 OR outcome_price >= 0.95)"
 
-    X, y, is_copy, copy_count, blocked_count, weights = _build_training_data()
-    total = copy_count + blocked_count
+    with db.get_connection() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT trader, trader_price, category, side, created_at, "
+            "would_have_won, market_question, block_reason, outcome_price "
+            f"FROM blocked_trades WHERE {where} ORDER BY created_at ASC"
+        ).fetchall()]
 
+    trader_running = {}
+    X, y, weights, reasons = [], [], [], []
+    for r in rows:
+        name = r.get("trader") or ""
+        snap = _snapshot(trader_running, name)
+        d = {
+            "entry_price": r.get("trader_price") or 0.5,
+            "category": r.get("category") or "",
+            "market_question": r.get("market_question") or "",
+            "side": r.get("side") or "YES",
+            "created_at": r.get("created_at") or "",
+            "trader_name": name,
+        }
+        features = _get_features(d, snap)
+        label = int(r.get("would_have_won") or 0)
+        X.append(features)
+        y.append(label)
+        weights.append(1.0)
+        reasons.append(r.get("block_reason") or "unknown")
+    return X, y, weights, reasons
+
+
+def _build_training_data():
+    """Legacy 6-tuple shape kept for back-compat with existing callers and
+    tests. New code should call `_build_copy_training_data()` or
+    `_build_block_training_data()` directly."""
+    Xc, yc, wc = _build_copy_training_data()
+    Xb, yb, wb, _ = _build_block_training_data(verified_only=False)
+    # Apply the same downweight-to-0.1 policy the previous inline code used
+    # so the legacy shape stays behaviourally equivalent for test snapshots.
+    wb = [w * 0.1 for w in wb]
+    X = Xc + Xb
+    y = yc + yb
+    weights = wc + wb
+    is_copy = [True] * len(Xc) + [False] * len(Xb)
+    return X, y, is_copy, len(Xc), len(Xb), weights
+
+
+def train_copy_model():
+    """Train the live-decision model on copy_trades only. Writes to
+    COPY_MODEL_PATH and logs to ml_training_log with model_name='ml_copy'."""
+    global _model_copy, _model_copy_loaded, _model, _model_loaded
+
+    X, y, weights = _build_copy_training_data()
+    total = len(X)
     if total < MIN_TRAINING_SAMPLES:
-        logger.info("[ML] Not enough data (%d/%d), skipping training", total, MIN_TRAINING_SAMPLES)
+        logger.info("[ML-COPY] Not enough data (%d/%d), skipping", total, MIN_TRAINING_SAMPLES)
         return
 
-    X = np.array(X)
-    y = np.array(y)
-    is_copy_arr = np.array(is_copy, dtype=bool)
-    weights = np.array(weights, dtype=float)
-
+    X = np.array(X); y = np.array(y); weights = np.array(weights, dtype=float)
     if len(set(y.tolist())) < 2:
-        logger.warning("[ML] Only one class in training data — skipping")
+        logger.warning("[ML-COPY] Only one class in training data — skipping")
         return
 
-    # Class balance — without this it's impossible to tell whether a high
-    # accuracy number is "real" or just a consequence of predicting the
-    # majority class.
-    n_win = int((y == 1).sum())
-    n_loss = int((y == 0).sum())
-    win_frac = n_win / len(y) if len(y) > 0 else 0
-    logger.info("[ML] Class balance: %d wins / %d losses (%.1f%% win rate)",
-                n_win, n_loss, win_frac * 100)
+    n_win = int((y == 1).sum()); n_loss = int((y == 0).sum())
+    logger.info("[ML-COPY] Class balance: %d wins / %d losses (%.1f%% win rate)",
+                n_win, n_loss, n_win / len(y) * 100 if len(y) else 0)
 
-    # Time-ordered split. _build_training_data returned rows merged and
-    # sorted by created_at ASC across BOTH sources, so slicing by index
-    # is a true chronological split.
     split_idx = int(len(X) * 0.8)
     X_train, X_test = X[:split_idx], X[split_idx:]
     y_train, y_test = y[:split_idx], y[split_idx:]
     weights_train = weights[:split_idx]
-    is_copy_test = is_copy_arr[split_idx:]
 
     if len(set(y_train.tolist())) < 2 or len(set(y_test.tolist())) < 2:
-        logger.warning("[ML] Time-split produced single-class train/test — skipping")
+        logger.warning("[ML-COPY] Time-split produced single-class train/test — skipping")
         return
 
-    # sample_weight rows by |pnl_realized| so a $5 loss counts 50× a $0.10 win —
-    # trees learn to avoid big dollar losses instead of maximizing win frequency.
-    # NOTE: class_weight='balanced' was tried here and over-corrected — combined
-    # with sample_weight it pushed the model to over-predict wins (copy_only
-    # accuracy dropped below baseline). The per-row weight already carries
-    # enough signal; letting sklearn add its own class balancing on top was
-    # double-counting.
     model = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=6,
-        min_samples_leaf=5,
-        random_state=42,
+        n_estimators=100, max_depth=6, min_samples_leaf=5, random_state=42,
     )
     model.fit(X_train, y_train, sample_weight=weights_train)
 
     train_acc = model.score(X_train, y_train)
     test_acc = model.score(X_test, y_test)
-
-    # Majority-class baseline — what you get for free by always predicting
-    # the more frequent class in the training set.
     majority = 1 if (y_train == 1).sum() >= (y_train == 0).sum() else 0
-    baseline_acc = float((y_test == majority).sum()) / len(y_test) if len(y_test) > 0 else 0
+    baseline_acc = float((y_test == majority).sum()) / len(y_test) if len(y_test) else 0
 
-    # COPY-ONLY test accuracy (real trades only, excluding the blocked
-    # subset that often has trivial extreme-price → extreme-outcome
-    # correlation and inflates overall accuracy). This is the number that
-    # actually matters for live trading decisions.
-    copy_test_acc = None  # populated below if we have ≥5 copy samples
-    copy_test_mask = is_copy_test
-    n_copy_test = int(copy_test_mask.sum())
-    if n_copy_test >= 5:
-        y_test_copy = y_test[copy_test_mask]
-        X_test_copy = X_test[copy_test_mask]
-        copy_test_acc = model.score(X_test_copy, y_test_copy)
-        # Confusion matrix on copy-only subset
-        preds = model.predict(X_test_copy)
-        tp = int(((preds == 1) & (y_test_copy == 1)).sum())
-        fp = int(((preds == 1) & (y_test_copy == 0)).sum())
-        tn = int(((preds == 0) & (y_test_copy == 0)).sum())
-        fn = int(((preds == 0) & (y_test_copy == 1)).sum())
-        # Precision/recall for "predicted win" class
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        # Copy-only baseline (majority class within the copy subset)
-        n_copy_win = int((y_test_copy == 1).sum())
-        n_copy_loss = int((y_test_copy == 0).sum())
-        copy_majority = 1 if n_copy_win >= n_copy_loss else 0
-        copy_baseline = float((y_test_copy == copy_majority).sum()) / len(y_test_copy)
-        logger.info("[ML] COPY-ONLY test subset (n=%d, %d win / %d loss): acc=%.1f%% baseline=%.1f%% | TP=%d FP=%d TN=%d FN=%d | prec=%.2f rec=%.2f",
-                    n_copy_test, n_copy_win, n_copy_loss,
-                    copy_test_acc * 100, copy_baseline * 100,
-                    tp, fp, tn, fn, precision, recall)
-    else:
-        logger.info("[ML] COPY-ONLY test subset too small (n=%d < 5) to compute meaningful diagnostics", n_copy_test)
+    # Confusion matrix + copy-only baseline (matches the old metric naming so
+    # the dashboard keeps working without changes)
+    preds = model.predict(X_test)
+    tp = int(((preds == 1) & (y_test == 1)).sum())
+    fp = int(((preds == 1) & (y_test == 0)).sum())
+    tn = int(((preds == 0) & (y_test == 0)).sum())
+    fn = int(((preds == 0) & (y_test == 1)).sum())
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    copy_test_acc = test_acc  # whole test set IS copy-only now
+    copy_baseline = baseline_acc
+
+    logger.info("[ML-COPY] Trained on %d samples | Train %.1f%% | Test %.1f%% | Baseline %.1f%% | TP=%d FP=%d TN=%d FN=%d prec=%.2f rec=%.2f",
+                total, train_acc*100, test_acc*100, baseline_acc*100,
+                tp, fp, tn, fn, precision, recall)
 
     importances = sorted(zip(FEATURE_NAMES, model.feature_importances_), key=lambda x: -x[1])
-
-    logger.info("[ML] Trained on %d samples (%d copy + %d blocked) | Train: %.1f%% | Test: %.1f%% | Baseline: %.1f%%",
-                total, copy_count, blocked_count,
-                train_acc * 100, test_acc * 100, baseline_acc * 100)
-    logger.info("[ML] Top features: %s",
+    logger.info("[ML-COPY] Top features: %s",
                 ", ".join("%s=%.0f%%" % (n, v * 100) for n, v in importances[:4]))
 
-    # Save model
-    try:
-        tmp = MODEL_PATH + ".tmp"
-        with open(tmp, "wb") as f:
-            pickle.dump(model, f)
-        os.replace(tmp, MODEL_PATH)
-        _model = model
-        _model_loaded = True
-        logger.info("[ML] Model saved to %s", MODEL_PATH)
-    except Exception as e:
-        logger.warning("[ML] Failed to save model: %s", e)
+    _save_model_pickle(model, COPY_MODEL_PATH, "ml_copy")
+    _model_copy = model
+    _model_copy_loaded = True
+    # Back-compat aliases so legacy callers that read `_model` still work
+    _model = model
+    _model_loaded = True
 
-    # Log to DB — three accuracies + sample sizes + per-run baseline so the
-    # brain dashboard can compare ML vs. majority-class without hardcoding 79.1.
+    _log_training_row(
+        model_name="ml_copy", samples=total,
+        test_acc=test_acc, train_acc=train_acc,
+        copy_only_acc=copy_test_acc, baseline_acc=baseline_acc,
+        train_n=len(X_train), test_n=len(X_test),
+        importances=importances, model_path=COPY_MODEL_PATH,
+    )
+
+
+def train_block_model():
+    """Train the filter-audit model on verified blocked_trades only. Writes
+    to BLOCK_MODEL_PATH and logs to ml_training_log with model_name='ml_block'.
+
+    Only uses rows where the outcome is from a real market resolve
+    (outcome_price ≤ 0.01 or ≥ 0.95) — formula-based labels are excluded
+    so the downstream precision stats are honest."""
+    global _model_block, _model_block_loaded
+
+    X, y, weights, _reasons = _build_block_training_data(verified_only=False)
+    total = len(X)
+    if total < MIN_BLOCK_TRAINING_SAMPLES:
+        logger.info("[ML-BLOCK] Not enough verified data (%d/%d), skipping",
+                    total, MIN_BLOCK_TRAINING_SAMPLES)
+        return
+
+    X = np.array(X); y = np.array(y); weights = np.array(weights, dtype=float)
+    if len(set(y.tolist())) < 2:
+        logger.warning("[ML-BLOCK] Only one class in training data — skipping")
+        return
+
+    n_win = int((y == 1).sum()); n_loss = int((y == 0).sum())
+    logger.info("[ML-BLOCK] Class balance: %d wins / %d losses (%.1f%% win rate)",
+                n_win, n_loss, n_win / len(y) * 100 if len(y) else 0)
+
+    split_idx = int(len(X) * 0.8)
+    X_train, X_test = X[:split_idx], X[split_idx:]
+    y_train, y_test = y[:split_idx], y[split_idx:]
+    weights_train = weights[:split_idx]
+
+    if len(set(y_train.tolist())) < 2 or len(set(y_test.tolist())) < 2:
+        logger.warning("[ML-BLOCK] Time-split produced single-class train/test — skipping")
+        return
+
+    model = RandomForestClassifier(
+        n_estimators=100, max_depth=6, min_samples_leaf=5, random_state=42,
+    )
+    model.fit(X_train, y_train, sample_weight=weights_train)
+
+    train_acc = model.score(X_train, y_train)
+    test_acc = model.score(X_test, y_test)
+    majority = 1 if (y_train == 1).sum() >= (y_train == 0).sum() else 0
+    baseline_acc = float((y_test == majority).sum()) / len(y_test) if len(y_test) else 0
+
+    importances = sorted(zip(FEATURE_NAMES, model.feature_importances_), key=lambda x: -x[1])
+    logger.info("[ML-BLOCK] Trained on %d samples | Train %.1f%% | Test %.1f%% | Baseline %.1f%%",
+                total, train_acc*100, test_acc*100, baseline_acc*100)
+    logger.info("[ML-BLOCK] Top features: %s",
+                ", ".join("%s=%.0f%%" % (n, v * 100) for n, v in importances[:4]))
+
+    _save_model_pickle(model, BLOCK_MODEL_PATH, "ml_block")
+    _model_block = model
+    _model_block_loaded = True
+
+    _log_training_row(
+        model_name="ml_block", samples=total,
+        test_acc=test_acc, train_acc=train_acc,
+        copy_only_acc=None, baseline_acc=baseline_acc,
+        train_n=len(X_train), test_n=len(X_test),
+        importances=importances, model_path=BLOCK_MODEL_PATH,
+    )
+
+
+def _save_model_pickle(model_obj, path: str, tag: str) -> None:
+    """Atomically save the given sklearn model to disk with a tmp-rename."""
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as f:
+            pickle.dump(model_obj, f)
+        os.replace(tmp, path)
+        logger.info("[%s] Model saved to %s", tag.upper(), path)
+    except Exception as e:
+        logger.warning("[%s] Failed to save model: %s", tag.upper(), e)
+
+
+def _log_training_row(model_name, samples, test_acc, train_acc, copy_only_acc,
+                      baseline_acc, train_n, test_n, importances, model_path):
+    """Shared DB log helper so copy and block models write consistent rows."""
     try:
         import json
         with db.get_connection() as conn:
             conn.execute(
                 "INSERT INTO ml_training_log "
                 "(samples_count, accuracy, train_accuracy, copy_only_accuracy, "
-                "baseline_accuracy, train_n, test_n, feature_importance, model_path) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (total,
+                " baseline_accuracy, train_n, test_n, feature_importance, "
+                " model_path, model_name) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (samples,
                  round(test_acc, 4),
                  round(train_acc, 4),
-                 round(copy_test_acc, 4) if copy_test_acc is not None else None,
+                 round(copy_only_acc, 4) if copy_only_acc is not None else None,
                  round(baseline_acc, 4),
-                 len(X_train),
-                 len(X_test),
+                 train_n, test_n,
                  json.dumps(dict(importances)),
-                 MODEL_PATH)
+                 model_path,
+                 model_name)
             )
-    except Exception:
-        pass
-
-
-def _load_model():
-    """Load model from disk if not loaded yet."""
-    global _model, _model_loaded
-    if _model_loaded:
-        return _model is not None
-    try:
-        if os.path.exists(MODEL_PATH):
-            with open(MODEL_PATH, "rb") as f:
-                _model = pickle.load(f)
-            _model_loaded = True
-            return True
     except Exception as e:
-        logger.warning("[ML] Failed to load model: %s", e)
+        logger.debug("[ML] training-log write failed: %s", e)
+
+
+def train_model():
+    """Backward-compat wrapper: train both models. The 6h scheduler still
+    calls this, and it now produces both ml_copy.pkl and ml_block.pkl in
+    one go. The existing `_build_training_data` 6-tuple is still available
+    for anything that needs the merged legacy shape."""
+    train_copy_model()
+    train_block_model()
+
+
+def _load_copy_model() -> bool:
+    """Load ml_copy.pkl from disk. Tries the legacy ml_model.pkl path as
+    fallback so in-place upgrades don't need an immediate retrain."""
+    global _model_copy, _model_copy_loaded, _model, _model_loaded
+    if _model_copy_loaded:
+        return _model_copy is not None
+    for candidate in (COPY_MODEL_PATH, _LEGACY_MODEL_PATH):
+        try:
+            if os.path.exists(candidate):
+                with open(candidate, "rb") as f:
+                    _model_copy = pickle.load(f)
+                _model_copy_loaded = True
+                # Back-compat: keep the legacy aliases pointed at the same state
+                _model = _model_copy
+                _model_loaded = True
+                return True
+        except Exception as e:
+            logger.warning("[ML-COPY] Failed to load %s: %s", candidate, e)
+    _model_copy_loaded = True
     _model_loaded = True
     return False
 
 
-def predict(trade_data: dict) -> float:
-    """Predict win probability for a trade. Returns 0.0-1.0 or -1 if no model.
+def _load_block_model() -> bool:
+    """Load ml_block.pkl from disk. No legacy fallback — the block model
+    is new, either it's been trained or it hasn't."""
+    global _model_block, _model_block_loaded
+    if _model_block_loaded:
+        return _model_block is not None
+    try:
+        if os.path.exists(BLOCK_MODEL_PATH):
+            with open(BLOCK_MODEL_PATH, "rb") as f:
+                _model_block = pickle.load(f)
+            _model_block_loaded = True
+            return True
+    except Exception as e:
+        logger.warning("[ML-BLOCK] Failed to load model: %s", e)
+    _model_block_loaded = True
+    return False
 
-    `trade_data` should include `trader_name` (or `wallet_username`) so the
-    ML scorer can look up the trader's rolling stats. If missing, predicts
-    with neutral defaults — still works but loses the trader-edge signal.
-    """
-    if not _load_model():
+
+def _load_model() -> bool:
+    """Legacy alias for _load_copy_model — external callers still work."""
+    return _load_copy_model()
+
+
+def predict_copy(trade_data: dict) -> float:
+    """Predict win probability on the live-decision (copy) model.
+    Returns 0.0-1.0 or -1 if no model."""
+    if not _load_copy_model():
         return -1
-
     try:
         all_stats = _get_trader_stats_cached()
         name = trade_data.get("trader_name") or trade_data.get("wallet_username") or ""
         ts = _stats_for(all_stats, name)
         features = np.array([_get_features(trade_data, ts)])
-        proba = _model.predict_proba(features)[0]
+        proba = _model_copy.predict_proba(features)[0]
         win_prob = proba[1] if len(proba) > 1 else 0.5
         return round(float(win_prob), 3)
     except ValueError as e:
-        # Pickle vs. current feature-count mismatch — old model needs retraining
-        logger.warning("[ML] Feature shape mismatch (old model?), waiting for retrain: %s", e)
+        logger.warning("[ML-COPY] Feature shape mismatch (old model?), waiting for retrain: %s", e)
         return -1
     except Exception as e:
-        logger.debug("[ML] Prediction error: %s", e)
+        logger.debug("[ML-COPY] Prediction error: %s", e)
         return -1
 
 
-def get_model_health() -> dict:
-    """Latest training-row health summary used by trade_scorer to decide
-    whether ML adjustments should be applied at all. Returns dict with
-    edge_vs_baseline in signed percentage points (copy_only - baseline).
-    Negative edge → model is worse than always-predict-majority and should
-    be display-only until it earns its keep."""
+def predict_block(trade_data_or_features) -> float:
+    """Predict 'would_have_won' probability on the block model. Accepts
+    either a trade_data dict (for single-row callers) or a pre-built feature
+    list/array (for batch use in filter_audit.py). Returns 0.0-1.0 or -1
+    if no model."""
+    if not _load_block_model():
+        return -1
+    try:
+        if isinstance(trade_data_or_features, dict):
+            all_stats = _get_trader_stats_cached()
+            name = trade_data_or_features.get("trader_name") or trade_data_or_features.get("trader") or ""
+            ts = _stats_for(all_stats, name)
+            feats = np.array([_get_features(trade_data_or_features, ts)])
+        else:
+            feats = np.array([trade_data_or_features])
+        proba = _model_block.predict_proba(feats)[0]
+        win_prob = proba[1] if len(proba) > 1 else 0.5
+        return round(float(win_prob), 3)
+    except ValueError as e:
+        logger.warning("[ML-BLOCK] Feature shape mismatch, waiting for retrain: %s", e)
+        return -1
+    except Exception as e:
+        logger.debug("[ML-BLOCK] Prediction error: %s", e)
+        return -1
+
+
+def predict(trade_data: dict) -> float:
+    """Legacy alias for predict_copy — trade_scorer.py still imports this."""
+    return predict_copy(trade_data)
+
+
+def get_model_health(model_name: str = "ml_copy") -> dict:
+    """Latest training-row health summary for a specific model. Used by
+    trade_scorer to decide whether ML adjustments apply (ml_copy), and by
+    the dashboard to display parallel stats for ml_block.
+
+    Returns dict with edge_vs_baseline in signed percentage points
+    (copy_only - baseline for ml_copy, accuracy - baseline for ml_block).
+    Negative edge → model is worse than baseline and should be display-only.
+
+    The WHERE filter on model_name is important because the ml_training_log
+    table holds rows for both models now. A bare "ORDER BY id DESC LIMIT 1"
+    would return whichever was trained last, not the specific model."""
     try:
         with db.get_connection() as conn:
             r = conn.execute(
                 "SELECT accuracy, copy_only_accuracy, baseline_accuracy, trained_at "
-                "FROM ml_training_log ORDER BY id DESC LIMIT 1"
+                "FROM ml_training_log WHERE COALESCE(model_name,'ml_copy')=? "
+                "ORDER BY id DESC LIMIT 1",
+                (model_name,)
             ).fetchone()
         if not r:
             return {"edge_vs_baseline": 0.0, "copy_only": 0.0, "baseline": 0.0, "trained_at": ""}
-        copy_only = float(r["copy_only_accuracy"] or 0)
+        # For ml_copy use copy_only_accuracy (subset-specific signal);
+        # for ml_block that column is NULL so fall back to overall accuracy.
+        primary = r["copy_only_accuracy"] if r["copy_only_accuracy"] is not None else r["accuracy"]
+        primary = float(primary or 0)
         baseline = float(r["baseline_accuracy"] or 0)
         return {
-            "edge_vs_baseline": (copy_only - baseline) * 100.0,
-            "copy_only": copy_only,
+            "edge_vs_baseline": (primary - baseline) * 100.0,
+            "copy_only": primary,
             "baseline": baseline,
             "trained_at": r["trained_at"] or "",
         }

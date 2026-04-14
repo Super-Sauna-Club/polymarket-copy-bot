@@ -2,7 +2,71 @@
 
 Session-level notes. For full commit history see `git log`.
 
-## 2026-04-14 (latest) — Backfill usdc_received from activity API, reveal real winners
+## 2026-04-14 (latest) — Two-model ML split + Filter Precision Audit
+
+User insight: blocked_trades are not training data for the live predictor — they are audit data for the filters themselves. Each filter reason is a policy decision that should be measured: does it block losers (correct) or winners (wrong)?
+
+### Architecture
+
+`bot/ml_scorer.py` now has two specialized models instead of one merged:
+
+- **`ml_copy.pkl`** — trained ONLY on `copy_trades`, labels `pnl_realized > 0`, sample_weight `|pnl|`. This is the live-decision model the trade_scorer consumes via `predict_copy()` (with `predict()` kept as an alias for backward compat so `bot/trade_scorer.py` needs no changes).
+
+- **`ml_block.pkl`** — trained ONLY on `blocked_trades` with `would_have_won` labels. NOT called from trade_scorer. Exposed via `predict_block()`. Consumed only by the filter audit.
+
+Shared helpers `_snapshot(trader_running, name)` and `_accumulate(trader_running, name, pnl, size)` extracted from the old inline closures to module level so both build functions can share them. `_build_copy_training_data()` and `_build_block_training_data()` each return a focused dataset; legacy `_build_training_data()` kept as a thin wrapper with the old 6-tuple shape for backward compat with tests. `train_model()` becomes a wrapper that calls both `train_copy_model()` and `train_block_model()` so the 6h scheduler keeps working unchanged.
+
+`MODEL_PATH` split into `COPY_MODEL_PATH` and `BLOCK_MODEL_PATH`. Legacy `MODEL_PATH` points at the copy model for back-compat. `_load_copy_model()` has a fallback chain to the old `ml_model.pkl` location so an in-place upgrade doesn't break the live bot before the next retrain.
+
+### Filter Precision Audit
+
+New module `bot/filter_audit.py::compute_filter_precision()`:
+
+1. Loads ml_block model
+2. Pulls all `blocked_trades` with `would_have_won IS NOT NULL`
+3. Slices off the 80/20 chronological TEST segment (same split as training) so the audit measures on rows the model has never seen — running predict_proba on the train segment trivially gives ~100% precision via memorization
+4. Groups test rows by `block_reason` and computes: `n`, `actual_win_rate`, `confident_n` (ml_block proba >= 0.7), `confident_wins`, `precision_at_conf`
+5. Recommendation per bucket:
+   - `precision >= 70%` → **LOOSEN** (filter blocks real winners)
+   - `precision <= 30%` → **KEEP** (filter correctly blocks losers)
+   - in between → **REVIEW**
+   - `n < 100` → **INSUFFICIENT**
+
+Live result on `walter`:
+
+| Reason | Test N | Actual WR | Confident@0.7 | Precision | Recommendation |
+|---|---|---|---|---|---|
+| category_blacklist | 2222 | 44.6% | 768 | 100.0% | **LOOSEN** |
+| event_timing | 534 | 0.0% | 0 | — | NO_CONFIDENT_PREDICTIONS |
+| min_trader_usd | 8 | 12.5% | 1 | 100.0% | INSUFFICIENT |
+
+`category_blacklist` flagged as LOOSEN confirms the Cubs hypothesis: the blacklist was calibrated on corrupt DB PnL and is now blocking 768 test rows that the post-backfill model identifies as confident winners. `event_timing` correctly blocks all 534 test losses (0% actual WR). Other reasons like `exposure_limit`, `no_rebuy`, `conviction_ratio`, `score_block` have zero outcome-tracked rows (the outcome_tracker skips them) so they don't appear in the audit until the tracker is extended.
+
+### Dashboard panel
+
+New `/api/brain/filter-precision` endpoint in `dashboard/app.py`. New "Filter Precision Audit" table on `/brain` under the ML Model Health card, color-coded rows (red = LOOSEN, green = KEEP, yellow = REVIEW, grey = INSUFFICIENT) with a legend. Polls via the existing `refresh()` pipeline so it updates alongside the other panels.
+
+### Schema migration
+
+`ALTER TABLE ml_training_log ADD COLUMN model_name TEXT DEFAULT 'ml_copy'` + index `idx_ml_training_log_model_name`. `get_model_health(model_name='ml_copy')` now filters by model so the trade_scorer edge gate keeps reading only the copy model's metrics. Historical rows default to 'ml_copy' via the SQLite ALTER-with-default behavior.
+
+### ML quality after the split
+
+- **ml_copy**: 639 samples, train 79.8% / test 31.2% / baseline 76.6% / edge −45.3pp. Feature importance flipped to `trader_pnl_7d=17% / trader_trades_7d=14% / hour=13% / entry_price=12%` — the model is finally using trader signal instead of leaning on entry_price dominance. Test accuracy dropped because the old 97% was inflated by the blocked subset; the new number is the first honest measurement. Trade-scorer edge gate keeps the ML adjustment display-only as before.
+- **ml_block**: 13820 samples, train 96.4% / test 99.2% / baseline 64.1% / edge +35pp. The block model finds strong signal (traders and categories split cleanly), which is exactly what makes it useful for the audit. The audit uses the held-out test slice so the precision numbers aren't self-referential.
+
+### Files touched
+
+- `bot/ml_scorer.py` — ~250 LOC: split build/train/predict functions, shared helpers, model load/save with both paths
+- `bot/filter_audit.py` — new file, ~130 LOC
+- `database/models.py` — `model_name` column in SCHEMA_UPGRADE
+- `database/db.py` — ALTER TABLE migration + index; `get_model_health` filters by model_name
+- `dashboard/app.py` — new `api_filter_precision` endpoint
+- `dashboard/templates/brain.html` — panel HTML + CSS + renderer JS
+
+No changes to `bot/trade_scorer.py` — the legacy `predict` / `_load_model` aliases keep it working unchanged.
+
+## 2026-04-14 — Backfill usdc_received from activity API, reveal real winners
 
 Root discovery: 87% of recent closed `copy_trades` rows had `usdc_received = NULL`, so every downstream consumer (Brain, ML Scorer, Trade Scorer, auto-tuner) was training on formula-computed P&L, not capital-verified wallet deltas. After backfilling 171 rows from Polymarket's `data-api /activity` endpoint, the real trader picture is:
 
