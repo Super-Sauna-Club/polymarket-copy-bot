@@ -2,7 +2,50 @@
 
 Session-level notes. For full commit history see `git log`.
 
-## 2026-04-14 (latest) — ML sample weighting + class balance + self-disabling edge gate
+## 2026-04-14 (latest) — Backfill usdc_received from activity API, reveal real winners
+
+Root discovery: 87% of recent closed `copy_trades` rows had `usdc_received = NULL`, so every downstream consumer (Brain, ML Scorer, Trade Scorer, auto-tuner) was training on formula-computed P&L, not capital-verified wallet deltas. After backfilling 171 rows from Polymarket's `data-api /activity` endpoint, the real trader picture is:
+
+| Trader | DB before | Verified after |
+|---|---|---|
+| xsaghav | −$6 | **+$91** (73 verified) |
+| sovereign2013 | −$53 | **+$67** (96 verified) |
+| KING7777777 | −$37 | **+$20** (53 verified) |
+| fsavhlc | −$1 | +$2.51 |
+
+The bot has been treating the two biggest winners (xsaghav, sovereign2013) as losers for weeks. The Brain's "throttle/kick" logic (disabled per piff-philosophy but still visible in UI) and the ML scorer's trader features were all computing against corrupt labels.
+
+### `backfill_usdc_received.py` (new tool)
+
+Walks `copy_trades WHERE usdc_received IS NULL`, pulls all TRADE activity events for our wallet (paginated via offset, 1922 events fetched), builds a `(condition_id, side) → [sell_events]` index, and matches each NULL row to its closing SELL via 1:1 greedy pairing (oldest row → oldest sell within the bucket). The 1:1 constraint is load-bearing: naive closest-by-timestamp matching double-assigns the same fill across multiple NULL rows, inflating the apparent recovery by ~2×. Bucket-overflow rows (more NULL rows than sells, 15 cases) fall through to second-pass redemption lookup (currently 400s on the API, handled gracefully).
+
+Dry-run / --apply modes, --limit for sanity checks, per-trader summary before writing. Run `backfill_usdc_received.py --apply` on the server once 171 corrections landed, then a one-shot `UPDATE copy_trades SET actual_size = size WHERE actual_size IS NULL AND usdc_received IS NOT NULL` populated the 116 actual_size NULLs so the strict trader_performance query could see them.
+
+### `PERFORMANCE_SINCE` rewind
+
+Rewound from `2026-04-14T00:15:59` (the 2-hour-ago dashboard-reset marker) to `2026-04-05T00:00:00` (before the oldest backfilled close). Without this the `trader_performance` 7d view was silently empty — the filter was truncating 9 days of verified history down to a 2-hour window. Trade-off: the dashboard's "clean-slate post-reset" framing is gone, but Brain/ML can finally see who the real winners are.
+
+### `bot/ml_scorer.py` — blocked downweight + class_weight removal
+
+Two training fixes triggered by the backfill exposing clean copy labels:
+
+1. **Blocked rows now weight 0.1** instead of 1.0. Blocked trades outnumber copy trades ~20:1 but came from a rejected-distribution (extreme prices, filtered traders) that doesn't transfer to live copy decisions. Downweighting lets them regularize without drowning out the magnitude-weighted copy rows. Feature importance flipped from `entry_price=70%` dominance to a healthier `entry_price=36% / trader_trades_7d=13% / trader_pnl_7d=10% / hour=10%` — the model is finally using trader-specific signal.
+
+2. **`class_weight='balanced'` removed**. Combined with sample_weight it was double-counting: the per-row |pnl| weight already encodes which outcomes matter, and sklearn's class balancing on top pushed the model to over-predict wins (copy_only accuracy dropped from 48.1% → 38.3% when we added it post-backfill). Removing restored it to 44.9% with better feature diversity.
+
+3. **`_load_trader_stats` bypass of trader_performance cache**: predict-time trader features now compute straight from `copy_trades` with verified-only filter (`usdc_received + actual_size IS NOT NULL`), ignoring the `PERFORMANCE_SINCE` dashboard marker. Decouples ML from dashboard-reset semantics — the model sees the same verified history regardless of which cutoff the user picks for display purposes.
+
+### Current ML health
+
+`copy_only=44.9% baseline=79.4% edge=−34.5pp` (copy baseline measured on test subset, not the overall). Model is still below baseline and the trade-scorer edge gate keeps its adjustment display-only. Feature importance is finally diverse, which means the next retrain cycle has a chance to find real signal instead of just leaning on entry_price.
+
+### Not fixed this session
+
+- **Close-logic audit Step 1-6** (structural fix for the NULL pipeline going forward) — deferred. Backfill handles the symptom for today; the root cause (close_copy_trade signature doesn't take usdc_received) means future closes will keep hitting NULL unless the signature is refactored and the 5 MEDIUM paths rewritten. Separate session.
+- **382 unmatched NULL rows** — mostly old trades that fell outside the 1922-event API window. Would need on-chain Polygon RPC queries to reconstruct.
+- **Profitability itself**. This session gave Brain clean data to make decisions on; it did NOT change the trading strategy. Whether the bot becomes profitable now depends on whether the user (or a future auto-tuner) acts on the revelation that sovereign2013 and KING7777777 are the actual winners, and xsaghav / fsavhlc need tightening.
+
+## 2026-04-14 — ML sample weighting + class balance + self-disabling edge gate
 
 Three linked fixes that make the ML scorer stop actively damaging the trade path when it's worse than baseline, and give it the means to eventually earn its keep.
 

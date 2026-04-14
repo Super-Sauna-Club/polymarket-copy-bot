@@ -155,36 +155,60 @@ _TRADER_STATS_TTL = 300  # seconds — predict() hits this cache
 
 
 def _load_trader_stats() -> dict:
-    """Load per-trader rolling 7d stats once. Returns dict keyed by lowercase
-    trader_name. Used by training (one call per train_model run) and by
-    predict (cached for _TRADER_STATS_TTL seconds via _get_trader_stats_cached)."""
+    """Load per-trader 7d stats straight from copy_trades, bypassing the
+    trader_performance cache. We do this because trader_performance is
+    filtered by PERFORMANCE_SINCE (a dashboard-reset marker), but for ML
+    predictions we want the full verified history — if a trader was making
+    money for months before a manual dashboard reset, the model should still
+    see it. Prefers verified rows (usdc_received + actual_size) over formula
+    rows so the signal matches ground truth.
+    """
     stats = {}
     try:
         with db.get_connection() as conn:
+            # Verified-only branch: prefer (usdc_received - actual_size) when
+            # both are set — that's the wallet-delta ground truth.
             for r in conn.execute(
-                "SELECT trader_name, winrate, total_pnl, trades_count "
-                "FROM trader_performance WHERE period='7d'"
-            ).fetchall():
-                name = (r["trader_name"] or "").strip().lower()
-                if not name:
-                    continue
-                stats[name] = {
-                    "wr": float(r["winrate"] or 0),
-                    "pnl": float(r["total_pnl"] or 0),
-                    "trades": int(r["trades_count"] or 0),
-                    "avg_bet": 0.0,
-                }
-            for r in conn.execute(
-                "SELECT LOWER(wallet_username) AS name, AVG(actual_size) AS ab "
-                "FROM copy_trades WHERE actual_size > 0 GROUP BY LOWER(wallet_username)"
+                "SELECT LOWER(wallet_username) AS name, "
+                "       COUNT(*) AS cnt, "
+                "       SUM(CASE WHEN (usdc_received - actual_size) > 0 THEN 1 ELSE 0 END) AS wins, "
+                "       SUM(usdc_received - actual_size) AS pnl_sum, "
+                "       AVG(actual_size) AS avg_bet "
+                "FROM copy_trades "
+                "WHERE status='closed' "
+                "  AND usdc_received IS NOT NULL AND actual_size IS NOT NULL "
+                "  AND datetime(closed_at) >= datetime('now','-7 days') "
+                "GROUP BY LOWER(wallet_username)"
             ).fetchall():
                 name = r["name"]
                 if not name:
                     continue
-                if name in stats:
+                cnt = int(r["cnt"] or 0)
+                if cnt == 0:
+                    continue
+                stats[name] = {
+                    "wr": (int(r["wins"] or 0) / cnt) * 100.0,
+                    "pnl": float(r["pnl_sum"] or 0),
+                    "trades": cnt,
+                    "avg_bet": float(r["avg_bet"] or 0),
+                }
+            # Fallback avg_bet from ALL trades (not just last 7d) for traders
+            # that had no verified activity in the window but still have
+            # historical average-bet data we can use for conviction scoring.
+            for r in conn.execute(
+                "SELECT LOWER(wallet_username) AS name, AVG(COALESCE(actual_size, size)) AS ab "
+                "FROM copy_trades "
+                "WHERE COALESCE(actual_size, size) > 0 "
+                "GROUP BY LOWER(wallet_username)"
+            ).fetchall():
+                name = r["name"]
+                if not name:
+                    continue
+                if name not in stats:
+                    stats[name] = {"wr": 0.0, "pnl": 0.0, "trades": 0,
+                                   "avg_bet": float(r["ab"] or 0)}
+                elif stats[name]["avg_bet"] == 0:
                     stats[name]["avg_bet"] = float(r["ab"] or 0)
-                else:
-                    stats[name] = {"wr": 0, "pnl": 0, "trades": 0, "avg_bet": float(r["ab"] or 0)}
     except Exception as e:
         logger.debug("[ML] _load_trader_stats failed: %s", e)
     return stats
@@ -401,9 +425,12 @@ def _build_training_data():
             }
             features = _get_features(d, snap)
             label = int(r.get("would_have_won") or 0)
-            # Blocked rows have no $ amount, neutral default 1.0 so they
-            # roughly match an average copy_trade weight.
-            merged.append((ts_str, False, features, label, 1.0))
+            # Blocked rows dominate numerically (13k vs 800 copy rows) and
+            # have a different distribution (they were rejected, so they skew
+            # toward extreme prices / poor traders). Downweight to 0.1 so
+            # they provide regularization signal but don't drown out the
+            # magnitude-weighted copy rows during training.
+            merged.append((ts_str, False, features, label, 0.1))
 
     merged.sort(key=lambda t: t[0])
 
@@ -459,15 +486,17 @@ def train_model():
         logger.warning("[ML] Time-split produced single-class train/test — skipping")
         return
 
-    # class_weight='balanced' auto-compensates for the 65/35 loss/win skew so
-    # the model can't game accuracy by always predicting the majority class.
     # sample_weight rows by |pnl_realized| so a $5 loss counts 50× a $0.10 win —
     # trees learn to avoid big dollar losses instead of maximizing win frequency.
+    # NOTE: class_weight='balanced' was tried here and over-corrected — combined
+    # with sample_weight it pushed the model to over-predict wins (copy_only
+    # accuracy dropped below baseline). The per-row weight already carries
+    # enough signal; letting sklearn add its own class balancing on top was
+    # double-counting.
     model = RandomForestClassifier(
         n_estimators=100,
         max_depth=6,
         min_samples_leaf=5,
-        class_weight='balanced',
         random_state=42,
     )
     model.fit(X_train, y_train, sample_weight=weights_train)

@@ -532,9 +532,9 @@ html.wide .app{max-width:none;padding:0 10px 8px}
             <div class="ml-sub">majority class</div>
           </div>
           <div class="ml-cell">
-            <div class="ml-lbl">vs Baseline</div>
+            <div class="ml-lbl">Edge</div>
             <div class="ml-val" id="mlGap">--</div>
-            <div class="ml-sub" id="mlGapSub">test - baseline</div>
+            <div class="ml-sub" id="mlGapSub">copy - baseline</div>
           </div>
         </div>
         <div class="ml-feats">
@@ -1175,12 +1175,19 @@ function renderFeatures(ml){
   }
   // Baseline card
   $('#mlBaseline').textContent=fmt(baseline,1)+'%';
-  // Gap card (test - baseline)
-  var gap=testAcc-baseline;
-  $('#mlGap').textContent=(gap>=0?'+':'')+fmt(gap,1)+'pp';
-  $('#mlGap').className='ml-val '+(gap>=0?'up':'dn');
+  // Edge card: copy_only - baseline. This is the real live-trading edge —
+  // the test-vs-baseline gap was inflated by the blocked_trades subset.
+  var edge=null;
+  if(rawCopy!=null){edge=scaleAcc(rawCopy)-baseline}
+  if(edge==null){
+    $('#mlGap').textContent='--';
+    $('#mlGap').className='ml-val';
+  }else{
+    $('#mlGap').textContent=(edge>=0?'+':'')+fmt(edge,1)+'pp';
+    $('#mlGap').className='ml-val '+(edge>=0?'up':'dn');
+  }
   var gapSub=$('#mlGapSub');
-  if(gapSub)gapSub.textContent='test - baseline';
+  if(gapSub)gapSub.textContent='copy - baseline';
   $('#mlLastTrained').textContent='last trained '+(latest.trained_at||'--');
 }
 
