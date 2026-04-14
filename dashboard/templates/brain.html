@@ -93,8 +93,8 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 .stream-net-row{display:grid;grid-template-columns:1.7fr 1fr;gap:10px;margin-bottom:12px}
 @media(max-width:1100px){.stream-net-row{grid-template-columns:1fr}}
 .stream-net-row .stream-wrap{margin-bottom:0}
-.stream-net-row .stream-box{height:178px}
-.stream-net-row .neural-host{background:var(--bg2);border:1px solid var(--border);position:relative;overflow:hidden;display:flex;flex-direction:column;height:218px}
+.stream-net-row .stream-box{height:260px}
+.stream-net-row .neural-host{background:var(--bg2);border:1px solid var(--border);position:relative;overflow:hidden;display:flex;flex-direction:column;height:300px}
 .stream-net-row .neural-host .panel-title{padding:8px 14px 6px;margin:0;border-bottom:1px solid var(--border);font-size:.64rem}
 .stream-net-row .neural-box{height:auto;flex:1;min-height:0}
 
@@ -797,6 +797,69 @@ html.wide .app{max-width:none;padding:0 10px 8px}
 .flash-new{animation:rowFlashGold 1.5s ease-out}
 .flash-new td{background:transparent !important}
 
+/* ── 15b. COUNTER LEVEL BAR — glowing XP-style progress ───────────────
+   Replaces the old 62×62 sparkline box with a full-width horizontal
+   progress bar toward the next milestone tier. Near level-up (≥80%)
+   the bar pulses brighter so the eye is drawn to whichever counter
+   is closest to ticking over. */
+.counter-spark,.core-top .counter-spark{
+  flex:0 0 auto !important;
+  width:100% !important;
+  height:auto !important;
+  margin-top:10px !important;
+  overflow:visible !important
+}
+.counter-spark::before{display:none !important}
+.counter-spark::after{display:none !important}
+
+.level-bar{font-family:var(--mono);padding:2px 2px 0}
+.lb-head{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:.62rem;margin-bottom:5px;letter-spacing:.08em;text-transform:uppercase}
+.lb-level{color:var(--gold);font-weight:700;text-shadow:0 0 6px rgba(201,168,76,0.4)}
+.lb-arrow{color:var(--text-dim);font-size:.58rem}
+.lb-track{position:relative;height:13px;
+  background:linear-gradient(180deg,rgba(0,0,0,0.55),rgba(12,12,18,0.85));
+  border:1px solid rgba(201,168,76,0.3);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,0.7),inset 0 0 6px rgba(201,168,76,0.05);
+  overflow:visible}
+.lb-track::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(90deg,
+    transparent 0,transparent calc(20% - 0.5px),
+    rgba(201,168,76,0.2) calc(20% - 0.5px),rgba(201,168,76,0.2) calc(20% + 0.5px),
+    transparent calc(20% + 0.5px),transparent 20%)}
+.lb-fill{position:relative;height:100%;
+  background:linear-gradient(90deg,
+    rgba(201,168,76,0.4),
+    var(--gold) 60%,
+    var(--gold-bright));
+  box-shadow:0 0 10px rgba(201,168,76,0.6),inset 0 0 6px rgba(255,255,255,0.1);
+  transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.lb-fill::after{content:'';position:absolute;top:-2px;bottom:-2px;right:-2px;width:3px;
+  background:var(--gold-bright);
+  box-shadow:0 0 8px var(--gold-bright),0 0 18px rgba(228,200,104,0.75);
+  animation:lbTipPulse 1.6s ease-in-out infinite}
+@keyframes lbTipPulse{
+  0%,100%{opacity:.55;transform:scaleY(1)}
+  50%{opacity:1;transform:scaleY(1.1)}
+}
+.lb-fill.lb-hot{
+  background:linear-gradient(90deg,var(--gold) 0%,var(--gold-bright) 60%,#fff1b8);
+  box-shadow:0 0 18px rgba(228,200,104,0.85),inset 0 0 10px rgba(255,255,255,0.2);
+  animation:lbHotPulse 1.4s ease-in-out infinite
+}
+@keyframes lbHotPulse{
+  0%,100%{box-shadow:0 0 16px rgba(228,200,104,0.8),inset 0 0 8px rgba(255,255,255,0.15)}
+  50%{box-shadow:0 0 26px rgba(228,200,104,1),inset 0 0 14px rgba(255,255,255,0.3)}
+}
+.lb-fill.lb-hot::after{
+  animation:lbTipPulse .7s ease-in-out infinite;
+  width:4px;
+  background:#fff1b8;
+  box-shadow:0 0 14px #fff1b8,0 0 28px rgba(228,200,104,0.9)
+}
+.lb-pct{text-align:center;font-size:.56rem;color:var(--text-dim);
+  margin-top:5px;letter-spacing:.12em;text-transform:uppercase}
+
 /* ── 16. FILTER PRECISION — align with the new rhythm ──────────────── */
 .ml-compact-title{
   font-size:.72rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;
@@ -920,42 +983,7 @@ html.wide .app{max-width:none;padding:0 10px 8px}
     </div>
   </div>
 
-  <!-- ═══ FILTER PRECISION AUDIT ═══ -->
-  <div class="ml-compact" style="margin-top:14px">
-    <div class="ml-compact-head">
-      <div class="ml-compact-title">Filter Precision Audit</div>
-      <span class="pill" id="fpMeta">—</span>
-      <span class="pill" id="fpBlockMeta" title="ml_block model vitals — the audit recommendations below are only as good as this model">—</span>
-    </div>
-    <div class="ml-compact-body">
-      <table class="fp-table" id="fpTable">
-        <thead>
-          <tr>
-            <th style="text-align:left">Filter Reason</th>
-            <th>N</th>
-            <th>Actual WR</th>
-            <th>Conf@0.7</th>
-            <th>Precision</th>
-            <th>Recommendation</th>
-          </tr>
-        </thead>
-        <tbody id="fpBody">
-          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
-          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
-          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
-          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
-        </tbody>
-      </table>
-      <div class="fp-legend">
-        <span class="fp-leg fp-loosen">LOOSEN = filter blocks real winners</span>
-        <span class="fp-leg fp-keep">KEEP = filter correctly saves money</span>
-        <span class="fp-leg fp-review">REVIEW = inconclusive</span>
-        <span class="fp-leg fp-insuff">INSUFFICIENT = need more data</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ BRAIN STREAM + NEURAL NETWORK side by side ═══ -->
+  <!-- ═══ BRAIN STREAM + DECISION FUNNEL side by side ═══ -->
   <div class="stream-net-row">
     <div class="stream-wrap">
       <div class="stream-head">
@@ -992,11 +1020,45 @@ html.wide .app{max-width:none;padding:0 10px 8px}
         </span>
       </div>
       <div class="neural-box">
-        <svg viewBox="0 0 420 190" preserveAspectRatio="xMidYMid meet" id="funnelSvg"></svg>
+        <svg viewBox="0 0 420 260" preserveAspectRatio="xMidYMid meet" id="funnelSvg"></svg>
       </div>
     </div>
   </div>
 
+  <!-- ═══ FILTER PRECISION AUDIT ═══ -->
+  <div class="ml-compact" style="margin-top:14px">
+    <div class="ml-compact-head">
+      <div class="ml-compact-title">Filter Precision Audit</div>
+      <span class="pill" id="fpMeta">—</span>
+      <span class="pill" id="fpBlockMeta" title="ml_block model vitals — the audit recommendations below are only as good as this model">—</span>
+    </div>
+    <div class="ml-compact-body">
+      <table class="fp-table" id="fpTable">
+        <thead>
+          <tr>
+            <th style="text-align:left">Filter Reason</th>
+            <th>N</th>
+            <th>Actual WR</th>
+            <th>Conf@0.7</th>
+            <th>Precision</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody id="fpBody">
+          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
+          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
+          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
+          <tr class="skeleton-row"><td><span class="skeleton skeleton-bar w80"></span></td><td><span class="skeleton skeleton-bar w30"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td><td><span class="skeleton skeleton-bar w50"></span></td></tr>
+        </tbody>
+      </table>
+      <div class="fp-legend">
+        <span class="fp-leg fp-loosen">LOOSEN = filter blocks real winners</span>
+        <span class="fp-leg fp-keep">KEEP = filter correctly saves money</span>
+        <span class="fp-leg fp-review">REVIEW = inconclusive</span>
+        <span class="fp-leg fp-insuff">INSUFFICIENT = need more data</span>
+      </div>
+    </div>
+  </div>
 
   </div><!-- /sec-core -->
 
@@ -1199,27 +1261,34 @@ function buildFunnel(){
   FL.svg=svg;FL.stages=[];
   while(svg.firstChild)svg.removeChild(svg.firstChild);
   var ns='http://www.w3.org/2000/svg';
-  var W=420,H=190,cy=95;
-  var pad=34;
-  var step=(W-2*pad)/(FUNNEL_STAGES.length-1);
+  // viewBox is 420 × 260 — wider aspect than before so boxes can be
+  // much taller without cropping. cy sits at vertical centre.
+  var W=420,H=260,cy=130;
+  // Huge boxes (72 × 200). Width budget: 5 × 72 = 360, leaving 60 for
+  // 4 gaps + 2 × pad = 12 gap + 6 pad on each side. 10-11px gaps for
+  // the arrow markers between stages.
+  var BW=72,BH=200;
+  var halfBW=BW/2;
+  var pad=6;
+  var step=(W-2*pad-BW)/(FUNNEL_STAGES.length-1);
 
-  // <defs><marker id="fnArrow"><polygon/></marker></defs> — built with DOM methods
+  // <defs><marker id="fnArrow"><polygon/></marker></defs>
   var defs=document.createElementNS(ns,'defs');
   var marker=document.createElementNS(ns,'marker');
   marker.setAttribute('id','fnArrow');
-  marker.setAttribute('markerWidth','6');
-  marker.setAttribute('markerHeight','5');
-  marker.setAttribute('refX','5');
-  marker.setAttribute('refY','2.5');
+  marker.setAttribute('markerWidth','7');
+  marker.setAttribute('markerHeight','6');
+  marker.setAttribute('refX','6');
+  marker.setAttribute('refY','3');
   marker.setAttribute('orient','auto');
   var poly=document.createElementNS(ns,'polygon');
-  poly.setAttribute('points','0 0, 6 2.5, 0 5');
+  poly.setAttribute('points','0 0, 7 3, 0 6');
   poly.setAttribute('fill','rgba(201,168,76,0.55)');
   marker.appendChild(poly);
   defs.appendChild(marker);
   svg.appendChild(defs);
 
-  // Dotted backbone through the centre
+  // Dotted backbone
   var spine=document.createElementNS(ns,'line');
   spine.setAttribute('x1',pad-4);spine.setAttribute('y1',cy);
   spine.setAttribute('x2',W-pad+4);spine.setAttribute('y2',cy);
@@ -1230,57 +1299,74 @@ function buildFunnel(){
 
   // Arrows between stages
   for(var i=0;i<FUNNEL_STAGES.length-1;i++){
-    var ax=pad+i*step,bx=pad+(i+1)*step;
+    var ax=pad+halfBW+i*step,bx=pad+halfBW+(i+1)*step;
     var arr=document.createElementNS(ns,'line');
-    arr.setAttribute('x1',ax+26);arr.setAttribute('y1',cy);
-    arr.setAttribute('x2',bx-26);arr.setAttribute('y2',cy);
+    arr.setAttribute('x1',ax+halfBW);arr.setAttribute('y1',cy);
+    arr.setAttribute('x2',bx-halfBW);arr.setAttribute('y2',cy);
     arr.setAttribute('stroke','rgba(201,168,76,0.35)');
-    arr.setAttribute('stroke-width','1');
+    arr.setAttribute('stroke-width','1.1');
     arr.setAttribute('marker-end','url(#fnArrow)');
     svg.appendChild(arr);
   }
 
   FUNNEL_STAGES.forEach(function(s,i){
-    var x=pad+i*step;
+    var x=pad+halfBW+i*step;
     var g=document.createElementNS(ns,'g');
     var box=document.createElementNS(ns,'rect');
-    box.setAttribute('x',x-26);box.setAttribute('y',cy-34);
-    box.setAttribute('width',52);box.setAttribute('height',68);
-    box.setAttribute('rx',3);
+    box.setAttribute('x',x-halfBW);box.setAttribute('y',cy-BH/2);
+    box.setAttribute('width',BW);box.setAttribute('height',BH);
+    box.setAttribute('rx',5);
     box.setAttribute('fill','rgba(12,12,18,0.45)');
     box.setAttribute('stroke','rgba(201,168,76,0.22)');
-    box.setAttribute('stroke-width','0.8');
+    box.setAttribute('stroke-width','1');
     g.appendChild(box);
+    // Label at the top of the box
     var lbl=document.createElementNS(ns,'text');
-    lbl.setAttribute('x',x);lbl.setAttribute('y',cy-20);
+    lbl.setAttribute('x',x);lbl.setAttribute('y',cy-64);
     lbl.setAttribute('text-anchor','middle');
-    lbl.setAttribute('font-size','7');
+    lbl.setAttribute('font-size','11');
     lbl.setAttribute('font-family','Fira Code,monospace');
     lbl.setAttribute('fill','#c9a84c');
-    lbl.setAttribute('letter-spacing','1');
+    lbl.setAttribute('letter-spacing','1.6');
     lbl.setAttribute('font-weight','700');
     lbl.textContent=s.label;
     g.appendChild(lbl);
+    // Divider under the label
+    var div=document.createElementNS(ns,'line');
+    div.setAttribute('x1',x-halfBW+10);div.setAttribute('x2',x+halfBW-10);
+    div.setAttribute('y1',cy-54);div.setAttribute('y2',cy-54);
+    div.setAttribute('stroke','rgba(201,168,76,0.25)');
+    div.setAttribute('stroke-width','0.6');
+    g.appendChild(div);
+    // Big count number centred in the box
     var cnt=document.createElementNS(ns,'text');
-    cnt.setAttribute('x',x);cnt.setAttribute('y',cy+5);
+    cnt.setAttribute('x',x);cnt.setAttribute('y',cy+14);
     cnt.setAttribute('text-anchor','middle');
-    cnt.setAttribute('font-size','17');
+    cnt.setAttribute('font-size','42');
     cnt.setAttribute('font-family','Fira Code,monospace');
     cnt.setAttribute('font-weight','700');
     cnt.setAttribute('fill','#e8e4dc');
     cnt.textContent='0';
     g.appendChild(cnt);
+    // Bottom divider
+    var div2=document.createElementNS(ns,'line');
+    div2.setAttribute('x1',x-halfBW+10);div2.setAttribute('x2',x+halfBW-10);
+    div2.setAttribute('y1',cy+46);div2.setAttribute('y2',cy+46);
+    div2.setAttribute('stroke','rgba(201,168,76,0.18)');
+    div2.setAttribute('stroke-width','0.6');
+    g.appendChild(div2);
+    // Subtitle at the bottom
     var sub=document.createElementNS(ns,'text');
-    sub.setAttribute('x',x);sub.setAttribute('y',cy+22);
+    sub.setAttribute('x',x);sub.setAttribute('y',cy+72);
     sub.setAttribute('text-anchor','middle');
-    sub.setAttribute('font-size','5.2');
+    sub.setAttribute('font-size','8');
     sub.setAttribute('font-family','Fira Code,monospace');
     sub.setAttribute('fill','#7a7890');
-    sub.setAttribute('letter-spacing','0.5');
+    sub.setAttribute('letter-spacing','0.8');
     sub.textContent='events 1h';
     g.appendChild(sub);
     svg.appendChild(g);
-    FL.stages.push({key:s.key,x:x,cy:cy,box:box,cntEl:cnt});
+    FL.stages.push({key:s.key,x:x,cy:cy,box:box,cntEl:cnt,halfBW:halfBW});
   });
 
   setNeuralActivity('last 1h');
@@ -1315,11 +1401,12 @@ function fireFunnelParticle(fromIdx,toIdx,color){
   if(!FL.svg||fromIdx<0||toIdx>=FL.stages.length||fromIdx>=FL.stages.length)return;
   var ns='http://www.w3.org/2000/svg';
   var from=FL.stages[fromIdx],to=FL.stages[toIdx];
+  var halfBW=from.halfBW||34;
   var dot=document.createElementNS(ns,'circle');
-  dot.setAttribute('r','2.8');
+  dot.setAttribute('r','3.2');
   dot.setAttribute('fill',color||'rgba(228,200,104,0.95)');
-  dot.style.filter='drop-shadow(0 0 4px '+(color||'rgba(228,200,104,0.8)')+')';
-  dot.setAttribute('cx',from.x+26);
+  dot.style.filter='drop-shadow(0 0 5px '+(color||'rgba(228,200,104,0.8)')+')';
+  dot.setAttribute('cx',from.x+halfBW);
   dot.setAttribute('cy',from.cy);
   FL.svg.appendChild(dot);
   var startT=performance.now();
@@ -1327,7 +1414,7 @@ function fireFunnelParticle(fromIdx,toIdx,color){
   function anim(now){
     var p=(now-startT)/dur;
     if(p>=1){try{dot.remove()}catch(e){}return}
-    var x=(from.x+26)+((to.x-26)-(from.x+26))*p;
+    var x=(from.x+halfBW)+((to.x-halfBW)-(from.x+halfBW))*p;
     dot.setAttribute('cx',x);
     dot.setAttribute('opacity',String(1-p*0.4));
     requestAnimationFrame(anim);
@@ -1472,113 +1559,80 @@ function viennaTime(stamp){
 var lastCounts={scored:0,decisions:0,samples:0,candidates:0};
 var SPARK_LBL={scored:'scored',decisions:'dec',samples:'samples',candidates:'cand'};
 
-/* ── Time-bucket sparklines ──
-   24 buckets × 5 minutes = 2 hours of history per spark. The buffer is
-   a real time series keyed to wall-clock time (not an oscilloscope
-   sweep), and it's persisted to localStorage so reloads keep the
-   history. On each setCounter() the positive delta is added to the
-   current (rightmost) bucket. A background tick shifts buckets left
-   as time passes. The decisions spark is additionally seeded from the
-   real created_at timestamps of /api/brain/decisions at load time so
-   the operator sees actual last-2h activity immediately without
-   waiting for live events.                                            */
-var SPARK_BUCKETS=24;
-var SPARK_WINDOW_MS=5*60*1000;
-var _sparkData={};
+/* ── Level bars — glowing XP-style progress bar toward next tier ──
+   Replaces the clock-ring / time-bucket sparkline. Each counter picks
+   the nearest "1-2-5" milestone tier (0 / 10 / 25 / 50 / 100 / 250
+   / 500 / 1K / 2.5K / 5K / 10K / 25K / 50K / 100K / 250K / 500K / 1M)
+   based on the current value, shows the progress toward the next
+   tier as a filled bar with a glowing leading edge, and labels both
+   the current level and the next milestone. The bar pulses on its
+   leading edge so you always see which counter is closest to "level
+   up" at a glance. No history, no localStorage — just an instant
+   read of where each counter sits in its growth trajectory.        */
+var LEVEL_TIERS=[0,10,25,50,100,250,500,1000,2500,5000,10000,25000,50000,100000,250000,500000,1000000];
 
-function _newSparkBuckets(){return {endTs:Date.now(),buckets:new Array(SPARK_BUCKETS).fill(0)}}
-function _sparkKey(k){return 'sparkBucket_v2_'+k}
-function _loadSpark(key){
-  try{
-    var raw=localStorage.getItem(_sparkKey(key));
-    if(!raw)return _newSparkBuckets();
-    var d=JSON.parse(raw);
-    if(!d||!Array.isArray(d.buckets)||d.buckets.length!==SPARK_BUCKETS)return _newSparkBuckets();
-    var now=Date.now();
-    var off=Math.floor((now-(d.endTs||now))/SPARK_WINDOW_MS);
-    if(off<=0)return {endTs:d.endTs||now,buckets:d.buckets.slice(),_seeded:!!d._seeded};
-    if(off>=SPARK_BUCKETS)return _newSparkBuckets();
-    var shifted=new Array(SPARK_BUCKETS).fill(0);
-    for(var i=0;i<SPARK_BUCKETS-off;i++)shifted[i]=d.buckets[i+off]||0;
-    return {endTs:now,buckets:shifted,_seeded:!!d._seeded};
-  }catch(e){return _newSparkBuckets()}
-}
-function _saveSpark(key){
-  try{localStorage.setItem(_sparkKey(key),JSON.stringify(_sparkData[key]))}catch(e){}
-}
-function _ageSpark(d){
-  var now=Date.now();
-  var off=Math.floor((now-d.endTs)/SPARK_WINDOW_MS);
-  if(off<=0)return d;
-  if(off>=SPARK_BUCKETS){d.buckets=new Array(SPARK_BUCKETS).fill(0);d.endTs=now;return d}
-  var shifted=new Array(SPARK_BUCKETS).fill(0);
-  for(var i=0;i<SPARK_BUCKETS-off;i++)shifted[i]=d.buckets[i+off]||0;
-  d.buckets=shifted;d.endTs=now;return d;
+function getTier(v){
+  v=Number(v||0);
+  var level=0;
+  for(var i=LEVEL_TIERS.length-1;i>=0;i--){
+    if(v>=LEVEL_TIERS[i]){level=i;break}
+  }
+  var prev=LEVEL_TIERS[level];
+  var next=LEVEL_TIERS[level+1]||(prev*2);
+  var progress=next>prev?Math.min(1,(v-prev)/(next-prev)):1;
+  return {prev:prev,next:next,progress:progress,level:level+1};
 }
 
-function drawSpark(key,buckets,current){
+function formatTier(v){
+  if(v>=1000000)return (v/1000000).toFixed(1).replace('.0','')+'M';
+  if(v>=1000)return (v/1000).toFixed(v<10000?1:0).replace('.0','')+'K';
+  return String(v);
+}
+
+function drawSpark(key,current){
   var el=$('#spark'+key.charAt(0).toUpperCase()+key.slice(1));
   if(!el)return;
   while(el.firstChild)el.removeChild(el.firstChild);
-  // Current-value tag in the top-right corner (absolute, not delta)
+
+  var tier=getTier(current||0);
+  var pct=Math.round(tier.progress*100);
+
+  // Top-right label tag keeps the absolute count readable alongside
+  // the level bar (same position as before for muscle memory).
   var tag=document.createElement('div');tag.className='spark-val';
-  var lbl=document.createElement('span');lbl.className='lbl';
-  lbl.textContent=SPARK_LBL[key]||key;
-  tag.appendChild(lbl);
+  var lblEl=document.createElement('span');lblEl.className='lbl';
+  lblEl.textContent=SPARK_LBL[key]||key;
+  tag.appendChild(lblEl);
   tag.appendChild(document.createTextNode(Number(current||0).toLocaleString('de')));
   el.appendChild(tag);
 
-  var ns='http://www.w3.org/2000/svg';
-  var svg=document.createElementNS(ns,'svg');
-  svg.setAttribute('viewBox','0 0 100 52');
-  svg.setAttribute('preserveAspectRatio','none');
-  // Baseline at bottom (not middle) so bars grow up naturally
-  var baseline=document.createElementNS(ns,'line');
-  baseline.setAttribute('class','baseline');
-  baseline.setAttribute('x1','0');baseline.setAttribute('x2','100');
-  baseline.setAttribute('y1','46');baseline.setAttribute('y2','46');
-  svg.appendChild(baseline);
+  // Level bar body — pure DOM + CSS, no SVG needed
+  var wrap=document.createElement('div');wrap.className='level-bar';
 
-  var max=1;
-  for(var i=0;i<buckets.length;i++)if(buckets[i]>max)max=buckets[i];
-  var barW=100/SPARK_BUCKETS;
-  for(var j=0;j<SPARK_BUCKETS;j++){
-    var v=buckets[j]||0;
-    if(v<=0)continue;
-    var h=(v/max)*38;
-    var rect=document.createElementNS(ns,'rect');
-    rect.setAttribute('x',(j*barW+barW*0.18).toFixed(2));
-    rect.setAttribute('y',(46-h).toFixed(2));
-    rect.setAttribute('width',(barW*0.64).toFixed(2));
-    rect.setAttribute('height',h.toFixed(2));
-    var isCurrent=(j===SPARK_BUCKETS-1);
-    rect.setAttribute('fill', isCurrent?'#e4c868':'#c9a84c');
-    rect.setAttribute('opacity', isCurrent?'0.95':'0.55');
-    svg.appendChild(rect);
-  }
-  // Head dot over the current bar
-  if(buckets[SPARK_BUCKETS-1]>0){
-    var head=document.createElementNS(ns,'circle');
-    head.setAttribute('class','head');
-    head.setAttribute('cx',((SPARK_BUCKETS-1)*barW+barW*0.5).toFixed(2));
-    head.setAttribute('cy',(46-(buckets[SPARK_BUCKETS-1]/max)*38).toFixed(2));
-    head.setAttribute('r','1.8');
-    head.setAttribute('fill','#e4c868');
-    head.style.filter='drop-shadow(0 0 4px #e4c868) drop-shadow(0 0 8px rgba(201,168,76,0.5))';
-    svg.appendChild(head);
-  }
-  el.appendChild(svg);
+  var head=document.createElement('div');head.className='lb-head';
+  var lvl=document.createElement('span');lvl.className='lb-level';
+  lvl.textContent='LV '+tier.level;
+  var arrow=document.createElement('span');arrow.className='lb-arrow';
+  arrow.textContent=formatTier(tier.prev)+' → '+formatTier(tier.next);
+  head.appendChild(lvl);
+  head.appendChild(arrow);
+  wrap.appendChild(head);
+
+  var track=document.createElement('div');track.className='lb-track';
+  var fill=document.createElement('div');fill.className='lb-fill';
+  fill.style.width=(tier.progress*100).toFixed(1)+'%';
+  // Near-level-up nudge: the tip glows more intensely over 80% so
+  // the eye is drawn to the bar that's about to level up.
+  if(pct>=80)fill.classList.add('lb-hot');
+  track.appendChild(fill);
+  wrap.appendChild(track);
+
+  var pctLbl=document.createElement('div');pctLbl.className='lb-pct';
+  pctLbl.textContent=pct+'% TO NEXT';
+  wrap.appendChild(pctLbl);
+
+  el.appendChild(wrap);
 }
-
-/* Background tick: shifts buckets if 5min window crossed. Once per minute. */
-setInterval(function(){
-  Object.keys(_sparkData).forEach(function(k){
-    var d=_sparkData[k];
-    _ageSpark(d);
-    _saveSpark(k);
-    drawSpark(k,d.buckets,lastCounts[k]||0);
-  });
-},60000);
 
 function setCounter(key,val){
   var el=$('#cnt'+key.charAt(0).toUpperCase()+key.slice(1));
@@ -1599,41 +1653,11 @@ function setCounter(key,val){
     dEl.classList.toggle('dn',delta<0);
   }
   lastCounts[key]=val;
-  if(!_sparkData[key])_sparkData[key]=_loadSpark(key);
-  _ageSpark(_sparkData[key]);
-  // Only positive deltas bump the bucket — cumulative counters that
-  // reset or drop shouldn't pollute the history with negative "drops".
-  if(delta>0)_sparkData[key].buckets[SPARK_BUCKETS-1]+=delta;
-  _saveSpark(key);
-  drawSpark(key,_sparkData[key].buckets,val);
+  drawSpark(key,val);
 }
 
-/* Seed the decisions spark from real event timestamps at first load.
-   Other sparks (scored/samples/candidates) start from whatever's in
-   localStorage and accumulate live deltas from there. */
-function seedSparkFromDecisions(decisions){
-  if(!Array.isArray(decisions))return;
-  if(!_sparkData['decisions'])_sparkData['decisions']=_loadSpark('decisions');
-  if(_sparkData['decisions']._seeded)return;
-  var now=Date.now();
-  var spanStart=now-SPARK_BUCKETS*SPARK_WINDOW_MS;
-  var buckets=new Array(SPARK_BUCKETS).fill(0);
-  decisions.forEach(function(d){
-    var t=_parseTs(d.created_at||d.timestamp||'');
-    if(isNaN(t)||t<spanStart||t>now)return;
-    var idx=Math.floor((t-spanStart)/SPARK_WINDOW_MS);
-    if(idx>=0&&idx<SPARK_BUCKETS)buckets[idx]++;
-  });
-  _sparkData['decisions']={endTs:now,buckets:buckets,_seeded:true};
-  _saveSpark('decisions');
-  drawSpark('decisions',buckets,lastCounts['decisions']||0);
-}
-
-/* Initialise all four sparks from localStorage so reload keeps history */
-['scored','decisions','samples','candidates'].forEach(function(k){
-  _sparkData[k]=_loadSpark(k);
-  drawSpark(k,_sparkData[k].buckets,lastCounts[k]||0);
-});
+/* Initial render so the bars show a baseline level before the first refresh */
+['scored','decisions','samples','candidates'].forEach(function(k){drawSpark(k,0)});
 
 var brainStateTimer=null;
 function setBrainState(state,sub){
@@ -2554,8 +2578,6 @@ async function refresh(){
 
   // Live decision funnel: recompute counts off the fresh streamEvents buffer
   updateFunnel();
-  // Seed the decisions spark from real timestamps once per session
-  seedSparkFromDecisions(decisions);
 
   renderCoreMini(status,mlInfo,decisions,traders);
   renderCandidates(candidates);
