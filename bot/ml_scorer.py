@@ -2,12 +2,19 @@
 ML Scorer — lernt aus historischen Trades welche gewinnen/verlieren.
 Trainiert alle 6h automatisch. RandomForest auf echten Trade-Daten.
 
-Feature engineering (refactored 2026-04-14): 8 features instead of the
-prior 5 (3 of which were broken / noise). Trader identity goes in via
-per-trader rolling stats (winrate / pnl / trades). Conviction signal via
-bet/avg ratio (copy rows only, blocked rows default to 1.0 so the model
-can't trivially identify the data source). Category collapsed into two
-fee-relevant features. Time + side dropped as noise.
+Feature engineering (refactored 2026-04-14):
+- 20 features (was 5, of which 3 were noise/broken)
+- Per-row chronological trader stats (wr / pnl / trades) so different
+  traders get different edges
+- Bet/avg ratio for conviction (clamped, with 1.0 default for blocked
+  rows so it can't become a copy-vs-blocked leakage marker)
+- price_dist_from_50 captures non-linear extremity edge
+- hour / day_of_week kept (4-5% importance in the old model — small
+  but non-zero signal worth preserving)
+- One-hot encoded category (12 binary columns) replaces the broken
+  label-encoded int — trees can finally split on individual sports,
+  and the model can learn esports-specific or NHL-specific patterns
+- side dropped (was 0% importance, YES/NO is symmetric)
 """
 import logging
 import os
@@ -24,16 +31,15 @@ logger = logging.getLogger(__name__)
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ml_model.pkl")
 MIN_TRAINING_SAMPLES = 50
 
-# Categories with 10% Polymarket fee — systematically worse EV
-_HIGH_FEE_CATEGORIES = {"cs", "lol", "valorant", "dota"}
-# Ordinal fee band: 0 = 0% fee, 1 = ~5%, 2 = 10% (esports)
-_FEE_BAND_MAP = {
-    "nhl": 0, "politics": 0, "geopolitics": 0,
-    "nba": 1, "nfl": 1, "mlb": 1, "tennis": 1, "soccer": 1, "cricket": 1,
-    "cs": 2, "lol": 2, "valorant": 2, "dota": 2,
-}
+# One-hot category columns. Order MUST match the FEATURE_NAMES list below
+# and the _get_features() return order.
+_CATEGORIES = [
+    "cs", "lol", "valorant", "dota",
+    "nhl", "nba", "nfl", "mlb",
+    "tennis", "soccer", "geopolitics", "politics",
+]
 
-# 8 feature names — kept in sync with _get_features() return order
+# 21 feature names — kept in sync with _get_features() return order
 FEATURE_NAMES = [
     "entry_price",
     "price_dist_from_50",
@@ -41,9 +47,10 @@ FEATURE_NAMES = [
     "trader_pnl_7d",
     "trader_trades_7d",
     "bet_vs_avg",
-    "high_fee_cat",
-    "fee_band",
-]
+    "hour",
+    "day_of_week",
+    "side_yes",
+] + ["cat_" + c for c in _CATEGORIES]
 
 _model = None
 _model_loaded = False
@@ -107,10 +114,19 @@ def _stats_for(trader_stats: dict, trader_name: str) -> dict:
 
 
 def _get_features(trade: dict, trader_stats: dict = None) -> list:
-    """Extract 8-feature vector from a trade dict + the trader's rolling stats.
+    """Extract 21-feature vector from a trade dict + trader's rolling stats.
 
-    `trade` keys consumed: entry_price / actual_entry_price, category,
-    actual_size, trader_name (or wallet_username for the lookup).
+    Layout (must match FEATURE_NAMES):
+      0  entry_price                  (continuous, 0..1)
+      1  price_dist_from_50           (continuous, 0..0.5)
+      2  trader_wr_7d                 (continuous, 0..100)
+      3  trader_pnl_7d                (continuous, signed $)
+      4  trader_trades_7d             (int)
+      5  bet_vs_avg                   (continuous, clamped 0..10)
+      6  hour                         (int 0..23)
+      7  day_of_week                  (int 0..6, Mon=0)
+      8  side_yes                     (binary, 1=YES bet, 0=NO bet)
+      9..20  cat_<sport>              (12 binary one-hot columns)
 
     `trader_stats` is the per-trader dict returned by _stats_for(). When
     None (e.g. unknown trader), trader features default to 0 and
@@ -119,36 +135,55 @@ def _get_features(trade: dict, trader_stats: dict = None) -> list:
     entry = trade.get("actual_entry_price") or trade.get("entry_price") or 0.5
     cat_lc = (trade.get("category") or "").lower()
 
-    # 1. entry_price (continuous 0..1)
-    f1 = float(entry)
-    # 2. distance from coin-flip — captures non-linear extremity edge
-    f2 = abs(f1 - 0.5)
+    # 0. entry_price
+    f0 = float(entry)
+    # 1. price_dist_from_50 — non-linear extremity edge
+    f1 = abs(f0 - 0.5)
 
-    # 3-5. Trader rolling stats
+    # 2-4. Trader rolling stats (chronologically accumulated at training time)
     s = trader_stats or {"wr": 0.0, "pnl": 0.0, "trades": 0, "avg_bet": 0.0}
-    f3 = float(s.get("wr") or 0.0)
-    f4 = float(s.get("pnl") or 0.0)
-    f5 = float(s.get("trades") or 0)
+    f2 = float(s.get("wr") or 0.0)
+    f3 = float(s.get("pnl") or 0.0)
+    f4 = float(s.get("trades") or 0)
 
-    # 6. Conviction: this bet relative to the trader's average.
-    #    For copy_trades we use actual_size; for blocked rows actual_size
-    #    is 0 so we fall back to 1.0 (neutral) — avoids a copy-vs-blocked
-    #    leakage marker. The bot's prior fix removed `size` for the same
-    #    reason. Clamped to [0, 10] so a freak bet can't dominate splits.
+    # 5. Conviction: bet vs trader's running average
     actual_size = trade.get("actual_size") or 0
     avg_bet = float(s.get("avg_bet") or 0)
     if actual_size and avg_bet > 0:
-        f6 = float(actual_size) / avg_bet
-        if f6 > 10.0:
-            f6 = 10.0
+        f5 = float(actual_size) / avg_bet
+        if f5 > 10.0:
+            f5 = 10.0
     else:
-        f6 = 1.0
+        f5 = 1.0
 
-    # 7-8. Category as fee proxy (the only thing category actually predicts)
-    f7 = 1 if cat_lc in _HIGH_FEE_CATEGORIES else 0
-    f8 = _FEE_BAND_MAP.get(cat_lc, 1)  # default to medium-fee band
+    # 6-7. Time features (hour + day_of_week)
+    hour = 12
+    dow = 3
+    created = trade.get("created_at") or ""
+    if created:
+        try:
+            from datetime import datetime as _dt
+            dt = _dt.strptime(created[:19], "%Y-%m-%d %H:%M:%S")
+            hour = dt.hour
+            dow = dt.weekday()
+        except Exception:
+            pass
+    f6 = hour
+    f7 = dow
 
-    return [f1, f2, f3, f4, f5, f6, f7, f8]
+    # 8. side (YES=1 / NO=0). Was 0% importance in the legacy 5-feature
+    # model — likely because YES/NO is symmetric within a single market
+    # and entry_price already encodes the implied probability. Kept as
+    # a feature in case there's a YES-bias / NO-bias effect across the
+    # sample (the model can ignore it if not informative).
+    side_str = (trade.get("side") or "YES").upper()
+    f8 = 1 if side_str == "YES" else 0
+
+    # 9..20. Category one-hot — trees can split each sport independently,
+    # which is what the old label-encoded int version couldn't do.
+    cat_features = [1 if cat_lc == c else 0 for c in _CATEGORIES]
+
+    return [f0, f1, f2, f3, f4, f5, f6, f7, f8] + cat_features
 
 
 def _build_training_data():
