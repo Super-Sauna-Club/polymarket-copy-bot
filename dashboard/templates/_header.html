@@ -11,7 +11,7 @@
     <img src="/static/logo.png" alt="SSC" class="hd-logo-img" onerror="this.style.display='none'">
     <div>
       <div class="logo">Poly Copybot</div>
-      <div class="logo-sub">by Super Sauna Club</div>
+      <div class="logo-sub">by Super Sauna Club{% if deploy_info and deploy_info.sha %} <a class="ver" href="{{ deploy_info.github_commit_url }}" target="_blank" rel="noopener" title="{{ deploy_info.branch }} @ {{ deploy_info.deployed_at }}">{{ deploy_info.sha }}</a>{% endif %}</div>
     </div>
   </div>
   <div class="hd-center">

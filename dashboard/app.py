@@ -16,6 +16,48 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 
+# ── Deploy/version badge ─────────────────────────────────────────────
+# scripts/deploy.sh writes dashboard/static/version.json on every deploy
+# with {sha, full_sha, branch, deployed_at}. The context processor below
+# exposes it as `deploy_info` in every rendered template so _header.html
+# can show a clickable commit link.
+_VERSION_PATH = os.path.join(os.path.dirname(__file__), "static", "version.json")
+_VERSION_CACHE: dict = {"mtime": None, "data": None}
+_GITHUB_REPO = "Super-Sauna-Club/polymarket-copy-bot"
+
+
+def _get_deploy_info() -> dict:
+    try:
+        mt = os.path.getmtime(_VERSION_PATH)
+        if _VERSION_CACHE["mtime"] == mt and _VERSION_CACHE["data"] is not None:
+            return _VERSION_CACHE["data"]
+        with open(_VERSION_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+        data.setdefault("sha", "")
+        data.setdefault("full_sha", "")
+        data.setdefault("branch", "")
+        data.setdefault("deployed_at", "")
+        data["github_commit_url"] = (
+            f"https://github.com/{_GITHUB_REPO}/commit/{data['full_sha']}"
+            if data.get("full_sha") else ""
+        )
+        _VERSION_CACHE["mtime"] = mt
+        _VERSION_CACHE["data"] = data
+        return data
+    except FileNotFoundError:
+        return {"sha": "", "full_sha": "", "branch": "", "deployed_at": "",
+                "github_commit_url": ""}
+    except Exception as e:
+        logger.warning("version.json read failed: %s", e)
+        return {"sha": "", "full_sha": "", "branch": "", "deployed_at": "",
+                "github_commit_url": ""}
+
+
+@app.context_processor
+def inject_deploy_info():
+    return {"deploy_info": _get_deploy_info()}
+
+
 def _check_auth() -> bool:
     """Check dashboard secret from X-Dashboard-Key header, ?key= param, or JSON body.
     Query param accepted for backwards compat but header/body preferred (no log leaks).
