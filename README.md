@@ -57,21 +57,25 @@ Weil selbst Profis manchmal Mist machen. Deshalb hat der Bot ein ganzes System a
 - **5 Buy-Pfade** — Activity Scan, Position-Diff, Event-Wait, Hedge-Wait, Pending-Buy (alle mit denselben Filtern und Size-Caps)
 - **Thread-Safe** — Buy-Lock verhindert Race Conditions bei gleichzeitigen Scans
 - **Proportionales Sizing** — Wetteinsatz skaliert mit der Ueberzeugung des Traders (0.2x bis 3.0x)
-- **Kategorie-Blacklist** — Pro Trader bestimmte Sportarten/Kategorien blocken (Erkennung: NBA, MLB, NHL, NFL, Tennis, Soccer, CS, LoL, Valorant, Dota, Geopolitik, Cricket)
+- **Kategorie-Blacklist** — Pro Trader bestimmte Sportarten/Kategorien blocken (Erkennung: NBA, MLB, NHL, NFL, Tennis, Soccer, CS, LoL, Valorant, Dota, Geopolitik, Cricket). Seit 2026-04-14 rein manuell — Brain/Auto-Tuner schreiben nur noch Empfehlungen, nicht in settings.env
 - **Hedge-Erkennung** — Erkennt wenn ein Trader beide Seiten kauft und ueberspringt beides
 - **Size-Caps** — Alle Limits (Event, Match, Exposure, Position) cappen die Trade-Groesse auf den verbleibenden Platz (nicht nur Skip bei voll)
 - **Sell-before-Close** — Verkauft Shares BEVOR die DB geschlossen wird (keine verwaisten Positionen)
+- **Atomic Close** (2026-04-14) — `close_copy_trade()` schreibt `status/pnl_realized/usdc_received/current_price` in einem einzigen atomaren UPDATE. Keine NULL `usdc_received` Rows mehr
 - **Fast-Sell** — Kopiert Verkaeufe der Trader innerhalb von 5 Sekunden
 - **Auto-Sell** — Verkauft gewonnene Positionen ab 96 Cent automatisch
 - **Auto-Redeem** — Loest gewonnene Positionen ueber den Builder Relayer ein
 - **P&L-Tracking** — Misst echten Fill-Preis (USDC-Delta), nicht geplanten Preis
 - **P&L-Monitor** — Dauerhafter Service der bei jedem Close DB-P&L vs. USDC-Delta vergleicht
+- **Backfill Tool** (2026-04-14) — `backfill_usdc_received.py` pullt Polymarket Activity-API und fixt historische NULL `usdc_received` Rows. 1:1 greedy matching, dry-run default, `--apply` writes
 - **Stale-Position-Erkennung** — Schliesst Positionen die aus der Trader-Wallet verschwunden sind
-- **Live Dashboard** — Echtzeit mit Equity-Kurve, 24h-Trader-Performance, Exposure-Meter, Sound-System
+- **Live Dashboard** — Echtzeit mit Equity-Kurve, 24h-Trader-Performance, Exposure-Meter, Sound-System, **Filter Precision Audit** (neu 2026-04-14)
 - **Circuit Breaker** — Pausiert nach 8 API-Fehlern fuer 60 Sekunden
 - **AI Analysis Pipeline** — Loggt alle geblockten Trades, trackt Outcomes ("was waere gewesen?"), Claude analysiert und empfiehlt Parameter-Aenderungen
 - **Brain Engine** — Selbst-optimierendes Intelligenz-Modul (laeuft alle 2h): klassifiziert Verluste, pausiert/kickt schlechte Trader, optimiert Score-Gewichte automatisch
 - **Trade Scorer** — Bewertet jeden Trade vor Ausfuehrung mit Score 0-100 (Trader Edge, Category WR, Price Signal, Conviction, Market Quality, Correlation). Blockt schlechte Trades, boostet gute
+- **Two-Model ML System** (2026-04-14) — `ml_copy` trainiert nur auf copy_trades fuer Live-Entscheidungen, `ml_block` trainiert nur auf blocked_trades fuer Filter-Audit. Self-disabling edge gate: ml_copy adjustments greifen nur wenn Modell die Baseline schlaegt
+- **Filter Precision Audit** (2026-04-14) — Pro Filter-Reason misst ob Regeln echte Winner blocken oder korrekt Verlierer aussortieren. Magnitude-aware via verified per-(trader, category) $PnL — WR-basierte LOOSEN-Empfehlung wird von Ground-Truth-Dollar-Daten ueberschrieben wenn asymmetric
 - **Trader Lifecycle** — Automatischer Lebenszyklus: DISCOVERED → OBSERVING → PAPER_FOLLOW → LIVE_FOLLOW → PAUSED → KICKED. Findet, testet und promoted neue Trader selbstaendig
 - **Autonomous Trading** — Eigene Trades basierend auf Momentum + AI Divergence Signalen. Startet im Paper-Modus, wird bei bewiesener Performance automatisch auf Live promoted
 
@@ -256,11 +260,19 @@ Eine Website auf deinem Server die in Echtzeit zeigt was passiert:
 Der Bot optimiert sich alle 2 Stunden selbst. Keine manuelle Anpassung noetig.
 
 > **WICHTIG:** Brain Engine + Auto-Tuner schreiben automatisch in
-> `settings.env`. Manuell editierte Werte in `BET_SIZE_MAP`,
-> `TRADER_EXPOSURE_MAP`, `MIN/MAX_ENTRY_PRICE_MAP`, `MIN_TRADER_USD_MAP`,
-> `TAKE_PROFIT_MAP`, `MAX_COPIES_PER_MARKET_MAP`, `HEDGE_WAIT_TRADERS`,
-> `CATEGORY_BLACKLIST_MAP`, `MIN_CONVICTION_RATIO_MAP` und
-> `FOLLOWED_TRADERS` werden bei jedem Brain-Cycle (alle 2h) ueberschrieben.
+> `settings.env`. Auto-managed Maps die bei jedem Brain-Cycle (alle 2h)
+> ueberschrieben werden: `BET_SIZE_MAP`, `TRADER_EXPOSURE_MAP`,
+> `MIN/MAX_ENTRY_PRICE_MAP`, `MIN_TRADER_USD_MAP`, `TAKE_PROFIT_MAP`,
+> `STOP_LOSS_MAP`, `MAX_COPIES_PER_MARKET_MAP`, `HEDGE_WAIT_TRADERS`,
+> `MIN_CONVICTION_RATIO_MAP`, `AVG_TRADER_SIZE_MAP`.
+>
+> **Manual-only (piff-philosophy, NICHT auto-written)**:
+> `CATEGORY_BLACKLIST_MAP`, `FOLLOWED_TRADERS`. Auto-pause/throttle/kick
+> sind ebenfalls disabled. Brain und Auto-Tuner berechnen Empfehlungen
+> und loggen sie (als `BLACKLIST_RECOMMENDED` in `brain_decisions` und
+> als `[TUNER] Would blacklist (DISABLED, manual): ...` im log) aber
+> schreiben nicht in settings.env. User manage diese Felder manuell.
+>
 > Initialwerte bleiben in `settings.example.env` als Fallback bis Brain
 > echte Daten hat. Nach einem `settings.env` Update muss `polybot`
 > restartet werden damit der laufende Prozess die neuen Werte liest.
@@ -372,18 +384,84 @@ DISCOVERED → OBSERVING (48h) → PAPER_FOLLOW (7-14d) → LIVE_FOLLOW
 | Endpoint | Beschreibung |
 |----------|-------------|
 | `GET /api/equity-curve` | Taegliche Portfolio-Kurve |
-| `GET /api/brain/decisions` | Alle Brain-Engine Entscheidungen |
+| `GET /api/brain/decisions` | Alle Brain-Engine Entscheidungen (inkl. `BLACKLIST_RECOMMENDED` disabled-auto-writes) |
 | `GET /api/brain/scores` | Score-Performance nach Range |
 | `GET /api/brain/lifecycle` | Trader gruppiert nach Lifecycle-Status |
+| `GET /api/brain/filter-precision` | **Filter Precision Audit** (neu 2026-04-14): pro Filter-Reason precision + verified $ PnL + LOOSEN/KEEP/REVIEW Empfehlung |
+| `GET /api/upgrade/ml-info` | ML Training History, filtert `model_name='ml_copy'` |
+| `GET /api/upgrade/status` | Live Status inkl. `ml_model.samples_available` (live eligible count) |
 
 ### Neue DB-Tabellen
 
 | Tabelle | Inhalt |
 |---------|--------|
-| `brain_decisions` | Jede Entscheidung mit Grund und erwartetem Impact |
+| `brain_decisions` | Jede Entscheidung mit Grund und erwartetem Impact. Enthaelt `BLACKLIST_RECOMMENDED` Rows fuer disabled auto-actions |
 | `trade_scores` | Score + 6 Komponenten fuer jeden Trade |
 | `trader_lifecycle` | Status-History pro Trader mit Timestamps |
 | `autonomous_performance` | Taegliche Paper/Live Performance |
+| `ml_training_log` (2026-04-14 erweitert) | Training snapshots mit `train_accuracy`, `copy_only_accuracy`, `baseline_accuracy`, `train_n`, `test_n`, `model_name` (ml_copy|ml_block) + Index |
+
+---
+
+## Two-Model ML System (2026-04-14)
+
+Der ML-Scorer wurde in zwei spezialisierte Modelle gesplittet:
+
+### `ml_copy.pkl` — Live-Entscheidungs-Modell
+
+Trainiert **nur auf `copy_trades`** (echte ausgefuehrte Trades). Labels: `pnl_realized > 0`. Sample-Weighting: `clamp(|pnl_realized|, 0.1, 5.0)` — ein $5-Verlust zaehlt 50x so viel wie ein $0.10-Gewinn, richtig fuer asymmetric Polymarket-Payoffs.
+
+Wird vom `trade_scorer` via `predict_copy(trade_data)` aufgerufen. `predict()` bleibt als Alias — `trade_scorer.py` braucht Null Aenderungen.
+
+**Self-disabling edge gate**: Wenn `get_model_health('ml_copy').edge_vs_baseline < 0`, wird die `±15` Score-Adjustment im trade_scorer NICHT angewendet. Die `components["ml_prediction"]` Prediction wird trotzdem fuer die UI gesetzt — der User sieht was das Modell denkt, aber Trades werden nicht durch ein unterperformendes Modell beeinflusst. Sobald copy_only_accuracy die Baseline schlaegt, aktiviert sich das Adjustment automatisch wieder.
+
+### `ml_block.pkl` — Filter-Audit-Modell
+
+Trainiert **nur auf `blocked_trades`** wo `would_have_won IS NOT NULL`. Labels: `would_have_won` (binary). Wird **NICHT** vom `trade_scorer` aufgerufen. Einziger Consumer: `bot/filter_audit.py`.
+
+### Training + Schedule
+
+`train_model()` wrapper ruft `train_copy_model()` + `train_block_model()` auf. Laeuft alle 6h (`interval hours=6` in main.py Scheduler). Beide Modelle loggen separat in `ml_training_log` mit unterschiedlichem `model_name`.
+
+### Verified Trader Stats (decoupled from PERFORMANCE_SINCE)
+
+`_load_trader_stats()` in ml_scorer.py liest direkt aus `copy_trades` mit verified filter (`usdc_received + actual_size IS NOT NULL`), statt aus der `trader_performance` cache-Tabelle. Entkoppelt den ML predict-Pfad vom Dashboard-Reset-Marker `PERFORMANCE_SINCE` — das Modell sieht die volle verified Historie unabhaengig davon wo der User seine Display-Metric resettet.
+
+---
+
+## Filter Precision Audit (2026-04-14)
+
+Neues Panel auf der Brain-Seite unter der ML Health Card. Misst **pro Filter-Reason** ob die Regel echte Winners blockt oder korrekt Verlierer aussortiert.
+
+### Wie es funktioniert
+
+1. `ml_block.pkl` wird geladen
+2. Alle `blocked_trades WHERE would_have_won IS NOT NULL` werden geholt
+3. **Stale-Row Filter**: Fuer `category_blacklist` Rows wird geprueft ob die (trader, category) Combo noch in der aktuellen `CATEGORY_BLACKLIST_MAP` steht. Historische Rows zu inzwischen gelockerten Regeln werden gedropped — der Audit reflektiert die aktuelle Policy, nicht akkumulierte Historie. Robust text search checkt ob ANY der enforced category keywords im market_question match.
+4. **80/20 chronologische Split**: Precision wird nur auf dem Test-Slice berechnet, nicht auf Train-Rows (sonst 100% durch Memorization)
+5. Pro Bucket: `n / actual_win_rate / confident_n (ml_block proba ≥ 0.7) / confident_wins / precision_at_conf`
+6. **Magnitude-aware Override** fuer category_blacklist: Aggregierter verified $PnL aus `copy_trades` history pro (trader, cat) Combo ueberschreibt die WR-basierte Empfehlung. Bei Polymarket-asymmetric-payoffs kann 51% WR trotzdem ein Net-Loser sein.
+
+### Recommendation Logic
+
+```
+n < 100                  → INSUFFICIENT
+verified_pnl ≤ −$5       → KEEP (ground truth loses money, unabhaengig von WR)
+verified_pnl ≥ +$5       → LOOSEN (ground truth winning)
+sonst fallback auf WR:
+  precision ≥ 70%        → LOOSEN
+  precision ≤ 30%        → KEEP
+  dazwischen             → REVIEW
+```
+
+Dashboard zeigt inline im Badge: `KEEP −$6` oder `LOOSEN +$67`. Rechter Pill im Panel-Header zeigt `ml_block: n=16420 · edge +39.5pp · trained 13:30` als Vertrauens-Indikator fuer die Empfehlungen.
+
+### Files
+
+- `bot/filter_audit.py` — neue Datei, `compute_filter_precision()` + `_verified_pnl_per_trader_category()` + `_current_category_blacklist_map()`
+- `bot/ml_scorer.py::_build_block_training_data(verified_only=False, with_metas=True)` — liefert optional 5-Tuple mit per-row metadata
+- `dashboard/app.py::api_filter_precision` — neuer Endpoint
+- `dashboard/templates/brain.html` — Panel HTML + CSS + JS renderer
 
 ---
 
@@ -527,14 +605,30 @@ Optional: P&L-Monitor als separaten Service einrichten (`pnl-monitor.service`).
 ### 5. Auto-Redeem
 
 ```bash
-# Trocken schauen was eingeloest werden kann
+# Alle resolved Positionen on-chain einloesen via Builder Relayer
 python redeem_positions.py
-
-# Wirklich einloesen
-python redeem_positions.py --exec
 ```
 
-Am besten als Cron-Job alle 15 Minuten.
+Das Script fragt die Polymarket API nach redeemable Positions und schickt
+Batch-Transaktionen. Kann als Cron-Job alle 15 Minuten laufen. POL/MATIC
+Gas wird durch den Relayer abgedeckt (kein MATIC im Wallet noetig).
+
+### 6. Historisches `usdc_received` Backfillen (falls NULL Rows existieren)
+
+```bash
+# Dry-run: zeigt was geaendert wuerde, schreibt nichts
+python backfill_usdc_received.py
+
+# Apply: schreibt verified usdc_received in NULL rows
+python backfill_usdc_received.py --apply
+```
+
+Nur noetig wenn es historische `copy_trades` rows mit `status='closed' AND
+usdc_received IS NULL` gibt (vor dem 2026-04-14 Close-Path-Fix war das der
+Normalfall). Idempotent — kann beliebig oft laufen. Das Tool matched die
+NULL-Rows 1:1 zu echten Sell-Events aus Polymarket's Activity-API.
+Nach dem Close-Path-Fix werden keine neuen NULL-Rows mehr erzeugt —
+das Tool ist nur fuer pre-fix Historie relevant.
 
 ---
 
@@ -599,32 +693,49 @@ Alle weiteren Einstellungen sind in `settings.example.env` dokumentiert.
 ## Architektur
 
 ```
-main.py                      → Scheduler + Flask + Startup
-├── bot/copy_trader.py       → Kern: Scan, Filter, Hedge-Wait, Fast-Sell, Sizing, Buy-Lock
+main.py                      → Scheduler + Flask + Startup, AUTO-CLOSE-won/lost paths (atomic 2026-04-14)
+├── bot/copy_trader.py       → Kern: Scan, Filter, Hedge-Wait, Fast-Sell, Sizing, Buy-Lock.
+│                              7 close paths (FAST-SELL, STOP-LOSS x2, TRAILING-STOP,
+│                              TAKE-PROFIT, trader-closed-it, miss-close) schreiben jetzt
+│                              atomar mit usdc_received via _usdc_from_sell + _real_pnl_from_sell
 ├── bot/order_executor.py    → CLOB Orders (Kauf/Verkauf) mit Retry + Fill-Verification
 ├── bot/wallet_scanner.py    → Activity Feed, Positions API
 ├── bot/ws_price_tracker.py  → WebSocket Echtzeit-Preise
 ├── bot/ai_report.py         → Performance-Report Generator
 ├── bot/ai_analyzer.py       → Claude AI Analyse: geblockte vs ausgefuehrte Trades → Empfehlungen
 ├── bot/outcome_tracker.py   → Checkt was geblockte Trades verdient haetten (Polymarket API)
-├── bot/trade_scorer.py      → Score 0-100 vor jeder Trade-Ausfuehrung (6 Komponenten)
-├── bot/brain.py             → Brain Engine: Selbst-Diagnose, Auto-Actions, Score-Optimierung (alle 2h)
+├── bot/trade_scorer.py      → Score 0-100 vor jeder Trade-Ausfuehrung (6 Komponenten) + ML edge gate
+├── bot/ml_scorer.py         → Two-model ML: ml_copy (Live-Decisions) + ml_block (Filter-Audit).
+│                              train_copy_model + train_block_model + predict_copy + predict_block.
+│                              predict() bleibt als Alias fuer ml_copy
+├── bot/filter_audit.py      → **NEU 2026-04-14**: Per-Filter-Reason precision audit, magnitude-
+│                              aware via verified $PnL override. compute_filter_precision()
+├── bot/brain.py             → Brain Engine: Selbst-Diagnose, Auto-Actions, Score-Optimierung (alle 2h).
+│                              BAD_CATEGORY auto-blacklist ist DISABLED (piff-philosophy),
+│                              loggt nur BLACKLIST_RECOMMENDED
 ├── bot/trader_lifecycle.py  → Trader Lifecycle: Auto Discover/Observe/Paper/Live/Pause/Kick
 ├── bot/autonomous_signals.py → Eigene Trades: Momentum + AI Divergence (Paper/Live)
-├── bot/auto_tuner.py        → Trader-Tiers (star/solid/neutral/weak/terrible) → Settings
+├── bot/auto_tuner.py        → Trader-Tiers (star/solid/neutral/weak/terrible) → Settings.
+│                              CATEGORY_BLACKLIST_MAP auto-merge ist DISABLED (2026-04-14)
 ├── bot/auto_discovery.py    → Findet neue Trader via Leaderboard + PolymarketScan
 ├── bot/kelly.py             → Kelly Criterion Bet Sizing + Win-Streak Boost
 ├── bot/smart_sell.py        → Verkauft wenn Trader Position verlaesst
 ├── bot/clv_tracker.py       → Customer Lifetime Value Tracking
-├── database/db.py           → Datenbank-Operationen (SQLite + WAL), Migration mit Verification
-├── database/models.py       → Datenbank-Schema (inkl. blocked_trades, ai_recommendations)
+├── database/db.py           → Datenbank-Operationen (SQLite + WAL), Migration mit Verification.
+│                              close_copy_trade(..., usdc_received=None) atomic
+├── database/models.py       → Datenbank-Schema (inkl. blocked_trades, ai_recommendations,
+│                              ml_training_log mit model_name Column)
 ├── config.py                → Laedt secrets.env → settings.env (kein .env Fallback)
 ├── monitor_pnl.py           → P&L-Accuracy-Monitor (systemd Service)
 ├── redeem_positions.py      → Gewinne einloesen via Builder Relayer
+├── backfill_usdc_received.py → **NEU 2026-04-14**: Backfill-Tool das historische NULL
+│                              usdc_received rows aus Polymarket Activity-API rekonstruiert.
+│                              Idempotent. Dry-run default, --apply writes
 └── dashboard/
-    ├── app.py               → Flask App, SSE Stream, REST APIs (inkl. /api/ai/*)
+    ├── app.py               → Flask App, SSE Stream, REST APIs (inkl. /api/ai/*, /api/brain/filter-precision)
     └── templates/
         ├── dashboard.html   → Haupt-Dashboard mit Live-Trader-Karten
+        ├── brain.html       → Intelligence Dashboard, ML Health Card, Filter Precision Audit Panel
         ├── index.html       → Einstellungs-Seite
         └── history.html     → Handelshistorie
 ```
