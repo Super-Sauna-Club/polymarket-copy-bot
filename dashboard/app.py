@@ -1739,6 +1739,52 @@ def api_paper_traders():
             d["source"] = "lifecycle"
             by_addr[d["address"].lower()] = d
 
+        try:
+            from bot.ws_price_tracker import price_tracker as _pt
+        except Exception:
+            _pt = None
+        # Pre-fetch live prices for all open paper trades
+        _open_pt_rows = conn.execute(
+            "SELECT DISTINCT condition_id, side FROM paper_trades WHERE status = 'open'"
+        ).fetchall()
+        _live_prices = {}
+        _missing_cids = set()
+        for _r in _open_pt_rows:
+            _cid, _side = _r["condition_id"], (_r["side"] or "YES").upper()
+            _p = None
+            if _pt:
+                try:
+                    _p = _pt.get_price(_cid, _side)
+                except Exception:
+                    pass
+            if _p is not None:
+                _live_prices[(_cid, _side)] = float(_p)
+            else:
+                _missing_cids.add(_cid)
+                if _pt:
+                    try:
+                        _pt.subscribe_condition(_cid)
+                    except Exception:
+                        pass
+        if _missing_cids:
+            import requests as _req, json as _json
+            for _mc in list(_missing_cids)[:50]:
+                try:
+                    _gr = _req.get("https://gamma-api.polymarket.com/markets",
+                                   params={"conditionId": _mc}, timeout=5)
+                    if _gr.ok and _gr.json():
+                        _gm = _gr.json()[0] if isinstance(_gr.json(), list) else _gr.json()
+                        _outcomes = _gm.get("outcomes", "[]")
+                        if isinstance(_outcomes, str):
+                            _outcomes = _json.loads(_outcomes)
+                        _oprices = _gm.get("outcomePrices", "[]")
+                        if isinstance(_oprices, str):
+                            _oprices = _json.loads(_oprices)
+                        for _oi, _on in enumerate(_outcomes):
+                            if _oi < len(_oprices):
+                                _live_prices[(_mc, _on.upper())] = float(_oprices[_oi])
+                except Exception:
+                    pass
         result = []
         for d in by_addr.values():
             addr = d["address"]
@@ -1760,15 +1806,28 @@ def api_paper_traders():
             ).fetchone()
             d["closed_trades"] = closed_row["c"] if closed_row else 0
             d["realized_pnl"] = round(closed_row["pnl"], 2) if closed_row else 0
-            # Open trades + unrealized pnl (current_price - entry_price) * implied size ($1 paper unit)
-            open_row = conn.execute(
-                "SELECT COUNT(*) as c, "
-                "COALESCE(SUM(COALESCE(current_price, entry_price) - entry_price), 0) AS unr "
+            # Open trades + unrealized pnl via live prices from ws_price_tracker
+            open_rows = conn.execute(
+                "SELECT condition_id, side, entry_price "
                 "FROM paper_trades WHERE candidate_address = ? AND status = 'open'",
                 (addr,)
-            ).fetchone()
-            d["open_trades"] = open_row["c"] if open_row else 0
-            d["unrealized_pnl"] = round(open_row["unr"], 2) if open_row else 0
+            ).fetchall()
+            d["open_trades"] = len(open_rows)
+            _unr_total = 0.0
+            for _orow in open_rows:
+                _ep = float(_orow["entry_price"] or 0)
+                if _ep <= 0:
+                    continue
+                _cid = _orow["condition_id"]
+                _side = (_orow["side"] or "YES").upper()
+                _live = _live_prices.get((_cid, _side))
+                if _live is not None:
+                    _shares = 1.0 / _ep
+                    if _side == "NO":
+                        _unr_total += _shares * (_ep - _live)
+                    else:
+                        _unr_total += _shares * (_live - _ep)
+            d["unrealized_pnl"] = round(_unr_total, 2)
             d["paper_trades"] = d["closed_trades"] + d["open_trades"]
             # Days in status
             if d.get("status_changed_at"):

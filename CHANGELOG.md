@@ -2,6 +2,37 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-15 — cherry-pick from piff-custom: live unrealized PnL for paper trader summary
+
+Clean cherry-pick of `4ac892a` from `piff-gitlab/piff-custom` into `dashboard/app.py::api_paper_traders`. Piff's commit is a bug fix for an endpoint we both have — `unrealized_pnl` for open paper_trades was effectively always 0 because the old query used `COALESCE(current_price, entry_price) - entry_price` and `current_price` is almost never populated on paper_trades (close_paper_trades only writes it on close).
+
+### What changed
+
+`api_paper_traders` now computes unrealized PnL from **live** prices:
+
+1. Single `SELECT DISTINCT condition_id, side FROM paper_trades WHERE status='open'` up-front to collect all cid/side pairs.
+2. For each pair, try `ws_price_tracker.get_price(cid, side)` first (cached WebSocket stream, sub-ms lookup).
+3. For pairs the WS tracker doesn't have, call `subscribe_condition` so the next request gets a cached value, then fall back to a single `GET gamma-api/markets?conditionId=...` (5s timeout, capped at 50 missing cids per request).
+4. Per open row: `shares = 1.0 / entry_price`, then for YES: `(live - entry) * shares`, for NO: `(entry - live) * shares`.
+5. Sum across all open rows per candidate → `d["unrealized_pnl"]`.
+
+### Why it's safe for us
+
+- Dashboard-only (`api_paper_traders` is read-only). Zero trading-logic touch.
+- Uses modules we already have: `bot.ws_price_tracker.price_tracker.get_price`, `subscribe_condition` (verified present at `bot/ws_price_tracker.py:127`).
+- Gamma API fallback is bounded (50 cids, 5s timeout each, `try/except pass`).
+- Clean cherry-pick, no conflict against main post-Phase-B0.
+
+### What we did NOT merge from piff-custom
+
+Piff's `piff-custom` HEAD also contains the older changes we explicitly skipped earlier today:
+
+- `bot/auto_tuner.py` STOP_LOSS_MAP disable (piff user policy)
+- `main.py` dead `paper_scan()` function (not scheduled in piff's HEAD)
+- `settings.live.env` tracked config snapshot (not read by `config.py`)
+
+These are unchanged in `4ac892a` itself, so this cherry-pick doesn't accidentally re-introduce them.
+
 ## 2026-04-15 — Scenario D Phase B0: additive schema migration for paper_trades
 
 Prerequisite for Phases B1 (filter symmetry) and B2 (paper resolution tracker). **No behavior change yet.** All 6 new columns are nullable / default-zero / default-empty and no code path reads from or writes to them in this commit. They get populated by B1/B2 in follow-up sessions.
