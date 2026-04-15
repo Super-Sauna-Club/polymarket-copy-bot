@@ -1770,8 +1770,10 @@ def api_paper_traders():
             import requests as _req, json as _json
             for _mc in list(_missing_cids)[:50]:
                 try:
+                    # condition_ids (plural+snake) is the ONLY filter variant
+                    # Gamma actually honors — see tests/test_outcome_tracker_gamma_param.py
                     _gr = _req.get("https://gamma-api.polymarket.com/markets",
-                                   params={"conditionId": _mc}, timeout=5)
+                                   params={"condition_ids": _mc}, timeout=5)
                     if _gr.ok and _gr.json():
                         _gm = _gr.json()[0] if isinstance(_gr.json(), list) else _gr.json()
                         _outcomes = _gm.get("outcomes", "[]")

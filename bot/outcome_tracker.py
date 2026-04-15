@@ -49,11 +49,17 @@ def _get_market_price(condition_id: str, asset: str = "") -> tuple:
         except Exception:
             pass
 
-    # Strategy 2: Gamma markets API with condition_id
+    # Strategy 2: Gamma markets API with condition_id.
+    # The correct filter param is `condition_ids` (plural, snake_case).
+    # Empirically verified on walter 2026-04-15 — `conditionId`,
+    # `condition_id` (singular), and `conditionIds` are ALL silently
+    # ignored by Gamma and return the default unfiltered 20-market list.
+    # This made `markets[0]` pick a random market's prices, silently
+    # corrupting blocked_trades outcome labels and ML training data.
     if condition_id:
         try:
             r = requests.get(f"{GAMMA_API}/markets",
-                             params={"condition_id": condition_id, "limit": 1},
+                             params={"condition_ids": condition_id, "limit": 1},
                              timeout=config.API_TIMEOUT)
             if r.ok:
                 markets = r.json()

@@ -2,6 +2,45 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-15 — fix(gamma-api): correct filter param to `condition_ids` (plural, snake_case)
+
+Discovered while verifying the `4ac892a` cherry-pick (live unrealized PnL for paper traders). The cherry-picked code called `GET gamma-api/markets?conditionId=...` — and so did our own pre-existing `bot/outcome_tracker.py::_get_market_price`. Both were silently broken.
+
+### How it was caught
+
+The cherry-picked endpoint returned `unrealized_pnl=0` for many candidates with `open_trades>0`. Empirical probe on walter with 5 candidate filter param variants:
+
+| Param | Rows | Matches? |
+|---|---|---|
+| `conditionId` | 20 (default list) | no — ignored |
+| `condition_id` | 20 (default list) | no — ignored |
+| `conditionIds` | 20 (default list) | no — ignored |
+| `condition_ids` | 1 | **yes** |
+| `/markets/{cid}` as path | HTTP 422 | no |
+
+Only `condition_ids` (plural + snake_case) actually filters. Everything else returns the default unfiltered first-20-markets list — and `bot/outcome_tracker.py::_get_market_price` was doing `markets[0]` on that default list, assigning a **random market's prices** to our target condition_id. Silent data corruption affecting:
+
+1. `blocked_trades.outcome_price` / `would_have_won` (ML training data quality — tainted since before session history)
+2. Filter Precision Audit buckets (which reads from blocked_trades)
+3. The new `api_paper_traders` unrealized_pnl (since the cherry-pick landed one commit earlier today)
+
+### Fix
+
+Two lines, both locations:
+
+- `bot/outcome_tracker.py:56` — `condition_id` → `condition_ids`
+- `dashboard/app.py:1774` — `conditionId` → `condition_ids`
+
+### Regression lock
+
+New test `tests/test_outcome_tracker_gamma_param.py` — mocks `requests.get`, calls `_get_market_price("0xabc")`, asserts the Gamma call's `params` dict contains `condition_ids` (plural, snake) and does **not** contain any of the three broken variants. Catches future regressions at CI time.
+
+### Impact assessment
+
+**Pre-fix `bot/outcome_tracker.py`**: the broken path fires only when `asset` is empty (Strategy 1 CLOB-book path skipped). Callers that pass the ERC-1155 token_id avoid this path entirely. It's unclear how many historical `blocked_trades` labels are contaminated — a follow-up audit would need to diff the `outcome_price` column against a re-labeled sample. Out of scope for this session.
+
+**Pre-fix dashboard**: local bug in today's cherry-pick. Unrealized PnL was partially-garbage for any candidate whose open paper_trades had cids the WS tracker wasn't already subscribed to. Post-fix: all cids get correct prices.
+
 ## 2026-04-15 — cherry-pick from piff-custom: live unrealized PnL for paper trader summary
 
 Clean cherry-pick of `4ac892a` from `piff-gitlab/piff-custom` into `dashboard/app.py::api_paper_traders`. Piff's commit is a bug fix for an endpoint we both have — `unrealized_pnl` for open paper_trades was effectively always 0 because the old query used `COALESCE(current_price, entry_price) - entry_price` and `current_price` is almost never populated on paper_trades (close_paper_trades only writes it on close).
