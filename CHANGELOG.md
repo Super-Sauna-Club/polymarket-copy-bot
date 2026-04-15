@@ -2,6 +2,55 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-15 — Scenario D Phase B0: additive schema migration for paper_trades
+
+Prerequisite for Phases B1 (filter symmetry) and B2 (paper resolution tracker). **No behavior change yet.** All 6 new columns are nullable / default-zero / default-empty and no code path reads from or writes to them in this commit. They get populated by B1/B2 in follow-up sessions.
+
+### What piff needs to do
+
+1. `git pull` on your fork.
+2. `sudo systemctl restart polybot` — migration runs automatically on startup, idempotent on clean DBs.
+3. No settings.env changes. Flag `AUTO_DISCOVERY_AUTO_PROMOTE` stays false.
+
+### Migrations (appended to `database/db.py::init_db`)
+
+```python
+"ALTER TABLE paper_trades ADD COLUMN category TEXT DEFAULT ''",
+"ALTER TABLE paper_trades ADD COLUMN filter_reason TEXT DEFAULT ''",
+"ALTER TABLE paper_trades ADD COLUMN ml_score INTEGER DEFAULT NULL",
+"ALTER TABLE paper_trades ADD COLUMN close_reason TEXT DEFAULT ''",
+"ALTER TABLE paper_trades ADD COLUMN resolved_price REAL DEFAULT NULL",
+"ALTER TABLE paper_trades ADD COLUMN is_resolved INTEGER DEFAULT 0",
+```
+
+### Field semantics (populated in B1 + B2)
+
+| Column | Populated by | Purpose |
+|---|---|---|
+| `category` | B1 add_paper_trade | `_detect_category(market_question)` cached at insert time |
+| `filter_reason` | B1 add_paper_trade | Name of the filter that admitted the trade (positive attribution) |
+| `ml_score` | B1 add_paper_trade | `trade_scorer.score()` output 0-100 at insert |
+| `close_reason` | B2 close_paper_trades | `'time_cutoff'` / `'resolved_yes'` / `'resolved_no'` / `'abandoned'` / `'no_price_available'` |
+| `resolved_price` | B2 track_paper_outcomes | Final market price from `outcome_tracker.get_market_price` when resolution is confirmed |
+| `is_resolved` | B2 track_paper_outcomes | Fast-filter boolean for dashboard + promotion gate |
+
+### Tests
+
+New tests extend `tests/test_paper_follow_stateful.py::TestPaperTradesCleanupMigration`:
+
+1. `test_init_db_adds_all_b0_columns` — PRAGMA table_info assertion for every new column name + type.
+2. `test_legacy_rows_survive_b0_migration` — seed a row pre-migration, run init_db, assert the row survives with original data intact and new columns at their declared defaults.
+
+Full Phase A + B0 regression: 24/24 green.
+
+### Verification on walter
+
+```bash
+ssh walter@10.0.0.20 'cd /home/walter/polymarketscanner && sqlite3 database/scanner.db "PRAGMA table_info(paper_trades)" | grep -E "(category|filter_reason|ml_score|close_reason|resolved_price|is_resolved)"'
+```
+
+Expected: 6 rows, one per new column.
+
 ## 2026-04-15 — cherry-pick from piff-custom: dashboard trader-tier + followed-only filter
 
 Tiny UI-only cherry-pick from `piff-gitlab/piff-custom` into `dashboard/app.py`. Two hunks:

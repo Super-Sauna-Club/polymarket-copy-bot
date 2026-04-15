@@ -351,6 +351,78 @@ class TestPaperTradesCleanupMigration(unittest.TestCase):
             except OSError:
                 pass
 
+    def test_init_db_adds_all_b0_columns(self):
+        """Scenario-D Phase B0: additive schema migration for the 6 new
+        columns Phase B1/B2 will populate. Must exist after init_db with
+        correct types and default values (all nullable / zero / empty)."""
+        from tests.conftest_helpers import setup_temp_db, teardown_temp_db
+        path = setup_temp_db()
+        try:
+            from database import db
+            with db.get_connection() as conn:
+                info = {row[1]: row for row in conn.execute(
+                    "PRAGMA table_info(paper_trades)").fetchall()}
+            expected = {
+                "category":       "TEXT",
+                "filter_reason":  "TEXT",
+                "ml_score":       "INTEGER",
+                "close_reason":   "TEXT",
+                "resolved_price": "REAL",
+                "is_resolved":    "INTEGER",
+            }
+            for col, typ in expected.items():
+                self.assertIn(col, info,
+                              "Phase B0 column '%s' must exist on paper_trades" % col)
+                # PRAGMA table_info: index 2 = type
+                self.assertEqual(info[col][2].upper(), typ,
+                                 "column %s has wrong type" % col)
+        finally:
+            teardown_temp_db(path)
+
+    def test_legacy_rows_survive_b0_migration(self):
+        """Legacy rows inserted before B0 must survive init_db run and the
+        new columns must come back as their declared defaults (empty/NULL/0),
+        never as garbage or corrupted data."""
+        from tests.conftest_helpers import setup_temp_db, teardown_temp_db
+        path = setup_temp_db()
+        try:
+            from database import db
+            with db.get_connection() as conn:
+                conn.execute(
+                    "INSERT INTO trader_candidates (address, username, status) "
+                    "VALUES ('0xLEG', 'legacy', 'observing')"
+                )
+                # Legacy-shaped insert: only the pre-B0 columns.
+                conn.execute(
+                    "INSERT INTO paper_trades "
+                    "(candidate_address, condition_id, market_question, side, "
+                    " entry_price, current_price, status, pnl) "
+                    "VALUES ('0xLEG', 'CID-L', 'Q?', 'YES', 0.55, 0.60, 'closed', 0.05)"
+                )
+
+            # Simulate a bot restart: re-run init_db (idempotent).
+            db.init_db()
+
+            with db.get_connection() as conn:
+                row = conn.execute(
+                    "SELECT category, filter_reason, ml_score, close_reason, "
+                    "       resolved_price, is_resolved, entry_price, pnl "
+                    "FROM paper_trades WHERE candidate_address='0xLEG'"
+                ).fetchone()
+            self.assertIsNotNone(row, "legacy row must survive migration")
+            # Original data untouched
+            self.assertAlmostEqual(row["entry_price"], 0.55, places=4)
+            self.assertAlmostEqual(row["pnl"], 0.05, places=4)
+            # New columns at defaults
+            self.assertEqual(row["category"], "")
+            self.assertEqual(row["filter_reason"], "")
+            self.assertIsNone(row["ml_score"])
+            self.assertEqual(row["close_reason"], "")
+            self.assertIsNone(row["resolved_price"])
+            self.assertEqual(row["is_resolved"], 0)
+        finally:
+            teardown_temp_db(path)
+
 
 if __name__ == "__main__":
     unittest.main()

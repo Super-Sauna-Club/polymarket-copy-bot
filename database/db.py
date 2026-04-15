@@ -171,6 +171,25 @@ def init_db():
             # never move in rank). Now: ORDER BY last_paper_rotation_ts ASC,
             # paper_pnl DESC — oldest-scanned first. Each scan bumps the ts.
             "ALTER TABLE trader_candidates ADD COLUMN last_paper_rotation_ts INTEGER DEFAULT 0",
+            # 2026-04-15 Phase B0: schema-only migration for paper_trades
+            # additive columns. Populated by Phase B1 (filter symmetry) and
+            # Phase B2 (paper resolution tracker). No behavior change yet.
+            # - category: derived from _detect_category(market_question) at
+            #   insert time so downstream analytics don't re-derive on every read
+            # - filter_reason: name of the filter that admitted the trade
+            #   (e.g. "per_trader_price_ok") for positive attribution
+            # - ml_score: trade_scorer.score() numeric output at insert time
+            # - close_reason: 'time_cutoff' | 'resolved_yes' | 'resolved_no'
+            #   | 'abandoned' | 'no_price_available'
+            # - resolved_price: final price from outcome_tracker.get_market_price
+            #   when the market actually resolves
+            # - is_resolved: fast-filter boolean for dashboard + promotion gate
+            "ALTER TABLE paper_trades ADD COLUMN category TEXT DEFAULT ''",
+            "ALTER TABLE paper_trades ADD COLUMN filter_reason TEXT DEFAULT ''",
+            "ALTER TABLE paper_trades ADD COLUMN ml_score INTEGER DEFAULT NULL",
+            "ALTER TABLE paper_trades ADD COLUMN close_reason TEXT DEFAULT ''",
+            "ALTER TABLE paper_trades ADD COLUMN resolved_price REAL DEFAULT NULL",
+            "ALTER TABLE paper_trades ADD COLUMN is_resolved INTEGER DEFAULT 0",
         ]:
             try:
                 conn.execute(migration)
