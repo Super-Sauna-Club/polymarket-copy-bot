@@ -44,6 +44,10 @@ def init_db():
             "ALTER TABLE ml_training_log ADD COLUMN test_n INTEGER",
             "ALTER TABLE ml_training_log ADD COLUMN model_name TEXT DEFAULT 'ml_copy'",
             "CREATE INDEX IF NOT EXISTS idx_ml_training_log_model_name ON ml_training_log(model_name)",
+            # 2026-04-15: per-candidate watermark for paper_follow. Replaces the
+            # fixed ENTRY_TRADE_SEC=300 freshness window which dropped ~97% of
+            # trades at the 3h scan cadence.
+            "ALTER TABLE trader_candidates ADD COLUMN last_paper_scan_ts INTEGER DEFAULT 0",
         ]:
             try:
                 conn.execute(migration)
@@ -1399,6 +1403,23 @@ def get_active_candidates():
             "ORDER BY paper_pnl DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_candidate_paper_scan_ts(address: str) -> int:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(last_paper_scan_ts, 0) FROM trader_candidates WHERE address=?",
+            (address,)
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+
+def set_candidate_paper_scan_ts(address: str, ts: int) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE trader_candidates SET last_paper_scan_ts=? WHERE address=?",
+            (int(ts), address)
+        )
 
 
 def upsert_candidate(address: str, username: str, profit: float, volume: float,

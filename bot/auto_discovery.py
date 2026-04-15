@@ -263,10 +263,22 @@ def paper_follow_candidates():
     for cand in candidates[:20]:
         address = cand["address"]
         try:
-            trades = fetch_wallet_recent_trades(address, limit=10)
+            # Per-candidate watermark: only trades newer than what we've
+            # already seen. Replaces the fixed ENTRY_TRADE_SEC=300 filter
+            # which dropped ~97% of trades at the 3h scan cadence.
+            last_ts = db.get_candidate_paper_scan_ts(address)
+            newest_ts = last_ts
+            trades = fetch_wallet_recent_trades(address, limit=50)
             for t in trades:
                 if t.get("trade_type", "").upper() != "BUY" or not t.get("condition_id"):
                     continue
+
+                # Watermark check: skip trades we already captured on prior scans.
+                t_ts = int(t.get("timestamp", 0) or 0)
+                if t_ts <= last_ts:
+                    continue
+                if t_ts > newest_ts:
+                    newest_ts = t_ts
 
                 price = t.get("price", 0)
                 question = t.get("market_question", "")
@@ -304,10 +316,10 @@ def paper_follow_candidates():
                 except Exception:
                     pass
 
-                # Filter 6: Trade staleness
-                trade_age = int(time.time()) - (t.get("timestamp", 0) or 0)
-                if trade_age > config.ENTRY_TRADE_SEC:
-                    continue
+                # Filter 6 (staleness) removed 2026-04-15: replaced by the
+                # per-candidate last_paper_scan_ts watermark above. The live
+                # copy path in bot/copy_trader.py still uses ENTRY_TRADE_SEC
+                # because it scans every 60s and needs price freshness.
 
                 # Filter 7: Fee check
                 if config.MAX_FEE_BPS > 0:
@@ -329,6 +341,9 @@ def paper_follow_candidates():
                 )
                 logger.debug("[PAPER] Track %s: %s @ %.0fc ($%.2f -> %.1f shares)",
                              address[:10], question[:30], price*100, bet_size, shares)
+
+            if newest_ts > last_ts:
+                db.set_candidate_paper_scan_ts(address, newest_ts)
         except Exception as e:
             logger.debug("[DISCOVERY] Paper-follow error for %s: %s", address[:10], e)
 

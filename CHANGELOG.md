@@ -2,6 +2,36 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-15 — paper_follow stateful watermark (piff-flagged freshness bug)
+
+Piff reported that `paper_trades` showed near-identical rows across consecutive 3h observation windows, so candidates weren't accumulating enough paper-trade evidence for the promotion gate (`PROMOTE_MIN_TRADES=50`). Verified on the server:
+
+- `scheduler.add_job(discovery_scan, 'interval', hours=3, ...)` at `main.py:799`.
+- `paper_follow_candidates()` at `bot/auto_discovery.py:309` applied `ENTRY_TRADE_SEC=300` (5min freshness window) — copy-pasted from `bot/copy_trader.py:1892` where it makes sense because the live copy path scans every 60s.
+- **Math**: 300s / 10800s = **2.78% theoretical coverage** per trade. Live snapshot: 149 paper_trades / 24h across 40 candidates = 3.7 trades/candidate/day — a 15-trades/day trader would take 20 days to cross `n=50`.
+
+**Fix**: replaced the fixed 300s window with a per-candidate `last_paper_scan_ts` watermark stored on `trader_candidates`. Each scan captures BUYs strictly newer than the watermark, then advances it to the newest timestamp. Zero duplicates, zero gaps, robust against any scan cadence. Plus `fetch_wallet_recent_trades` limit 10 → 50 so hyperactive traders aren't silently truncated.
+
+**Files touched**:
+- `database/db.py` — idempotent `ALTER TABLE trader_candidates ADD COLUMN last_paper_scan_ts INTEGER DEFAULT 0`, plus `get_candidate_paper_scan_ts` / `set_candidate_paper_scan_ts` helpers.
+- `bot/auto_discovery.py` — `paper_follow_candidates()` now reads the watermark before the trade loop, filters `t_ts <= last_ts`, tracks `newest_ts`, writes the watermark after the loop. Filter 6 (ENTRY_TRADE_SEC) removed from this path. Limit bumped to 50.
+- `tests/test_paper_follow_stateful.py` — new file, 5 TDD tests (first-scan captures all, second-scan skips seen, no duplicates, SELL filtered, empty-noop). 5/5 pass.
+- `bot/copy_trader.py` — **unchanged**. Live copy path still uses `ENTRY_TRADE_SEC=300` as intended.
+
+**Secondary bug noted but deferred**: `scheduler.add_job(discovery_scan, ...)` is being re-called at irregular intervals (15-30 min) per the log — root cause unclear, needs a separate investigation. The stateful watermark fix is robust against any scan cadence, so the primary fix ships independently.
+
+**Verify on server (post-deploy)**:
+```sql
+SELECT address, status, last_paper_scan_ts FROM trader_candidates
+ WHERE status IN ('observing','promoted')
+ ORDER BY last_paper_scan_ts DESC LIMIT 10;
+
+SELECT COUNT(*) FROM paper_trades
+ WHERE created_at > datetime('now','-30 minutes');
+```
+
+Expected 24h post-fix: paper_trades volume should grow ~5-10x vs. the 149/24h pre-fix baseline once each candidate has been scanned at least once.
+
 ## 2026-04-14 (latest) — Heal id=3547 Angels ghost + dashboard reads actual_size from DB
 
 Two small follow-ups to the partial-ghost detection commit (39b5f22).
