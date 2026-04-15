@@ -495,13 +495,45 @@ def close_paper_trades():
 
 
 def check_promotions():
-    """Pruefe ob Kandidaten promoted werden koennen."""
+    """Evaluate auto-promotion eligibility for observing candidates.
+
+    Scenario D Phase γ/D rewrite: the gate is now a 6-check evaluator
+    (Wilson LB + ROI + recency + absolute floor, not just WR). Two
+    safety rails wrap it:
+
+    1. `promotion_cooldown_active`: max 1 auto-promotion per N days
+    2. `compute_circuit_breaker_state`: halts all auto-promotions if
+       any recently-auto-promoted trader has lost more than $X in
+       the first Y days of live trading.
+
+    When a candidate passes, we also `start_probation` before the
+    `_add_followed_trader` call so they begin with reduced bet size
+    + hard exposure cap for the first 14 days or 20 trades.
+
+    Master flag `AUTO_DISCOVERY_AUTO_PROMOTE` still gates the actual
+    add-to-follow step — when false, this path only LOGS that a
+    candidate would be promoted.
+    """
+    from bot.promotion import (
+        evaluate_promotion,
+        promotion_cooldown_active,
+        compute_circuit_breaker_state,
+        start_probation,
+    )
+    from datetime import datetime
+
     candidates = db.get_all_candidates("observing")
+    if not candidates:
+        return
+
+    cooldown_on, cooldown_reason = promotion_cooldown_active()
+    breaker_on, breaker_reason = compute_circuit_breaker_state()
+
     for cand in candidates:
         stats = db.get_candidate_stats(cand["address"])
-        total = stats.get("total", 0) or 0
-        wins = stats.get("wins", 0) or 0
-        total_pnl = stats.get("total_pnl", 0) or 0
+        total = int(stats.get("total", 0) or 0)
+        wins = int(stats.get("wins", 0) or 0)
+        total_pnl = float(stats.get("total_pnl", 0) or 0)
 
         # Skip if candidate has no recent trades (inactive)
         try:
@@ -511,79 +543,115 @@ def check_promotions():
                 newest_ts = max(t.get("timestamp", 0) for t in recent)
                 days_since = (time.time() - newest_ts) / 86400 if newest_ts > 0 else 999
                 if days_since > 1:
-                    continue  # Inactive, skip
+                    continue
             else:
-                continue  # No trades at all
+                continue
         except Exception:
             pass
 
-        if total < PROMOTE_MIN_TRADES:
+        # Newest paper_trade age (for the recency gate)
+        with db.get_connection() as _conn:
+            _newest_row = _conn.execute(
+                "SELECT MAX(created_at) AS newest "
+                "FROM paper_trades WHERE candidate_address=? AND status='closed'",
+                (cand["address"],),
+            ).fetchone()
+        newest_raw = _newest_row["newest"] if _newest_row else ""
+        if newest_raw:
+            try:
+                newest_dt = datetime.strptime(newest_raw, "%Y-%m-%d %H:%M:%S")
+                newest_age_days = (datetime.now() - newest_dt).total_seconds() / 86400.0
+            except ValueError:
+                newest_age_days = 9999.0
+        else:
+            newest_age_days = 9999.0
+
+        try:
+            passed, reason = evaluate_promotion(
+                n_trades=total, wins=wins, total_pnl=total_pnl,
+                newest_trade_age_days=newest_age_days,
+            )
+        except ValueError as _e:
+            logger.warning("[DISCOVERY] evaluate_promotion error for %s: %s",
+                           cand.get("username", "?"), _e)
             continue
 
-        winrate = round(wins / total * 100, 1) if total > 0 else 0
-        if winrate >= PROMOTE_MIN_WINRATE and total_pnl > 0:
-            logger.info("[DISCOVERY] PROMOTE candidate: %s (wr=%.1f%%, pnl=$%.2f, trades=%d)",
-                        cand["username"], winrate, total_pnl, total)
-            # PATCH-038c: promoted -> PAPER_FOLLOW (reset stats, start fresh paper test)
-            with db.get_connection() as conn:
-                conn.execute(
-                    "UPDATE trader_candidates SET status = 'promoted', paper_trades=0, paper_pnl=0, paper_wins=0, "
-                    "promoted_at = datetime('now','localtime') WHERE address = ?",
-                    (cand["address"],)
+        if not passed:
+            logger.debug("[DISCOVERY] skip %s: %s",
+                         cand.get("username", "?"), reason)
+            continue
+
+        if cooldown_on:
+            logger.info("[DISCOVERY] %s would pass gate but %s",
+                        cand.get("username", "?"), cooldown_reason)
+            continue
+
+        if breaker_on:
+            logger.warning("[DISCOVERY] CIRCUIT BREAKER BLOCKS %s: %s",
+                           cand.get("username", "?"), breaker_reason)
+            try:
+                db.log_activity(
+                    "circuit_breaker", "",
+                    "Circuit breaker blocked auto-promotion",
+                    breaker_reason,
                 )
-                # Move to PAPER_FOLLOW in lifecycle
-                _lc = conn.execute("SELECT id FROM trader_lifecycle WHERE address=?", (cand["address"],)).fetchone()
-                if _lc:
-                    conn.execute(
-                        "UPDATE trader_lifecycle SET status='PAPER_FOLLOW', paper_trades=0, paper_pnl=0, paper_wr=0, "
-                        "status_changed_at=datetime('now','localtime') WHERE address=?",
-                        (cand["address"],))
-                else:
-                    conn.execute(
-                        "INSERT INTO trader_lifecycle (address, username, status, status_changed_at, paper_trades, paper_pnl, paper_wr) "
-                        "VALUES (?, ?, 'PAPER_FOLLOW', datetime('now','localtime'), 0, 0, 0)",
-                        (cand["address"], cand["username"]))
-                # Delete old paper trades for fresh start
-                conn.execute("DELETE FROM paper_trades WHERE candidate_address=?", (cand["address"],))
-            logger.info("[DISCOVERY] %s -> PAPER_FOLLOW (fresh paper test)", cand["username"])
-            # Previously: promoted candidates were automatically added to
-            # FOLLOWED_TRADERS and wallets table via _add_followed_trader +
-            # add_followed_wallet. That caused WHALE_AUTO_COPY_PATH: overnight
-            # 2 unapproved whales (0x3e5b23e9f7, 0x6bab41a0dc) were silently
-            # auto-followed and created 4 real losing copy_trades totalling
-            # -$0.81 without user consent. They also bypassed the tier
-            # constraint because they were never in any per-trader MAP.
-            #
-            # Now: gated behind AUTO_DISCOVERY_AUTO_PROMOTE setting (default
-            # FALSE). When false, auto_discovery still tracks candidates and
-            # logs PROMOTE recommendations, but the actual add-to-follow step
-            # requires manual opt-in (edit settings.env to add the trader).
-            # The candidates stay in trader_candidates table with
-            # status='promoted' so the dashboard can surface them for user
-            # review.
-            try:
-                _auto_promote = getattr(config, "AUTO_DISCOVERY_AUTO_PROMOTE", False)
-            except Exception:
-                _auto_promote = False
-            if _auto_promote:
-                try:
-                    from bot.trader_lifecycle import _add_followed_trader
-                    _add_followed_trader(cand["address"], cand["username"])
-                    db.add_followed_wallet(cand["address"], cand["username"])
-                    logger.info("[DISCOVERY] %s now LIVE — added to settings.env + wallets DB (AUTO_PROMOTE on)",
-                                cand["username"])
-                except Exception as _e:
-                    logger.warning("[DISCOVERY] Failed to add %s to FOLLOWED_TRADERS: %s",
-                                   cand["username"], _e)
-            else:
-                logger.info("[DISCOVERY] %s meets promote criteria but AUTO_PROMOTE=false — review manually",
-                            cand["username"])
-            try:
-                db.log_activity("promotion", "",
-                                "Trader %s promoted" % cand["username"],
-                                "WR: %.1f%%, PnL: $%.2f, Trades: %d" % (winrate, total_pnl, total))
             except Exception:
                 pass
+            continue
+
+        winrate = (wins * 100.0 / total) if total else 0.0
+        logger.info("[DISCOVERY] PROMOTE candidate: %s (wr=%.1f%%, pnl=$%.2f, trades=%d)",
+                    cand["username"], winrate, total_pnl, total)
+        # PATCH-038c: promoted -> PAPER_FOLLOW (reset stats, start fresh paper test)
+        with db.get_connection() as conn:
+            conn.execute(
+                "UPDATE trader_candidates SET status = 'promoted', paper_trades=0, paper_pnl=0, paper_wins=0, "
+                "promoted_at = datetime('now','localtime') WHERE address = ?",
+                (cand["address"],)
+            )
+            _lc = conn.execute("SELECT id FROM trader_lifecycle WHERE address=?", (cand["address"],)).fetchone()
+            if _lc:
+                conn.execute(
+                    "UPDATE trader_lifecycle SET status='PAPER_FOLLOW', paper_trades=0, paper_pnl=0, paper_wr=0, "
+                    "status_changed_at=datetime('now','localtime') WHERE address=?",
+                    (cand["address"],))
+            else:
+                conn.execute(
+                    "INSERT INTO trader_lifecycle (address, username, status, status_changed_at, paper_trades, paper_pnl, paper_wr) "
+                    "VALUES (?, ?, 'PAPER_FOLLOW', datetime('now','localtime'), 0, 0, 0)",
+                    (cand["address"], cand["username"]))
+            conn.execute("DELETE FROM paper_trades WHERE candidate_address=?", (cand["address"],))
+        logger.info("[DISCOVERY] %s -> PAPER_FOLLOW (fresh paper test)", cand["username"])
+
+        # AUTO_DISCOVERY_AUTO_PROMOTE gates the actual add-to-follow step.
+        # When false, this path only logs. When true, the sequence is:
+        #   1. start_probation (sets auto_promoted_at + probation window)
+        #   2. _add_followed_trader (writes settings.env)
+        #   3. add_followed_wallet (writes wallets.followed=1)
+        try:
+            _auto_promote = getattr(config, "AUTO_DISCOVERY_AUTO_PROMOTE", False)
+        except Exception:
+            _auto_promote = False
+        if _auto_promote:
+            try:
+                start_probation(cand["address"])
+                from bot.trader_lifecycle import _add_followed_trader
+                _add_followed_trader(cand["address"], cand["username"])
+                db.add_followed_wallet(cand["address"], cand["username"])
+                logger.info("[DISCOVERY] %s now LIVE — probation window opened + added to settings.env (AUTO_PROMOTE on)",
+                            cand["username"])
+            except Exception as _e:
+                logger.warning("[DISCOVERY] Failed to add %s to FOLLOWED_TRADERS: %s",
+                               cand["username"], _e)
+        else:
+            logger.info("[DISCOVERY] %s meets promote criteria but AUTO_PROMOTE=false — review manually",
+                        cand["username"])
+        try:
+            db.log_activity("promotion", "",
+                            "Trader %s promoted" % cand["username"],
+                            "WR: %.1f%%, PnL: $%.2f, Trades: %d" % (winrate, total_pnl, total))
+        except Exception:
+            pass
 
 
 INACTIVITY_HOURS = 24  # Pause candidates with no trades for 24h

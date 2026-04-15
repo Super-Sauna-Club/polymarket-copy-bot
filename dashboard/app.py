@@ -1605,6 +1605,22 @@ def api_ml_info():
     return jsonify({"training_history": [dict(r) for r in training]})
 
 
+@app.route("/api/upgrade/promotion-dryrun")
+def api_promotion_dryrun():
+    """Scenario-D Phase γ.6: read-only snapshot of the promotion gate.
+
+    Returns which observing/promoted candidates WOULD pass the tightened
+    promotion criteria if AUTO_DISCOVERY_AUTO_PROMOTE were flipped to
+    true RIGHT NOW, plus which gate each failing candidate trips first,
+    plus cooldown + circuit breaker state.
+
+    Zero side effects. Used to tune PROMOTE_* constants over the weeks
+    before the actual flag flip.
+    """
+    from bot.promotion import compute_dry_run
+    return jsonify(compute_dry_run())
+
+
 @app.route("/api/upgrade/candidates")
 def api_candidates():
     """Trader-Kandidaten: observing + promoted (the ones still paper-proving).

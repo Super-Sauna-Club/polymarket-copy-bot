@@ -252,6 +252,41 @@ MAX_RESOLVE_HOURS = int(os.getenv("MAX_RESOLVE_HOURS", "24"))
 # to be silently auto-followed. Now gated: default false, user must explicitly
 # enable OR add the wallet manually via dashboard/settings.
 AUTO_DISCOVERY_AUTO_PROMOTE = os.getenv('AUTO_DISCOVERY_AUTO_PROMOTE', 'false').lower() in ('true', '1', 'yes')
+
+# --- Scenario-D Phase γ/D — tightened auto-promotion gate ---
+# These constants replace the legacy `PROMOTE_MIN_TRADES=50 / WR=55% / pnl>0`
+# trio. The new gate is statistically sound (Wilson LB), magnitude-aware
+# (ROI + absolute floor), and recency-bounded. Default values are
+# intentionally conservative — the plan is to ship them, observe dry-run
+# output for several weeks, then relax once real data proves the system.
+# NONE of these matter until AUTO_DISCOVERY_AUTO_PROMOTE is flipped to true,
+# which is gated on Phase B1 calibration validation.
+PROMOTE_MIN_PAPER_TRADES = int(os.getenv('PROMOTE_MIN_PAPER_TRADES', '100'))
+PROMOTE_MIN_OBSERVED_WR  = float(os.getenv('PROMOTE_MIN_OBSERVED_WR', '60.0'))
+PROMOTE_MIN_WILSON_LOWER = float(os.getenv('PROMOTE_MIN_WILSON_LOWER', '0.50'))
+PROMOTE_MIN_PAPER_ROI    = float(os.getenv('PROMOTE_MIN_PAPER_ROI', '0.03'))
+PROMOTE_MIN_ABS_PNL      = float(os.getenv('PROMOTE_MIN_ABS_PNL', '5.0'))
+PROMOTE_MAX_TRADE_AGE_D  = float(os.getenv('PROMOTE_MAX_TRADE_AGE_D', '14'))
+
+# Cooldown: max 1 auto-promotion within this many days. Prevents a single
+# noisy weekend from flipping multiple traders live simultaneously.
+PROMOTE_COOLDOWN_DAYS    = float(os.getenv('PROMOTE_COOLDOWN_DAYS', '7'))
+
+# Circuit breaker: if any auto-promoted trader loses more than X in their
+# first Y days of live trading, HALT all future auto-promotions pending
+# manual review (via a persisted system_state row).
+CIRCUIT_BREAKER_MAX_LOSS_USD = float(os.getenv('CIRCUIT_BREAKER_MAX_LOSS_USD', '10.0'))
+CIRCUIT_BREAKER_WINDOW_DAYS  = float(os.getenv('CIRCUIT_BREAKER_WINDOW_DAYS', '7'))
+
+# Probation tier: freshly auto-promoted traders start at this bet-size
+# multiplier (relative to NEUTRAL) and this absolute exposure cap, for
+# the first N trades OR N days (whichever comes first). Graduates to the
+# standard `_classify_trader` tier once the probation budget is spent.
+PROBATION_BET_SIZE_PCT   = float(os.getenv('PROBATION_BET_SIZE_PCT', '0.5'))  # 50% of NEUTRAL
+PROBATION_MAX_EXPOSURE_USD = float(os.getenv('PROBATION_MAX_EXPOSURE_USD', '5.0'))  # hard $5 cap
+PROBATION_DURATION_DAYS  = float(os.getenv('PROBATION_DURATION_DAYS', '14'))
+PROBATION_MAX_TRADES     = int(os.getenv('PROBATION_MAX_TRADES', '20'))
+
 # Scenario-D Phase B2 — paper resolution tracker config.
 # `PAPER_EVAL_MAX_HOURS` replaces the hardcoded 4h cutoff in
 # auto_discovery.close_paper_trades. Rows past this window get closed with

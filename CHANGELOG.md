@@ -2,6 +2,73 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-15 — Scenario D Phase γ/D: auto-promotion safety infrastructure
+
+Build-before-need infrastructure for the eventual `AUTO_DISCOVERY_AUTO_PROMOTE=true` flip. **Zero live-trading touch, zero behavior change while the flag stays false**. Everything here is code + DB columns + dashboard endpoint that sits dormant until activation, at which point the promotion path becomes dramatically safer than the legacy `n>=50 AND wr>=55% AND pnl>0` gate.
+
+### Components
+
+1. **`bot/stats.py::wilson_lower_bound(wins, n, z=1.96)`** — pure Wilson score-interval math. Conservative estimate of true win rate; prevents small-sample noise from triggering false promotions. At n=50, WR=56% → LB≈0.42 (won't clear the 0.50 gate). At n=100, WR=60% → LB≈0.50 (just clears).
+
+2. **`bot/promotion.py::evaluate_promotion(n, wins, pnl, age, thresholds=None)`** — pure 6-gate evaluator: insufficient_trades → low_win_rate → weak_wilson_lb → low_roi → below_abs_pnl_floor → stale. Returns `(passed, reason)`. Production thresholds in config.py default to `PROMOTE_MIN_PAPER_TRADES=100`, `PROMOTE_MIN_OBSERVED_WR=60`, `PROMOTE_MIN_WILSON_LOWER=0.50`, `PROMOTE_MIN_PAPER_ROI=0.03`, `PROMOTE_MIN_ABS_PNL=5.0`, `PROMOTE_MAX_TRADE_AGE_D=14`.
+
+3. **`bot/promotion.py::promotion_cooldown_active()`** — reads most-recent `activity_log` row with `event_type='promotion'` and blocks further promotions if its age < `PROMOTE_COOLDOWN_DAYS` (default 7). Stops a single noisy weekend from flipping multiple traders simultaneously.
+
+4. **`bot/promotion.py::compute_circuit_breaker_state()`** — halts ALL auto-promotions if any recently-auto-promoted trader has accumulated more than `CIRCUIT_BREAKER_MAX_LOSS_USD` ($10) of real losses within `CIRCUIT_BREAKER_WINDOW_DAYS` (7) of their promotion. Uses `trader_candidates.auto_promoted_at` (new column) + post-promotion `copy_trades.pnl_realized` sum. Pre-promotion historical losses are correctly excluded. No persisted "halted" flag — the computation is always fresh; audit trail lives in activity_log.
+
+5. **Probation tier**: new columns `trader_candidates.auto_promoted_at`, `probation_until`, `probation_trades_left`. Helpers `start_probation`, `is_in_probation`, `decrement_probation_trade`, `probation_limits`. When flag-flip eventually happens, a fresh auto-promoted trader enters a 14-day / 20-trade window at `PROBATION_BET_SIZE_PCT=0.5` (50% of NEUTRAL) with a hard `PROBATION_MAX_EXPOSURE_USD=5.0` cap. Graduates to standard tier when either budget expires. The copy_trader wiring of these limits is deferred to a separate shadow-canary commit because it touches the live bet-sizing path.
+
+6. **`/api/upgrade/promotion-dryrun`** — new read-only dashboard endpoint backed by `bot.promotion.compute_dry_run`. Returns current thresholds + cooldown state + breaker state + per-candidate verdict (`would_promote: bool`, `rejection_reason: str`). This is how we'll tune `PROMOTE_*` values over the weeks before flipping the flag: hit the endpoint daily, watch who WOULD get promoted, sanity-check the numbers.
+
+7. **`check_promotions` refactor**: replaces the legacy three-inequality gate with a single call to `evaluate_promotion` + the two safety rails. When the master flag is false, this path logs detailed rejection reasons to debug and promotion recommendations to info. When the flag flips, it also calls `start_probation` before `_add_followed_trader`.
+
+### Tests — 47 new cases, all TDD (RED → GREEN)
+
+- `tests/test_wilson_lower_bound.py` (11 cases): known math values, edge cases, monotonicity, z-parameter
+- `tests/test_promotion_evaluator.py` (10 cases): each of the 6 gate branches in isolation + happy path + config defaults + invalid input
+- `tests/test_promotion_safety_rails.py` (10 cases): cooldown active/inactive/edge/multiple events, breaker halt/ok/old-promo/pre-promotion-losses/sums-multiple-trades
+- `tests/test_probation_tier.py` (9 cases): start/is_in/graduate-by-time/graduate-by-trades/decrement/never-negative/noop/limits
+- `tests/test_promotion_dryrun.py` (7 cases): empty DB, threshold population, failing/passing candidate, field shape, cooldown propagation, breaker propagation
+
+Full session regression: **147/147 tests green** (excluding two pre-existing unrelated flakes in test_brain_dedup / test_log_dedup).
+
+### Migrations (additive, idempotent)
+
+```python
+"ALTER TABLE trader_candidates ADD COLUMN auto_promoted_at TEXT DEFAULT ''",
+"ALTER TABLE trader_candidates ADD COLUMN probation_until TEXT DEFAULT ''",
+"ALTER TABLE trader_candidates ADD COLUMN probation_trades_left INTEGER DEFAULT 0",
+```
+
+Existing rows get default values on next startup. Nothing breaks.
+
+### What flipping the flag would do (future session, blocked on Phase B1)
+
+Post-flip, on the next 3h `discovery_scan`:
+1. `check_promotions` iterates observing candidates
+2. For each: `evaluate_promotion` returns pass/fail
+3. If pass, check `promotion_cooldown_active` — if active, skip
+4. If clean, check `compute_circuit_breaker_state` — if halted, skip + log
+5. If all clear: `start_probation` → `_add_followed_trader` → `add_followed_wallet`
+6. Next `copy_scan` picks up the new follower
+7. Their first 20 trades (or 14 days, whichever first) are at 50% bet size + $5 absolute cap
+8. Graduation after probation budget exhausts
+
+**Not done yet (blocked on B1)**: wiring `probation_limits` into `copy_trader.copy_followed_wallets` bet-sizing. The helpers exist and are tested; the wiring requires a shadow-canary deployment because it touches the live trading path. That's the next session's work.
+
+### Deploy commands
+
+```bash
+# Pre-deploy snapshot
+ssh walter@10.0.0.20 'cp /home/walter/polymarketscanner/database/scanner.db \
+    /home/walter/polymarketscanner/database/scanner.db.bak.pre_gamma.$(date +%s)'
+
+# Verify dry-run endpoint after restart
+ssh walter@10.0.0.20 'curl -s http://localhost:8090/api/upgrade/promotion-dryrun' | python3 -m json.tool
+```
+
+Expected dry-run response: `candidates: []` (or a list), `cooldown_active: false`, `circuit_breaker_halted: false`, thresholds block with the values above.
+
 ## 2026-04-15 — Scenario D Phase B2: paper resolution tracker
 
 Real-outcome-based paper PnL. Replaces the hardcoded 4h mark-to-market + `entry * 0.95` fake-loss fallback in `auto_discovery.close_paper_trades` with a two-path system:

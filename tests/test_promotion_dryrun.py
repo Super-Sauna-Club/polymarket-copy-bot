@@ -1,0 +1,161 @@
+"""TDD for Scenario D Phase γ.6 — dry-run promotion computation.
+
+`compute_dry_run()` is the business logic behind the `/api/upgrade/promotion-dryrun`
+dashboard endpoint. It returns a single dict containing:
+
+- the currently-active threshold values
+- the cooldown state
+- the circuit-breaker state
+- one entry per observing/promoted candidate with their stats + verdict
+
+Read-only. Zero side effects. Used for "which candidates WOULD pass
+the gate if the flag were flipped right now" visibility during the
+weeks we spend tuning thresholds before flipping AUTO_DISCOVERY_AUTO_PROMOTE.
+"""
+import unittest
+
+from tests.conftest_helpers import setup_temp_db, teardown_temp_db
+
+
+def _ms_ago(days: float) -> str:
+    from datetime import datetime, timedelta
+    return (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+class TestComputeDryRun(unittest.TestCase):
+    def setUp(self):
+        self.path = setup_temp_db()
+        from database import db
+        self.db = db
+
+    def tearDown(self):
+        teardown_temp_db(self.path)
+
+    def _seed_candidate(self, address, username, n_wins_losses, age_days=1):
+        """Seed an observing candidate with synthetic paper_trades."""
+        n_wins, n_losses = n_wins_losses
+        with self.db.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO trader_candidates (address, username, status) "
+                "VALUES (?, ?, 'observing')",
+                (address, username),
+            )
+            for i in range(n_wins):
+                conn.execute(
+                    "INSERT INTO paper_trades "
+                    "(candidate_address, condition_id, market_question, side, "
+                    " entry_price, status, pnl, created_at, signature) "
+                    "VALUES (?, ?, 'Q', 'YES', 0.55, 'closed', 0.10, ?, ?)",
+                    (address, "cid_%s_w%d" % (username, i),
+                     _ms_ago(age_days), "sig_%s_w%d" % (username, i)),
+                )
+            for i in range(n_losses):
+                conn.execute(
+                    "INSERT INTO paper_trades "
+                    "(candidate_address, condition_id, market_question, side, "
+                    " entry_price, status, pnl, created_at, signature) "
+                    "VALUES (?, ?, 'Q', 'YES', 0.55, 'closed', -0.05, ?, ?)",
+                    (address, "cid_%s_l%d" % (username, i),
+                     _ms_ago(age_days), "sig_%s_l%d" % (username, i)),
+                )
+
+    def test_empty_db_returns_empty_candidates_list(self):
+        from bot.promotion import compute_dry_run
+        result = compute_dry_run()
+        self.assertIn("candidates", result)
+        self.assertEqual(result["candidates"], [])
+        self.assertIn("thresholds", result)
+        self.assertIn("cooldown_active", result)
+        self.assertIn("circuit_breaker_halted", result)
+        self.assertFalse(result["cooldown_active"])
+        self.assertFalse(result["circuit_breaker_halted"])
+
+    def test_thresholds_populated_from_config(self):
+        from bot.promotion import compute_dry_run
+        import config
+        result = compute_dry_run()
+        t = result["thresholds"]
+        self.assertEqual(t["min_trades"], config.PROMOTE_MIN_PAPER_TRADES)
+        self.assertEqual(t["min_wr"], config.PROMOTE_MIN_OBSERVED_WR)
+        self.assertEqual(t["min_wilson_lower"], config.PROMOTE_MIN_WILSON_LOWER)
+
+    def test_failing_candidate_has_would_promote_false_and_reason(self):
+        """Candidate with 10 trades, 5 wins — way below min_trades=100."""
+        self._seed_candidate("0xfail", "failer", (5, 5))
+
+        from bot.promotion import compute_dry_run
+        result = compute_dry_run()
+        self.assertEqual(len(result["candidates"]), 1)
+        c = result["candidates"][0]
+        self.assertEqual(c["username"], "failer")
+        self.assertFalse(c["would_promote"])
+        self.assertTrue(c["rejection_reason"].startswith("insufficient_trades"),
+                        "expected insufficient_trades, got: %s" % c["rejection_reason"])
+        self.assertEqual(c["n_trades"], 10)
+        self.assertEqual(c["wins"], 5)
+
+    def test_passing_candidate_has_would_promote_true(self):
+        """Candidate with 150 trades, 105 wins (70% WR), pnl=$8.25 — clean pass."""
+        # 105 wins * $0.10 = $10.50, 45 losses * -$0.05 = -$2.25 → net $8.25
+        self._seed_candidate("0xpass", "passer", (105, 45))
+
+        from bot.promotion import compute_dry_run
+        result = compute_dry_run()
+        # Find the passer entry
+        c = next(x for x in result["candidates"] if x["username"] == "passer")
+        self.assertTrue(c["would_promote"],
+                        "70%% WR at n=150 must pass, reason=%s" % c["rejection_reason"])
+        self.assertEqual(c["rejection_reason"], "ok")
+        self.assertEqual(c["n_trades"], 150)
+        self.assertEqual(c["wins"], 105)
+
+    def test_each_candidate_has_stats_fields(self):
+        self._seed_candidate("0xs", "stater", (5, 5))
+
+        from bot.promotion import compute_dry_run
+        result = compute_dry_run()
+        c = result["candidates"][0]
+        for field in ("address", "username", "status", "n_trades", "wins",
+                      "total_pnl", "winrate", "wilson_lower_bound",
+                      "newest_trade_age_days", "would_promote", "rejection_reason"):
+            self.assertIn(field, c, "missing field: %s" % field)
+
+    def test_cooldown_reflected_at_top_level(self):
+        with self.db.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO activity_log (event_type, icon, title, detail, pnl, created_at) "
+                "VALUES ('promotion', '', 'prev', '', 0, ?)",
+                (_ms_ago(2),),
+            )
+
+        from bot.promotion import compute_dry_run
+        result = compute_dry_run()
+        self.assertTrue(result["cooldown_active"])
+
+    def test_circuit_breaker_reflected_at_top_level(self):
+        with self.db.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO wallets (address, username, followed) VALUES ('0xhlt','halter',1)"
+            )
+            conn.execute(
+                "INSERT INTO trader_candidates (address, username, status, auto_promoted_at) "
+                "VALUES ('0xhlt', 'halter', 'promoted', ?)", (_ms_ago(2),),
+            )
+        from tests.conftest_helpers import insert_copy_trade
+        insert_copy_trade(
+            self.db, wallet_address="0xhlt", wallet_username="halter",
+            pnl_realized=-15.0, condition_id="cid_hlt_1", status="closed",
+        )
+        with self.db.get_connection() as conn:
+            conn.execute(
+                "UPDATE copy_trades SET closed_at = ? WHERE condition_id='cid_hlt_1'",
+                (_ms_ago(1),),
+            )
+
+        from bot.promotion import compute_dry_run
+        result = compute_dry_run()
+        self.assertTrue(result["circuit_breaker_halted"])
+
+
+if __name__ == "__main__":
+    unittest.main()

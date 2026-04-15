@@ -190,6 +190,20 @@ def init_db():
             "ALTER TABLE paper_trades ADD COLUMN close_reason TEXT DEFAULT ''",
             "ALTER TABLE paper_trades ADD COLUMN resolved_price REAL DEFAULT NULL",
             "ALTER TABLE paper_trades ADD COLUMN is_resolved INTEGER DEFAULT 0",
+            # 2026-04-15 Phase γ.4/γ.5 — auto-promotion audit + probation tier state.
+            # auto_promoted_at: ISO datetime when the auto_discovery path
+            #   actually added this candidate to FOLLOWED_TRADERS. Empty
+            #   string for manually-followed traders. Used by the circuit
+            #   breaker to scope its "fresh auto-promotion losses" window.
+            # probation_until: ISO datetime when probation ends. Empty
+            #   string or past value means no probation restrictions apply.
+            # probation_trades_left: counts down from PROBATION_MAX_TRADES
+            #   as the auto-promoted trader accumulates live copy_trades.
+            #   Graduation happens when this reaches 0 OR probation_until
+            #   passes, whichever is sooner.
+            "ALTER TABLE trader_candidates ADD COLUMN auto_promoted_at TEXT DEFAULT ''",
+            "ALTER TABLE trader_candidates ADD COLUMN probation_until TEXT DEFAULT ''",
+            "ALTER TABLE trader_candidates ADD COLUMN probation_trades_left INTEGER DEFAULT 0",
         ]:
             try:
                 conn.execute(migration)
