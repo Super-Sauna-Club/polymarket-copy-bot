@@ -796,8 +796,15 @@ def main():
                       next_run_time=datetime.now() + timedelta(seconds=60))
     # DISABLED (module not implemented): scheduler.add_job(ml_train, 'cron', hour=4, minute=0, id='ml_train',
     #                       next_run_time=datetime.now() + timedelta(seconds=120))
+    # max_instances=1 + coalesce=True: survive the re-registration quirk where
+    # something (not yet identified) re-adds discovery_scan multiple times per
+    # hour. Without this, concurrent scans would read the same last_paper_scan_ts
+    # and double-insert paper_trades. replace_existing=True lets the re-register
+    # overwrite silently instead of raising ConflictingIdError.
     scheduler.add_job(discovery_scan, 'interval', hours=3, id='discovery_scan',
-                      next_run_time=datetime.now() + timedelta(seconds=180))
+                      next_run_time=datetime.now() + timedelta(seconds=180),
+                      max_instances=1, coalesce=True, misfire_grace_time=600,
+                      replace_existing=True)
     scheduler.add_job(autonomous_scan, 'interval', seconds=60, id='autonomous_scan', max_instances=1,
                       next_run_time=datetime.now() + timedelta(seconds=90))
     scheduler.add_job(daily_report, 'cron', hour=0, minute=5, id='daily_report')

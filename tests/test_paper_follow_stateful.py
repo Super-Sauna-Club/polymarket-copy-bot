@@ -147,10 +147,13 @@ class TestPaperFollowStateful(unittest.TestCase):
         self.assertEqual(self.db.get_candidate_paper_scan_ts(self.addr), first_watermark,
                          "watermark stays the same when no new trades arrive")
 
-    def test_sell_trades_do_not_advance_watermark(self):
-        """BUYs are paper-tracked; SELLs are filtered and must not advance
-        the watermark (otherwise the next scan would skip the BUY we missed
-        by reading in BUY/SELL order)."""
+    def test_sell_trades_filtered_but_advance_watermark(self):
+        """Only BUYs create paper_trades, but the watermark advances on
+        the newest-seen timestamp regardless of trade_type. This is the
+        efficient behavior: a SELL-heavy window shouldn't cause the next
+        scan to re-fetch the same SELL tail. The only data we can lose
+        is >50 trades between scans — which is bounded by limit=50 and
+        already assumed to be rare on the 3h scan interval."""
         t_sell, t_buy = 1_700_000_200, 1_700_000_100
         trades = [
             _mk_trade("cid-sell", t_sell, trade_type="SELL"),
@@ -160,8 +163,10 @@ class TestPaperFollowStateful(unittest.TestCase):
 
         self.assertEqual(self._paper_trade_count(), 1,
                          "only the BUY should become a paper_trade")
-        self.assertEqual(self.db.get_candidate_paper_scan_ts(self.addr), t_buy,
-                         "watermark should match the newest BUY, not the SELL")
+        self.assertEqual(self.db.get_candidate_paper_scan_ts(self.addr), t_sell,
+                         "watermark should advance to the newest timestamp "
+                         "regardless of trade_type, so next scan skips the "
+                         "SELL tail")
 
     def test_empty_response_is_a_noop(self):
         """Empty wallet API response — paper_trades and watermark both untouched."""
@@ -173,6 +178,170 @@ class TestPaperFollowStateful(unittest.TestCase):
         self.assertEqual(self._paper_trade_count(), 0)
         self.assertEqual(self.db.get_candidate_paper_scan_ts(self.addr), seed,
                          "watermark should not be reset when response is empty")
+
+    def test_set_candidate_paper_scan_ts_is_monotonic(self):
+        """Concurrent-scan safety: a later scan that read a stale last_ts
+        must never be able to roll the watermark backwards. Enforced by
+        `SET last_paper_scan_ts = MAX(COALESCE(...), ?)`."""
+        self.db.set_candidate_paper_scan_ts(self.addr, 2000)
+        self.assertEqual(self.db.get_candidate_paper_scan_ts(self.addr), 2000)
+
+        # Concurrent scan B finishes later but has an older last_ts in hand:
+        self.db.set_candidate_paper_scan_ts(self.addr, 1500)
+
+        self.assertEqual(self.db.get_candidate_paper_scan_ts(self.addr), 2000,
+                         "watermark must not decrease — MAX guard required")
+
+
+class TestPaperTradesUniqueIndex(unittest.TestCase):
+    """The UNIQUE partial index on paper_trades(candidate_address,
+    condition_id, side) WHERE status='open' prevents duplicate open rows
+    for the same (trader, market, side) — which is exactly the collision
+    surface that `add_paper_trade`'s INSERT OR IGNORE was silently failing
+    to enforce (no constraint → OR IGNORE is a no-op).
+    """
+    def setUp(self):
+        self.db_path = setup_temp_db()
+        from database import db
+        self.db = db
+        with self.db.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO trader_candidates (address, username, status) "
+                "VALUES (?, ?, ?)",
+                ("0xCAND", "cand", "observing"),
+            )
+
+    def tearDown(self):
+        teardown_temp_db(self.db_path)
+
+    def test_second_add_paper_trade_is_a_noop_on_open_row(self):
+        """Two add_paper_trade calls with identical (cand, cid, side) when
+        the first row is status='open' → UNIQUE constraint hits, INSERT OR
+        IGNORE swallows, only 1 row in DB."""
+        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.55)
+        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.56)  # dup
+
+        with self.db.get_connection() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM paper_trades WHERE candidate_address='0xCAND'"
+            ).fetchone()[0]
+        self.assertEqual(n, 1, "UNIQUE partial index must block the dup insert")
+
+    def test_reentry_after_close_is_allowed(self):
+        """Partial index is WHERE status='open', so closing row 1 and
+        adding row 2 for the same (cand, cid, side) must succeed — we
+        want to allow re-entry after a trade closes."""
+        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.55)
+        with self.db.get_connection() as conn:
+            conn.execute(
+                "UPDATE paper_trades SET status='closed' "
+                "WHERE candidate_address='0xCAND' AND condition_id='CID-1'"
+            )
+        # Reentry — should succeed because the only prior row is now closed
+        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.60)
+
+        with self.db.get_connection() as conn:
+            n_total = conn.execute(
+                "SELECT COUNT(*) FROM paper_trades WHERE candidate_address='0xCAND'"
+            ).fetchone()[0]
+            n_open = conn.execute(
+                "SELECT COUNT(*) FROM paper_trades "
+                "WHERE candidate_address='0xCAND' AND status='open'"
+            ).fetchone()[0]
+        self.assertEqual(n_total, 2, "both rows should exist (one closed, one open)")
+        self.assertEqual(n_open, 1, "exactly one open row after re-entry")
+
+    def test_different_sides_allowed_on_same_market(self):
+        """UNIQUE is on (cand, cid, side) — YES and NO on same market must
+        both be allowed open simultaneously."""
+        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.55)
+        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "NO", 0.45)
+
+        with self.db.get_connection() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM paper_trades WHERE candidate_address='0xCAND'"
+            ).fetchone()[0]
+        self.assertEqual(n, 2)
+
+
+class TestPaperTradesCleanupMigration(unittest.TestCase):
+    """The init_db migration must DELETE duplicate open paper_trades
+    (keeping the MIN(rowid) per group) before creating the UNIQUE index —
+    otherwise the index creation would fail on existing contaminated DBs."""
+
+    def test_init_db_collapses_existing_open_dupes(self):
+        """Seed a DB with 5 duplicate open rows for the same (cand, cid,
+        side), run init_db (which re-applies migrations idempotently),
+        and assert only 1 row remains."""
+        import os
+        import sys
+        import tempfile
+        import importlib
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        try:
+            import config
+            config.DB_PATH = tmp.name
+            if "database.db" in sys.modules:
+                importlib.reload(sys.modules["database.db"])
+            from database import db
+            # First init_db — creates schema WITHOUT the new UNIQUE index
+            # (the index migration is what we're testing). We simulate a
+            # "legacy" DB by applying the base schema but bypassing the
+            # UNIQUE index migration, then poisoning it.
+            db.init_db()
+
+            with db.get_connection() as conn:
+                # Drop the UNIQUE index if it was created by the first init,
+                # so we can seed dupes that wouldn't otherwise be allowed.
+                try:
+                    conn.execute("DROP INDEX IF EXISTS idx_paper_trades_open_dedup")
+                except Exception:
+                    pass
+                conn.execute(
+                    "INSERT INTO trader_candidates (address, username, status) "
+                    "VALUES (?, ?, ?)",
+                    ("0xDUP", "dup", "observing"),
+                )
+                for price in [0.55, 0.56, 0.57, 0.58, 0.59]:
+                    conn.execute(
+                        "INSERT INTO paper_trades "
+                        "(candidate_address, condition_id, market_question, "
+                        "side, entry_price, status) VALUES (?, ?, ?, ?, ?, 'open')",
+                        ("0xDUP", "CID-X", "Q?", "YES", price),
+                    )
+            # Verify seeded state
+            with db.get_connection() as conn:
+                pre = conn.execute(
+                    "SELECT COUNT(*) FROM paper_trades WHERE candidate_address='0xDUP'"
+                ).fetchone()[0]
+            self.assertEqual(pre, 5)
+
+            # Re-run init_db — the cleanup migration should collapse to 1
+            importlib.reload(sys.modules["database.db"])
+            from database import db as db2
+            db2.init_db()
+
+            with db2.get_connection() as conn:
+                post = conn.execute(
+                    "SELECT COUNT(*) FROM paper_trades WHERE candidate_address='0xDUP'"
+                ).fetchone()[0]
+            self.assertEqual(post, 1, "cleanup migration must collapse open dupes")
+
+            # Verify UNIQUE index now exists and blocks future dupes
+            with db2.get_connection() as conn:
+                idx = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='index' "
+                    "AND name='idx_paper_trades_open_dedup'"
+                ).fetchone()
+            self.assertIsNotNone(idx,
+                                 "UNIQUE partial index must be created by migration")
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

@@ -270,15 +270,20 @@ def paper_follow_candidates():
             newest_ts = last_ts
             trades = fetch_wallet_recent_trades(address, limit=50)
             for t in trades:
+                # Watermark advance happens BEFORE the BUY/cid filter so that
+                # a candidate whose most-recent activity is a SELL still has
+                # newest_ts moved forward — otherwise the next scan would
+                # re-evaluate the same SELL tail repeatedly.
+                t_ts = int(t.get("timestamp", 0) or 0)
+                if t_ts > newest_ts:
+                    newest_ts = t_ts
+
                 if t.get("trade_type", "").upper() != "BUY" or not t.get("condition_id"):
                     continue
 
-                # Watermark check: skip trades we already captured on prior scans.
-                t_ts = int(t.get("timestamp", 0) or 0)
+                # Skip trades we already captured on prior scans.
                 if t_ts <= last_ts:
                     continue
-                if t_ts > newest_ts:
-                    newest_ts = t_ts
 
                 price = t.get("price", 0)
                 question = t.get("market_question", "")

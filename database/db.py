@@ -48,6 +48,16 @@ def init_db():
             # fixed ENTRY_TRADE_SEC=300 freshness window which dropped ~97% of
             # trades at the 3h scan cadence.
             "ALTER TABLE trader_candidates ADD COLUMN last_paper_scan_ts INTEGER DEFAULT 0",
+            # 2026-04-15 followup: paper_trades had 91% duplicate rows in prod
+            # because add_paper_trade's INSERT OR IGNORE is a no-op without a
+            # UNIQUE constraint. Concurrent/repeated scans re-inserted the same
+            # (candidate, market, side) rows. First the cleanup DELETE collapses
+            # open-row duplicates (keeping the oldest rowid per group) so the
+            # partial index can be created, then the UNIQUE partial index
+            # enforces 1-open-row-per-(cand,cid,side) going forward. Closed
+            # rows are exempt so re-entry after close is still possible.
+            "DELETE FROM paper_trades WHERE rowid NOT IN (SELECT MIN(rowid) FROM paper_trades WHERE status='open' GROUP BY candidate_address, condition_id, side) AND status='open'",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_paper_trades_open_dedup ON paper_trades(candidate_address, condition_id, side) WHERE status='open'",
         ]:
             try:
                 conn.execute(migration)
@@ -1415,9 +1425,19 @@ def get_candidate_paper_scan_ts(address: str) -> int:
 
 
 def set_candidate_paper_scan_ts(address: str, ts: int) -> None:
+    """Monotonic watermark write.
+
+    Uses MAX(existing, new) so a stale concurrent scan reading an older
+    last_ts can never roll the watermark backwards. Without this guard,
+    two scans racing on the same candidate could read the same old
+    last_ts, both advance to their own newest_ts, and the second write
+    would clobber the first if it had an older value in-hand.
+    """
     with get_connection() as conn:
         conn.execute(
-            "UPDATE trader_candidates SET last_paper_scan_ts=? WHERE address=?",
+            "UPDATE trader_candidates "
+            "SET last_paper_scan_ts = MAX(COALESCE(last_paper_scan_ts, 0), ?) "
+            "WHERE address=?",
             (int(ts), address)
         )
 
