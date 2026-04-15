@@ -1,5 +1,7 @@
 import sqlite3
 import os
+import hashlib
+import datetime as _dt
 from contextlib import contextmanager
 
 from database.models import SCHEMA
@@ -8,6 +10,102 @@ try:
 except ImportError:
     SCHEMA_UPGRADE = ""
 import config
+
+
+def _now():
+    """Wall-clock wrapper so tests can patch the paper-trade clock."""
+    return _dt.datetime.now()
+
+
+def _paper_trade_signature(address: str, cid: str, side: str, dt=None) -> str:
+    """Hour-bucket dedup signature for paper_trades.
+
+    Collapses Polymarket fill-split microprice rows inside one clock hour
+    to a single logical trade, while still allowing reentry >=1h after the
+    previous scan (so `test_reentry_after_close_is_allowed` semantics hold).
+    """
+    dt = dt or _now()
+    hour_bucket = dt.strftime("%Y%m%d%H")
+    raw = "%s:%s:%s:%s" % (address, cid, (side or "").upper(), hour_bucket)
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+def _backfill_paper_trades_signature_and_dedupe():
+    """Populate signature on legacy rows, then delete dupes keeping MIN(rowid).
+
+    Idempotent: on subsequent runs the WHERE filter returns empty and the
+    DELETE affects 0 rows. Called once from init_db after the ALTER TABLE
+    migration and before the UNIQUE index creation.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT rowid AS _rid, candidate_address, condition_id, side, created_at "
+            "FROM paper_trades "
+            "WHERE signature IS NULL OR length(signature) != 32"
+        ).fetchall()
+        if not rows:
+            return
+        # Compute signatures in Python first, so we can DELETE dupes BEFORE
+        # writing the surviving signature — otherwise the UNIQUE constraint
+        # fires when two legacy rows share the same hour bucket.
+        rid_to_sig = {}
+        for row in rows:
+            dt = None
+            created_at = row["created_at"]
+            if created_at:
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+                    try:
+                        dt = _dt.datetime.strptime(created_at, fmt)
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            sig = _paper_trade_signature(
+                row["candidate_address"] or "",
+                row["condition_id"] or "",
+                row["side"] or "",
+                dt=dt,
+            )
+            rid_to_sig[row["_rid"]] = sig
+        sig_to_min_rid = {}
+        for rid, sig in rid_to_sig.items():
+            if sig not in sig_to_min_rid or rid < sig_to_min_rid[sig]:
+                sig_to_min_rid[sig] = rid
+        keep_rids = set(sig_to_min_rid.values())
+        dup_rids = [rid for rid in rid_to_sig if rid not in keep_rids]
+        if dup_rids:
+            conn.executemany(
+                "DELETE FROM paper_trades WHERE rowid=?",
+                [(rid,) for rid in dup_rids],
+            )
+        for sig, rid in sig_to_min_rid.items():
+            conn.execute(
+                "UPDATE paper_trades SET signature=? WHERE rowid=?",
+                (sig, rid),
+            )
+
+
+def _recompute_candidate_rollups():
+    """Reset trader_candidates paper counters from the current paper_trades table.
+
+    Called after signature backfill so inflated pre-cleanup rollups get
+    replaced with the true deduped counts.
+    """
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE trader_candidates SET "
+            "  paper_trades = COALESCE(("
+            "    SELECT COUNT(*) FROM paper_trades pt "
+            "    WHERE pt.candidate_address = trader_candidates.address "
+            "      AND pt.status = 'closed'), 0), "
+            "  paper_wins = COALESCE(("
+            "    SELECT COUNT(*) FROM paper_trades pt "
+            "    WHERE pt.candidate_address = trader_candidates.address "
+            "      AND pt.status = 'closed' AND pt.pnl > 0), 0), "
+            "  paper_pnl = COALESCE(("
+            "    SELECT SUM(pnl) FROM paper_trades pt "
+            "    WHERE pt.candidate_address = trader_candidates.address "
+            "      AND pt.status = 'closed'), 0)"
+        )
 
 
 def init_db():
@@ -58,11 +156,40 @@ def init_db():
             # rows are exempt so re-entry after close is still possible.
             "DELETE FROM paper_trades WHERE rowid NOT IN (SELECT MIN(rowid) FROM paper_trades WHERE status='open' GROUP BY candidate_address, condition_id, side) AND status='open'",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_paper_trades_open_dedup ON paper_trades(candidate_address, condition_id, side) WHERE status='open'",
+            # 2026-04-15 Phase A2: full signature-based dedup for paper_trades.
+            # The partial index above only covers status='open' rows. Closed
+            # rows get re-inserted via INSERT OR IGNORE on the next scan cycle,
+            # which compounded with Polymarket fill-split microprices produced
+            # 83.7% duplicate rows in prod (5632 closed -> 919 distinct).
+            # Full fix: hour-bucket signature column with full UNIQUE index.
+            # Backfill + dedupe + index creation happen after this loop.
+            "ALTER TABLE paper_trades ADD COLUMN signature TEXT",
+            # 2026-04-15 Phase A3: rotation-based scanning cursor. The paper-
+            # follow scan budget is [:20] per cycle. Before this column existed
+            # the order was `paper_pnl DESC`, which starved the bottom half of
+            # the 41-candidate pool (they had no new paper data, so they could
+            # never move in rank). Now: ORDER BY last_paper_rotation_ts ASC,
+            # paper_pnl DESC — oldest-scanned first. Each scan bumps the ts.
+            "ALTER TABLE trader_candidates ADD COLUMN last_paper_rotation_ts INTEGER DEFAULT 0",
         ]:
             try:
                 conn.execute(migration)
             except sqlite3.OperationalError:
                 pass  # column already exists
+
+    # Post-migration helpers (run outside the loop because they need multiple
+    # transactions and must happen after the ALTER TABLE and before the UNIQUE
+    # index on signature).
+    _backfill_paper_trades_signature_and_dedupe()
+    _recompute_candidate_rollups()
+    with get_connection() as conn:
+        try:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_paper_trades_signature "
+                "ON paper_trades(signature)"
+            )
+        except sqlite3.OperationalError:
+            pass
 
         # Verify critical columns exist (migration may have silently failed)
         cols = {row[1] for row in conn.execute("PRAGMA table_info(copy_trades)").fetchall()}
@@ -1401,18 +1528,31 @@ def get_all_candidates(status=None):
 def get_active_candidates():
     """Candidates in any actively-tracked stage: observing OR promoted.
 
-    paper_follow_candidates used to fetch only observing, which silently
-    stopped paper-trade collection as soon as a candidate was promoted.
-    That's exactly backwards — promoted candidates are the ones we have
-    the most confidence in and want MORE data on, not less.
+    Ordering: oldest-rotation-first, then paper_pnl DESC as tie-break. This
+    is the Scenario-D Phase-A3 fix — previously the ORDER BY was only
+    `paper_pnl DESC` which permanently starved the bottom of the pool.
     """
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT * FROM trader_candidates "
             "WHERE status IN ('observing', 'promoted') "
-            "ORDER BY paper_pnl DESC"
+            "ORDER BY COALESCE(last_paper_rotation_ts, 0) ASC, paper_pnl DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def set_candidate_rotation_ts(address: str, ts: int) -> None:
+    """Bump the rotation cursor after a paper-follow scan finishes for a
+    candidate. Uses MAX(existing, new) so concurrent scans can't roll
+    backwards (same safety pattern as set_candidate_paper_scan_ts).
+    """
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE trader_candidates "
+            "SET last_paper_rotation_ts = MAX(COALESCE(last_paper_rotation_ts, 0), ?) "
+            "WHERE address=?",
+            (int(ts), address),
+        )
 
 
 def get_candidate_paper_scan_ts(address: str) -> int:
@@ -1458,12 +1598,22 @@ def upsert_candidate(address: str, username: str, profit: float, volume: float,
 
 
 def add_paper_trade(address: str, cid: str, question: str, side: str, price: float):
-    """Paper-Trade hinzufuegen."""
+    """Paper-Trade hinzufuegen.
+
+    Computes a signature from `(address, condition_id, side, hour_bucket)`
+    and relies on `idx_paper_trades_signature` UNIQUE to dedup microprice
+    fill-split rows within the same clock hour.
+    """
+    now = _now()
+    created_at = now.strftime("%Y-%m-%d %H:%M:%S")
+    signature = _paper_trade_signature(address, cid, side, dt=now)
     with get_connection() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO paper_trades (candidate_address, condition_id, "
-            "market_question, side, entry_price) VALUES (?, ?, ?, ?, ?)",
-            (address, cid, question, side, price)
+            "INSERT OR IGNORE INTO paper_trades "
+            "(candidate_address, condition_id, market_question, side, entry_price, "
+            " created_at, signature) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (address, cid, question, side, price, created_at, signature),
         )
 
 

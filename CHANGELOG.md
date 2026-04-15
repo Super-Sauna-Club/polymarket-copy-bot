@@ -2,6 +2,129 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-15 — Scenario D Phase A: paper_trades full signature dedup + sort-starvation fix + orphan cleanup
+
+### What piff needs to do
+
+1. `git pull` on your fork.
+2. `sudo systemctl restart polybot` — migrations run automatically on startup. They are idempotent on a clean DB.
+3. **No settings.env changes needed.** The flag `AUTO_DISCOVERY_AUTO_PROMOTE` stays false per existing policy.
+4. **Pre-deploy snapshot strongly recommended** because the signature-dedup migration will collapse historical closed duplicate rows:
+   ```bash
+   cp database/scanner.db database/scanner.db.bak.pre_signature_dedup.$(date +%s)
+   ```
+
+### Why (problem statement)
+
+Three interlocking defects in the paper-follow pipeline made it structurally incapable of producing trustworthy promotion candidates:
+
+1. **Dedup leak on closed rows.** `idx_paper_trades_open_dedup` is a partial UNIQUE index with `WHERE status='open'`. Once a row closes, it is invisible to `INSERT OR IGNORE`, and the next scan re-inserts the same `(candidate_address, condition_id, side)`. Combined with Polymarket's activity API returning one logical trade as N microprice fill-split rows, our walter DB measured **5632 closed rows, 919 distinct (cand, cid, side) groups → 83.7% duplicate rows, up to 123× per-candidate inflation**. Any downstream reader of `get_candidate_stats` (promotion gate, dashboard, lifecycle) was seeing inflated nonsense.
+2. **Sort-starvation.** `paper_follow_candidates` called `db.get_active_candidates()[:20]` where `get_active_candidates` ordered by `paper_pnl DESC`. With 41 active candidates (38 observing + 3 promoted), the bottom 21 were never scanned — they had no new paper data so their rank stayed pinned and they stayed starved. The "101-candidate pool" was functionally a top-20 pool.
+3. **Orphan live-follow of 0x3e5b23e9f7.** A 20-hour gap between commit `a248262` (2026-04-12 15:27, enabled auto-add) and `ba70dbf` (2026-04-13 11:42, added `AUTO_DISCOVERY_AUTO_PROMOTE` gate) left the whale in `wallets.followed=1`. It generated 4 real losing copy_trades before being manually disconnected. No code path existed to re-remove it idempotently.
+
+This Phase-A ships only **plumbing** fixes — zero decision-logic changes, live trading filter chain unchanged. Phases B0/B1/B2 (paper-live filter symmetry + resolution tracker) are specced but deferred to follow-up sessions.
+
+### A1. Orphan cleanup — idempotent SQL script
+
+New file `scripts/remove_followed_trader.sql`. Executes a single `UPDATE wallets SET followed=0 WHERE address=:addr` via Python bind parameters. Idempotent, scoped to one address, bystanders unaffected.
+
+Run for `0x3e5b23e9f7...` (the known orphan) and document any per-trader-map manual cleanup in this CHANGELOG. The full orphan address is `0x3e5b23e9f71b2a2edcd5629d3f948f12f591073b`.
+
+Files:
+- `scripts/remove_followed_trader.sql` — new
+- `tests/test_orphan_cleanup.py` — 4 TDD cases (file exists, followed flipped, idempotent on second run, bystander untouched)
+
+### A2. Signature-based full dedup — hour-bucket collapse
+
+The design point: a signature column `paper_trades.signature` computed as `MD5(candidate_address:condition_id:side:YYYYMMDDHH)`. One clock hour is the collapse window. Microprice fill-splits inside one hour → 1 row. Reentry after 1+ hour → new row (preserved because in prod `close_paper_trades` only fires after >4h anyway).
+
+Migrations (appended to `database/db.py::init_db` loop):
+- `ALTER TABLE paper_trades ADD COLUMN signature TEXT`
+- Python-side helper `_backfill_paper_trades_signature_and_dedupe()` — computes signatures for legacy rows, groups by signature, DELETEs non-MIN-rowid duplicates, then UPDATEs the survivors. Runs in two phases (delete first, then update) so the new UNIQUE constraint doesn't fire mid-backfill.
+- Python-side helper `_recompute_candidate_rollups()` — rebuilds `trader_candidates.paper_trades`, `paper_wins`, `paper_pnl` from the deduped table.
+- `CREATE UNIQUE INDEX IF NOT EXISTS idx_paper_trades_signature ON paper_trades(signature)` — full UNIQUE. The existing partial index `idx_paper_trades_open_dedup` stays as defense-in-depth against in-process races.
+
+`database/db.py::add_paper_trade` now computes `signature` in Python and passes it in the INSERT. The `_now()` wrapper exists so tests can patch the clock.
+
+New tests in `tests/test_paper_trades_signature_dedup.py` (5 cases):
+- Microprice fills in the same hour collapse to 1 row
+- Reentry after 1h+ (with close in between) creates a new row
+- Legacy dup migration dedupes 5 seeded rows to 1 and recomputes rollups correctly
+- Migration is idempotent (second run is a no-op)
+- Signature is deterministic, format-stable, and hour-sensitive
+
+### A3. Rotation-based scanning — fix sort-starvation
+
+- New column `trader_candidates.last_paper_rotation_ts INTEGER DEFAULT 0`.
+- `database/db.py::get_active_candidates` now `ORDER BY COALESCE(last_paper_rotation_ts, 0) ASC, paper_pnl DESC` — oldest-scanned-first, PnL only as tie-break.
+- `database/db.py::set_candidate_rotation_ts` — monotonic MAX(existing, new) write, same safety pattern as `set_candidate_paper_scan_ts`.
+- `bot/auto_discovery.py::paper_follow_candidates` — `finally` block bumps `last_paper_rotation_ts` after every candidate scan, even on exception. Guarantees a failing candidate can't permanently block the rotation. The `[:20]` scan budget stays — with rotation, all 41 active candidates get scanned within `ceil(41/20) = 3` cycles (≈9h at the 3h `discovery_scan` cadence).
+
+New tests in `tests/test_paper_follow_rotation.py` (3 cases):
+- All 41 seeded candidates get scanned within 3 cycles of budget-20
+- Oldest rotation_ts appears first in `get_active_candidates`
+- Rotation ts advances strictly monotonically after each scan
+
+### A4. Existing test adaptation
+
+`tests/test_paper_follow_stateful.py::test_reentry_after_close_is_allowed` now time-mocks the two inserts to different clock hours. The underlying contract is tightened — in-the-same-hour reentry is no longer allowed (it would collapse to the original signature) — but in production this is a non-issue because `close_paper_trades` only fires after >4h anyway.
+
+### Test results
+
+```
+tests/test_orphan_cleanup.py                  4/4 GREEN
+tests/test_paper_trades_signature_dedup.py    5/5 GREEN
+tests/test_paper_follow_rotation.py           3/3 GREEN
+tests/test_paper_follow_stateful.py          10/10 GREEN
+tests/test_active_candidates.py                1/1 GREEN
+tests/test_feedback_loop.py                    3/3 GREEN
+tests/test_lifecycle_gate.py                   4/4 GREEN
+tests/test_lifecycle_seed.py                   3/3 GREEN
+tests/test_zero_risk_filter.py                12/12 GREEN
+tests/test_partial_ghost_detection.py          9/9 GREEN
+                                              54/54 GREEN
+```
+
+Two unrelated pre-existing flakes in `test_brain_dedup.py` and `test_log_dedup.py` reproduce on clean main without these changes.
+
+### Live verify commands (walter)
+
+```bash
+# A2: signature column + rowcount drop
+ssh walter@10.0.0.20 'cd /home/walter/polymarketscanner && venv/bin/python3 -c "
+import sqlite3
+c = sqlite3.connect(\"database/scanner.db\"); c.row_factory = sqlite3.Row
+print(\"closed raw:\", c.execute(\"SELECT COUNT(*) FROM paper_trades WHERE status=\\\"closed\\\"\").fetchone()[0])
+print(\"closed distinct sig:\", c.execute(\"SELECT COUNT(DISTINCT signature) FROM paper_trades WHERE status=\\\"closed\\\"\").fetchone()[0])
+"'
+# expected post-deploy: raw == distinct (e.g. ~919), signature column populated
+
+# A3: rotation column exists and bumps on scan
+ssh walter@10.0.0.20 'cd /home/walter/polymarketscanner && venv/bin/python3 -c "
+import sqlite3
+c = sqlite3.connect(\"database/scanner.db\"); c.row_factory = sqlite3.Row
+for r in c.execute(\"SELECT username, last_paper_rotation_ts FROM trader_candidates WHERE status IN (\\\"observing\\\",\\\"promoted\\\") ORDER BY last_paper_rotation_ts ASC LIMIT 10\"):
+    print(dict(r))
+"'
+
+# A1: orphan state
+ssh walter@10.0.0.20 'cd /home/walter/polymarketscanner && venv/bin/python3 -c "
+import sqlite3
+c = sqlite3.connect(\"database/scanner.db\"); c.row_factory = sqlite3.Row
+row = c.execute(\"SELECT address, username, followed FROM wallets WHERE address LIKE \\\"0x3e5b23e9f7%\\\"\").fetchone()
+print(dict(row) if row else \"not found\")
+"'
+# expected: followed=0
+```
+
+### Deferred to follow-up sessions (spec in `/home/wisdom/.claude/plans/tingly-wibbling-lynx.md`)
+
+- **Phase B0** — schema migration for `category`, `filter_reason`, `ml_score`, `close_reason`, `resolved_price`, `is_resolved` on `paper_trades`
+- **Phase B1** — shared `bot/trader_filters.py` helper that both `copy_trader.copy_followed_wallets` and `auto_discovery.paper_follow_candidates` call for decision filters (per-trader maps, trade scorer, ML block). Shadow-canary rollout via `PAPER_LIVE_SYMMETRY_SHADOW=true` env var.
+- **Phase B2** — `track_paper_outcomes` in `outcome_tracker.py` using the existing `_get_market_price` helper. New env `PAPER_EVAL_MAX_HOURS=24` replaces hardcoded 4. The artificial `entry*0.95` fallback in `close_paper_trades` is removed.
+- **Phase C** — diagnostic dashboard panel (conditional on B2 data).
+- **Phase D** — tightened promotion criteria (`PROMOTE_MIN_PAPER_TRADES=100`, Wilson lower bound, ROI floor) + flipping `AUTO_DISCOVERY_AUTO_PROMOTE=true`. Blocked on B2 calibration validation.
+
 ## 2026-04-15 — paper_follow: stateful watermark + UNIQUE dedup + concurrency guard (piff-flagged)
 
 **Two commits**: `112160f` (primary watermark fix) + `4bd46b3` (concurrency/dedup follow-up after code review).

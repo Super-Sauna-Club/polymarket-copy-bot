@@ -228,17 +228,25 @@ class TestPaperTradesUniqueIndex(unittest.TestCase):
         self.assertEqual(n, 1, "UNIQUE partial index must block the dup insert")
 
     def test_reentry_after_close_is_allowed(self):
-        """Partial index is WHERE status='open', so closing row 1 and
-        adding row 2 for the same (cand, cid, side) must succeed — we
-        want to allow re-entry after a trade closes."""
-        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.55)
+        """Reentry after a trade closes must still be possible, but under the
+        Scenario-D Phase-A2 hour-bucket signature contract the reentry has to
+        fall into a different clock hour from the original open (in prod this
+        is guaranteed because close_paper_trades only fires after
+        PAPER_EVAL_MAX_HOURS >= 24h — reentry never lands in the same hour)."""
+        import datetime as _dtmod
+        from unittest.mock import patch
+        t1 = _dtmod.datetime(2026, 4, 15, 10, 30, 0)
+        t2 = _dtmod.datetime(2026, 4, 16, 11, 30, 0)  # next day
+
+        with patch("database.db._now", return_value=t1):
+            self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.55)
         with self.db.get_connection() as conn:
             conn.execute(
                 "UPDATE paper_trades SET status='closed' "
                 "WHERE candidate_address='0xCAND' AND condition_id='CID-1'"
             )
-        # Reentry — should succeed because the only prior row is now closed
-        self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.60)
+        with patch("database.db._now", return_value=t2):
+            self.db.add_paper_trade("0xCAND", "CID-1", "Q?", "YES", 0.60)
 
         with self.db.get_connection() as conn:
             n_total = conn.execute(

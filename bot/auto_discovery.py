@@ -351,6 +351,15 @@ def paper_follow_candidates():
                 db.set_candidate_paper_scan_ts(address, newest_ts)
         except Exception as e:
             logger.debug("[DISCOVERY] Paper-follow error for %s: %s", address[:10], e)
+        finally:
+            # Scenario-D Phase A3: always bump the rotation cursor so a
+            # failing candidate can't permanently block other candidates
+            # from their scan slot. Pairs with the oldest-first ORDER BY
+            # in db.get_active_candidates.
+            try:
+                db.set_candidate_rotation_ts(address, int(time.time()))
+            except Exception:
+                pass
 
 
 def close_paper_trades():
