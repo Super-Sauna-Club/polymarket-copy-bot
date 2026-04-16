@@ -435,13 +435,9 @@ def close_paper_trades():
         bet_size = _paper_bet_size(entry, filters)
         shares = bet_size / entry if entry > 0 else 0
 
-        # Side-inversion retained for the ws_price_tracker path because the
-        # cached WS price may be the YES-side mid even when the trader bought
-        # the opposite side. Paper_trades.side="NO" → flip the sign.
-        if side == "NO":
-            pnl = round(shares * (entry - price), 4)
-        else:
-            pnl = round(shares * (price - entry), 4)
+        # ws_price_tracker.get_price(cid, side) is side-aware and returns
+        # the actual price for the requested side. No inversion needed.
+        pnl = round(shares * (price - entry), 4)
 
         with db.get_connection() as conn:
             cur = conn.execute(
@@ -532,7 +528,7 @@ def check_promotions():
             else:
                 continue
         except Exception:
-            pass
+            continue  # API error = skip candidate, do not promote
 
         # Newest paper_trade age (for the recency gate).
         # Scenario D Phase E.1 — respect PROMOTE_STATS_CUTOFF so the

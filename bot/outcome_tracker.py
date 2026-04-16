@@ -90,6 +90,10 @@ def _parse_market_price(m: dict, side: str = "") -> tuple:
                     return None, resolved
             # No side → first outcome (backward compat for blocked_trades path)
             return float(prices[0]), resolved
+    # If side was requested but outcomePrices had no match, do NOT fall
+    # through to mid-price — wrong for multi-outcome markets.
+    if side:
+        return None, resolved
     best_ask = float(m.get("bestAsk", 0) or 0)
     best_bid = float(m.get("bestBid", 0) or 0)
     if best_ask > 0 and best_bid > 0:
@@ -321,7 +325,7 @@ def track_paper_outcomes():
 
             shares = bet_size / entry if entry > 0 else 0
             pnl = round(shares * (price - entry), 4)
-            close_reason = "resolved_yes" if pnl > 0 else "resolved_no"
+            close_reason = "resolved_yes" if pnl > 0 else "resolved_no" if pnl < 0 else "resolved_flat"
 
             with db.get_connection() as conn:
                 cur = conn.execute(

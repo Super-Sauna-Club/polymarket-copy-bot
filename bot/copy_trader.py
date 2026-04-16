@@ -287,6 +287,7 @@ _MIN_CONVICTION_MAP = _parse_float_map(config.MIN_CONVICTION_RATIO_MAP, "MIN_CON
 
 # --- Hot-Reload: re-read settings.env maps on each scan cycle ---
 _last_settings_mtime = 0.0
+_sell_retry_count: dict[str, int] = {}
 
 def _reload_maps():
     """Re-read per-trader maps from settings.env if file changed since last check."""
@@ -1664,7 +1665,7 @@ def copy_followed_wallets():
                     username, len(all_buys), len(new_buy_trades), last_ts)
 
         # === FAST SELL DETECTION: RN1 SELLs sofort erkennen (alle 5s) ===
-        _already_sold_cids = set()  # prevent sell spam on same condition_id
+        _already_sold_cids = set()
         new_sells = [t for t in recent_trades if t["trade_type"] == "SELL" and t["timestamp"] > last_ts] if config.COPY_SELLS else []
         if new_sells:
             open_by_cid = {t["condition_id"]: t for t in _cached_open_trades if t["condition_id"] and t["wallet_address"] == address}
@@ -1685,9 +1686,18 @@ def copy_followed_wallets():
                     if LIVE_MODE and sell_cid:
                         sell_resp = sell_shares(sell_cid, our_trade["side"], sell_price)
                         if not sell_resp:
-                            logger.warning("[FAST-SELL] Sell failed, will RETRY next scan: %s", our_trade["market_question"][:40])
-                            # Do NOT bump _last_processed_ts — event stays unconsumed for retry
-                            # Do NOT add to _already_sold_cids — allow retry within same scan
+                            _rc_key = sell_cid or our_trade.get("condition_id", "")
+                            _sell_retry_count[_rc_key] = _sell_retry_count.get(_rc_key, 0) + 1
+                            if _sell_retry_count[_rc_key] >= 3:
+                                logger.warning("[FAST-SELL] Giving up after 3 retries, closing as dust: %s", our_trade["market_question"][:40])
+                                _trade_id_dust = our_trade.get("id")
+                                if _trade_id_dust:
+                                    db.close_copy_trade(_trade_id_dust, 0, close_price=sell_price)
+                                _sell_retry_count.pop(_rc_key, None)
+                                _already_sold_cids.add(sell_cid)
+                            else:
+                                logger.warning("[FAST-SELL] Sell failed (%d/3), will retry next scan: %s",
+                                               _sell_retry_count[_rc_key], our_trade["market_question"][:40])
                             continue
                     # Atomic DB close with wallet-verified usdc_received when available.
                     # Passing usdc_received=None (paper mode) keeps the formula pnl.
@@ -1695,7 +1705,11 @@ def copy_followed_wallets():
                     _fs_real = _real_pnl_from_sell(our_trade, sell_resp)
                     if _fs_real is not None:
                         pnl = _fs_real  # use verified pnl for the logger.info below
-                    if not db.close_copy_trade(our_trade["id"], pnl, close_price=sell_price,
+                    _trade_id = our_trade.get("id")
+                    if not _trade_id:
+                        logger.warning("[FAST-SELL] Trade without id, skipping: %s", sell_cid[:16])
+                        continue
+                    if not db.close_copy_trade(_trade_id, pnl, close_price=sell_price,
                                                usdc_received=(_fs_usdc if _fs_usdc > 0 else None)):
                         logger.info("[FAST-SELL] Trade #%d already closed by another path", our_trade["id"])
                         _already_sold_cids.add(sell_cid)
@@ -2428,10 +2442,11 @@ def update_copy_positions():
                         if is_resolved:
                             # redeemable=True = Markt resolved.
                             resolve_price = trade["current_price"] if trade["current_price"] else current_price
-                            if resolve_price >= 0.50:
-                                close_price = 1.0
+                            # Side-aware resolve: YES wins when price >= 0.50, NO wins when price < 0.50
+                            if trade["side"] == "NO":
+                                close_price = 0.0 if resolve_price >= 0.50 else 1.0
                             else:
-                                close_price = 0.0
+                                close_price = 1.0 if resolve_price >= 0.50 else 0.0
                             pnl, shares = _calc_pnl(trade, close_price)
                             if not db.close_copy_trade(trade["id"], pnl):
                                 continue  # already closed by another path

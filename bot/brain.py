@@ -84,7 +84,7 @@ def _classify_losses():
         category = loss.get("category", "")
         entry = loss.get("actual_entry_price") or loss.get("entry_price") or 0
         stats_7d = db.get_trader_rolling_pnl(trader, 7)
-        trader_pnl_7d = stats_7d.get("total_pnl", 0) or 0
+        trader_pnl_7d = (stats_7d.get("total_pnl", 0) or 0) - (loss.get("pnl_realized", 0) or 0)  # exclude current loss
         if trader_pnl_7d < 0:
             classifications["BAD_TRADER"].append(loss)
             continue

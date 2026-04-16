@@ -55,14 +55,15 @@ class TestBrainDedup(unittest.TestCase):
             self.assertLessEqual(mock_write.call_count, 1)
         with self.db.get_connection() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM brain_decisions WHERE action='BLACKLIST_CATEGORY'"
+                "SELECT COUNT(*) FROM brain_decisions WHERE action='BLACKLIST_RECOMMENDED'"
             ).fetchone()
         # Exactly one row for one unique (trader, category) pair.
         self.assertEqual(row[0], 1)
 
-    def test_already_blacklisted_early_return(self):
-        # Pair is already in the CATEGORY_BLACKLIST_MAP --> helper must return
-        # without writing or logging anything.
+    def test_already_blacklisted_still_logs_recommendation(self):
+        # Auto-writing to CATEGORY_BLACKLIST_MAP is DISABLED (piff-philosophy).
+        # The brain still logs BLACKLIST_RECOMMENDED even if the pair is already
+        # in the map — the recommendation is advisory, not actionable.
         fake_stats = {"total_pnl": 0.0, "cnt": 5, "wins": 0, "losses": 5,
                       "verified_count": 0, "source": "test"}
         with patch("bot.brain._read_settings",
@@ -74,9 +75,9 @@ class TestBrainDedup(unittest.TestCase):
             self.assertEqual(mock_write.call_count, 0)
         with self.db.get_connection() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM brain_decisions WHERE action='BLACKLIST_CATEGORY'"
+                "SELECT COUNT(*) FROM brain_decisions WHERE action='BLACKLIST_RECOMMENDED'"
             ).fetchone()
-        self.assertEqual(row[0], 0)
+        self.assertEqual(row[0], 1)
 
 
 if __name__ == "__main__":

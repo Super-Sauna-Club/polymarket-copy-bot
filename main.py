@@ -478,10 +478,10 @@ def update_prices():
                             except Exception:
                                 pass
                             # PATCH-033: atomic close via close_copy_trade (prevents race + orphaned positions)
-                            if _db.close_copy_trade(_our_trade["id"], _pnl, close_price=_cp):
-                                _usdc_recv = _resp.get("usdc_received", 0)
-                                if _usdc_recv > 0:
-                                    _db.update_closed_trade_pnl(_our_trade["id"], _pnl, _usdc_recv)
+                            _usdc_recv = _resp.get("usdc_received", 0) or None
+                            if _db.close_copy_trade(_our_trade["id"], _pnl, close_price=_cp,
+                                                     usdc_received=(_usdc_recv if _usdc_recv else None)):
+                                pass  # atomically written
                             else:
                                 logger.info("[AUTO-SELL] Trade #%d already closed by another path", _our_trade["id"])
         except Exception as _e:

@@ -1617,8 +1617,12 @@ def api_promotion_dryrun():
     Zero side effects. Used to tune PROMOTE_* constants over the weeks
     before the actual flag flip.
     """
-    from bot.promotion import compute_dry_run
-    return jsonify(compute_dry_run())
+    try:
+        from bot.promotion import compute_dry_run
+        return jsonify(compute_dry_run())
+    except Exception as e:
+        logger.exception("[PROMOTION-DRYRUN] error: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/upgrade/candidates")

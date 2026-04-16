@@ -2,6 +2,39 @@
 
 Session-level notes. For full commit history see `git log`.
 
+## 2026-04-16 — Merge piff's 14-bug code audit + fix 2 issues in his patch
+
+Cherry-picked `187c04c` from piff-custom. 14 verified bugs from full code audit (11 agents, 6 areas). Plus our 4 planned fixes (side-unaware fallback guard, resolved_flat, dryrun exception handler, cutoff validation) which piff implemented first.
+
+### TIER 1 — Money-critical
+- **Fix A**: NO-side resolve direction was ignoring trade side → wrong PnL on resolved NO trades
+- **Fix B**: Double-sell race after delayed partial fill → return None instead of retry with stale shares
+- **Fix C**: Sell-retry endless loop on dust positions → retry counter (max 3), then close as dust
+- **Fix D**: KeyError id crash in fast-sell → defensive .get() access
+
+### TIER 2 — Paper/Promotion quality
+- **Fix F**: NO-side paper PnL was inverted (ws_price_tracker is side-aware, no inversion needed)
+- **Fix G**: Probation functions queried by username but written by address → now accepts both
+- **Fix H**: API exception in activity check bypassed promotion gate → changed pass to continue
+
+### TIER 3 — ML/Brain quality
+- **Fix I**: Loss classification included current loss in rolling PnL → now excluded
+- **Fix J**: Block model never accumulated trader stats (4/11 features always zero) → added _accumulate
+
+### TIER 4 — Robustness
+- **Fix L**: Non-atomic auto-sell close in main.py → pass usdc_received directly to close_copy_trade
+
+### Our fixes on top of piff's patch
+1. **`_sell_retry_count` missing init** (Fix C bug): piff's retry counter dict was never declared → NameError on first failed sell. Added module-level `_sell_retry_count: dict[str, int] = {}`.
+2. **`filter_audit.py` dead code** (Fix K): `_full_len` + first `split_idx` computed then immediately overwritten. Cleaned to single-line comment + one `split_idx` assignment.
+3. **`test_brain_dedup.py`**: Updated to match `BLACKLIST_RECOMMENDED` (was checking old `BLACKLIST_CATEGORY` action name).
+4. **`test_log_dedup.py`**: Removed flaky `assertLogs` dependency — test now asserts the behavioral invariant (mutex skips `get_trader_rolling_pnl` call) directly.
+
+### What piff needs to do
+1. `_sell_retry_count` init fix — if piff runs his code without this fix, the first sell failure will crash with `NameError`. **Pull from main** or add `_sell_retry_count: dict[str, int] = {}` after line 289 in `bot/copy_trader.py`.
+2. Check for NO-side PnL contamination on his DB: `SELECT COUNT(*) FROM copy_trades WHERE side='NO' AND status='closed'`. Those historical rows have potentially wrong PnL from Fix A.
+3. ml_block.pkl was trained with 4 null features → after Fix J, next 6h retrain cycle produces a different model. Filter precision recommendations may change.
+
 ## 2026-04-15 — Scenario D Phase E.1: stats-cutoff filter (planned, not yet shipped at top of CHANGELOG)
 
 **Status at entry-write time**: plan approved, memory updated, code change drafted but not yet committed. This section is the SPEC of what will ship. When the commit lands, replace "planned" with the commit SHA and the "Deploy / verify" block.

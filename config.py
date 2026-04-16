@@ -299,7 +299,16 @@ PROBATION_MAX_TRADES     = int(os.getenv('PROBATION_MAX_TRADES', '20'))
 # 17:19:00) so the 1559 historical fake-loss-contaminated rows from
 # the pre-B2 `entry * 0.95` fallback code are excluded from the gate.
 # Reversible: unset in settings.env → filter off → old rows count again.
-PROMOTE_STATS_CUTOFF     = os.getenv('PROMOTE_STATS_CUTOFF', '').strip()
+_raw_cutoff = os.getenv("PROMOTE_STATS_CUTOFF", "").strip()
+if _raw_cutoff:
+    try:
+        from datetime import datetime as _dt
+        _dt.strptime(_raw_cutoff, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        import logging as _log
+        _log.getLogger(__name__).warning("PROMOTE_STATS_CUTOFF=%%s is not valid ISO datetime, ignoring", _raw_cutoff)
+        _raw_cutoff = ""
+PROMOTE_STATS_CUTOFF     = _raw_cutoff
 
 # Scenario-D Phase B2 — paper resolution tracker config.
 # `PAPER_EVAL_MAX_HOURS` replaces the hardcoded 4h cutoff in

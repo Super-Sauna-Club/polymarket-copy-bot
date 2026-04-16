@@ -171,11 +171,8 @@ def compute_filter_precision(min_samples: int = MIN_SAMPLES,
         return {"rows": [], "meta": {"error": "ml_block model failed to load",
                                      "total_rows": 0}}
 
-    # CRITICAL: only audit the test slice, NOT the full dataset. Running
-    # predict_proba on rows the model was trained on gives artificial
-    # near-100% precision (the model memorized the labels). Matches the
-    # 80/20 chronological split that train_block_model uses so the slice
-    # here is the exact rows the model has never seen.
+    # 80/20 chronological split — approximation: stale-row filtering
+    # shifts the boundary vs train_block_model's unfiltered split.
     split_idx = int(len(X) * 0.8)
     X_test = X[split_idx:]
     y_test = y[split_idx:]

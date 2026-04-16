@@ -168,7 +168,7 @@ def start_probation(address: str, db_module=None) -> None:
         )
 
 
-def is_in_probation(username: str, db_module=None) -> tuple:
+def is_in_probation(identifier: str, db_module=None) -> tuple:
     """Return (active: bool, reason: str) for a trader's probation state.
 
     Active iff probation_until is a non-empty future timestamp AND
@@ -181,8 +181,8 @@ def is_in_probation(username: str, db_module=None) -> tuple:
     with db_module.get_connection() as conn:
         row = conn.execute(
             "SELECT probation_until, probation_trades_left "
-            "FROM trader_candidates WHERE username = ? LIMIT 1",
-            (username,),
+            "FROM trader_candidates WHERE address = ? OR username = ? LIMIT 1",
+            (identifier, identifier),
         ).fetchone()
     if not row:
         return False, "none"
@@ -204,7 +204,7 @@ def is_in_probation(username: str, db_module=None) -> tuple:
     return True, "active until %s, %d trades left" % (until, trades_left)
 
 
-def decrement_probation_trade(username: str, db_module=None) -> None:
+def decrement_probation_trade(identifier: str, db_module=None) -> None:
     """Decrement `probation_trades_left` by 1, clamped at 0.
 
     Called from the live copy-trade creation path after a successful
@@ -217,14 +217,14 @@ def decrement_probation_trade(username: str, db_module=None) -> None:
         conn.execute(
             "UPDATE trader_candidates SET "
             "  probation_trades_left = MAX(probation_trades_left - 1, 0) "
-            "WHERE username = ? "
+            "WHERE (address = ? OR username = ?) "
             "  AND probation_until IS NOT NULL AND probation_until != '' "
             "  AND probation_trades_left > 0",
-            (username,),
+            (identifier, identifier),
         )
 
 
-def probation_limits(username: str, db_module=None) -> tuple:
+def probation_limits(identifier: str, db_module=None) -> tuple:
     """Return (bet_multiplier, max_exposure_cap_usd) for a trader.
 
     If in probation: (PROBATION_BET_SIZE_PCT, PROBATION_MAX_EXPOSURE_USD).
@@ -234,7 +234,7 @@ def probation_limits(username: str, db_module=None) -> tuple:
     shadow-canary commit).
     """
     import config
-    active, _ = is_in_probation(username, db_module=db_module)
+    active, _ = is_in_probation(identifier, db_module=db_module)
     if not active:
         return 1.0, None
     mult = float(getattr(config, "PROBATION_BET_SIZE_PCT", 0.5))

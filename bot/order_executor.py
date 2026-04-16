@@ -403,9 +403,10 @@ def sell_shares(condition_id: str, side: str, price: float) -> dict | None:
                         if _shares2 < shares * 0.80:
                             logger.info("ORDER SELL: partial fill (%.2f -> %.2f shares) — accepting as filled", shares, _shares2)
                             return _build_sell_result(bal_before_usdc, shares - _shares2, fee_rate, response)
-                        # No fill at all — try next slippage level (not return None!)
-                        logger.info("ORDER SELL: delayed not filled at -%.0fc slip, trying next level...",
+                        # No fill at all — return None to prevent double-sell race. Next scan will retry safely.
+                        logger.info("ORDER SELL: delayed not filled at -%.0fc slip, deferring to next scan",
                                     slippage * 100)
+                        return None
             elif response:
                 success = True
 

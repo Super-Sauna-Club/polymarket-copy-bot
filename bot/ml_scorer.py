@@ -467,6 +467,9 @@ def _build_block_training_data(verified_only: bool = False, with_metas: bool = F
         y.append(label)
         weights.append(1.0)
         reasons.append(r.get("block_reason") or "unknown")
+        # Accumulate trader stats so next row sees rolling WR/PnL/trades
+        _pnl_proxy = 1.0 if label else -1.0
+        _accumulate(trader_running, name, _pnl_proxy, float(r.get("actual_size") or 0))
         if with_metas:
             detected_cat = (r.get("category") or "").lower() or _detect_category(mq)
             metas.append({

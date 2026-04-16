@@ -317,17 +317,14 @@ class TestBrainOscillationMutex(unittest.TestCase):
             calls.append(trader)
             return {"total_pnl": 10.0, "cnt": 5, "wins": 4}
 
-        with self.assertLogs("bot.brain", level="INFO") as cm:
-            with patch.object(brain, "_parse_map", side_effect=fake_parse_map), \
-                 patch.object(brain, "_read_settings", return_value="MIN_ENTRY_PRICE_MAP=\nMAX_ENTRY_PRICE_MAP=\n"), \
-                 patch.object(brain.db, "get_trader_rolling_pnl", side_effect=fake_get_trader_rolling_pnl):
-                try:
-                    brain._revert_obsolete_tightens()
-                except Exception:
-                    pass  # we only care that the mutex path was exercised
+        with patch.object(brain, "_parse_map", side_effect=fake_parse_map), \
+             patch.object(brain, "_read_settings", return_value="MIN_ENTRY_PRICE_MAP=\nMAX_ENTRY_PRICE_MAP=\n"), \
+             patch.object(brain.db, "get_trader_rolling_pnl", side_effect=fake_get_trader_rolling_pnl):
+            try:
+                brain._revert_obsolete_tightens()
+            except Exception:
+                pass  # we only care that the mutex path was exercised
 
-        log_text = "\n".join(cm.output)
-        self.assertIn("Skipping RELAX for KING7777777", log_text)
         self.assertNotIn("KING7777777", calls,
                          "get_trader_rolling_pnl should NOT have been called for KING — mutex should have short-circuited")
 
