@@ -1965,18 +1965,22 @@ def api_paper_events():
         return jsonify({"events": [], "count": 0, "error": str(e)})
 
 
+_filter_precision_cache = {"result": None, "ts": 0}
+_FILTER_PRECISION_TTL = 600  # 10 minutes
+
 @app.route("/api/brain/filter-precision")
 def api_filter_precision():
-    """Per-filter-reason precision audit. For each block_reason bucket,
-    reports how many verified blocks the ml_block model would have
-    identified as winners (at confidence >= 0.7) and recommends whether
-    to loosen the filter. Used by the Filter Precision Audit panel on
-    the brain page.
-    Graceful fallback when ml_block is not yet trained (returns empty
-    rows + error meta)."""
+    """Per-filter-reason precision audit — cached because compute is expensive
+    on large blocked_trades tables (633k+ rows → >20s uncached)."""
+    import time as _t
+    now = _t.time()
+    if _filter_precision_cache["result"] and (now - _filter_precision_cache["ts"]) < _FILTER_PRECISION_TTL:
+        return jsonify(_filter_precision_cache["result"])
     try:
         from bot.filter_audit import compute_filter_precision
         result = compute_filter_precision()
+        _filter_precision_cache["result"] = result
+        _filter_precision_cache["ts"] = now
         return jsonify(result)
     except Exception as e:
         return jsonify({"rows": [], "meta": {"error": str(e), "total_rows": 0}})

@@ -2251,14 +2251,17 @@ def copy_followed_wallets():
                 balance -= size  # Update balance to prevent over-investment
                 _cached_open_trades.append(trade)
 
-                # Scenario-D Phase γ.5b: decrement the trader's probation
-                # budget after a successful fresh copy_trade row. Non-
-                # probation traders are a no-op via the SQL WHERE clause.
                 try:
                     from bot.promotion import decrement_probation_trade
                     decrement_probation_trade(username)
                 except Exception:
                     pass
+
+                if cid:
+                    try:
+                        db.link_trade_score(cid, username, trade_id)
+                    except Exception:
+                        pass
 
                 if cid:
                     price_tracker.subscribe_condition(cid)

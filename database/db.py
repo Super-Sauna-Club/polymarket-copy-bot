@@ -1780,15 +1780,32 @@ def get_score_range_performance() -> list:
             "  WHEN score_total < 80 THEN '60-79' "
             "  ELSE '80-100' "
             "END as score_range, "
-            "COUNT(*) as total, "
+            "COUNT(*) as n, "
             "SUM(CASE WHEN outcome_pnl > 0 THEN 1 ELSE 0 END) as wins, "
             "SUM(CASE WHEN outcome_pnl <= 0 THEN 1 ELSE 0 END) as losses, "
-            "ROUND(SUM(COALESCE(outcome_pnl, 0)), 2) as total_pnl "
+            "ROUND(SUM(COALESCE(outcome_pnl, 0)), 2) as pnl "
             "FROM trade_scores "
             "WHERE outcome_pnl IS NOT NULL "
             "GROUP BY score_range ORDER BY score_range"
         ).fetchall()
-        return [dict(r) for r in rows]
+        return [{"bucket": r["score_range"], "n": r["n"], "wins": r["wins"],
+                 "losses": r["losses"], "pnl": r["pnl"]} for r in rows]
+
+
+def link_trade_score(condition_id: str, trader_name: str, trade_id: int) -> int:
+    """Link the newest unlinked trade_scores row to a copy_trade."""
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE trade_scores SET trade_id = ? "
+            "WHERE id = ("
+            "    SELECT id FROM trade_scores "
+            "    WHERE condition_id = ? AND trader_name = ? "
+            "      AND trade_id IS NULL "
+            "    ORDER BY id DESC LIMIT 1"
+            ")",
+            (trade_id, condition_id, trader_name)
+        )
+        return cur.rowcount
 
 
 def update_trade_score_outcome(condition_id: str, trader_name: str, pnl: float) -> int:
