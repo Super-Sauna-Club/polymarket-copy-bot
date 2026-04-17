@@ -2427,10 +2427,11 @@ def update_copy_positions():
 
                     if open_pos is not None:
                         logger.debug("Trade #%d matched in trader wallet: price=%.4f", trade["id"], open_pos.get("current_price", 0))
-                        # Polymarket API gibt immer den YES-Token-Preis zurueck.
-                        # Fuer NO-Trades muss der Preis invertiert werden (1 - yes_price = no_price).
-                        raw_price = open_pos["current_price"]
-                        current_price = (1.0 - raw_price) if trade["side"] == "NO" else raw_price
+                        # fetch_wallet_positions returns curPrice which is
+                        # already side-specific (NO price for NO tokens).
+                        current_price = open_pos["current_price"]
+                        # Resolve logic needs the YES-side probability.
+                        _yes_price = (1.0 - current_price) if trade["side"] == "NO" else current_price
                         is_resolved = open_pos.get("redeemable", False)
 
                         # Update missing metadata
@@ -2443,9 +2444,8 @@ def update_copy_positions():
 
                         # Close if market resolved
                         if is_resolved:
-                            # redeemable=True = Markt resolved.
-                            resolve_price = trade["current_price"] if trade["current_price"] else current_price
-                            # Side-aware resolve: YES wins when price >= 0.50, NO wins when price < 0.50
+                            # Resolve uses YES-side probability to determine winner
+                            resolve_price = _yes_price
                             if trade["side"] == "NO":
                                 close_price = 0.0 if resolve_price >= 0.50 else 1.0
                             else:
