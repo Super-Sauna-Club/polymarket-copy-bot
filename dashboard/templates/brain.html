@@ -2722,28 +2722,29 @@ function renderPromotionDryRun(data){
 
 /* ── Fetch + refresh loop ── */
 async function refresh(){
-  var status=await fetchJSON('/api/upgrade/status');
-  var mlInfo=await fetchJSON('/api/upgrade/ml-info');
-  var _decRaw=await fetchJSON('/api/brain/decisions?limit=200');
+  var [status,mlInfo,_decRaw,scores,lc,traders,tuner,cats,paper,
+       candidates,paperTradesList,paperEvents,blocked,tickerEvents,
+       filterPrec,dryRun,followed] = await Promise.all([
+    fetchJSON('/api/upgrade/status'),
+    fetchJSON('/api/upgrade/ml-info'),
+    fetchJSON('/api/brain/decisions?limit=200'),
+    fetchJSON('/api/brain/scores'),
+    fetchJSON('/api/brain/lifecycle'),
+    fetchJSON('/api/upgrade/trader-performance'),
+    fetchJSON('/api/brain/tuner-settings'),
+    fetchJSON('/api/upgrade/category-heatmap'),
+    fetchJSON('/api/brain/paper-traders'),
+    fetchJSON('/api/upgrade/candidates'),
+    fetchJSON('/api/brain/paper-trades-list?limit=200'),
+    fetchJSON('/api/brain/paper-events?limit=300'),
+    fetchJSON('/api/ai/blocked-trades?hours=72&limit=500'),
+    fetchJSON('/api/fun/ticker'),
+    fetchJSON('/api/brain/filter-precision'),
+    fetchJSON('/api/upgrade/promotion-dryrun'),
+    fetchJSON('/api/wallets/followed'),
+  ]);
   var decItems=(_decRaw&&_decRaw.items)||_decRaw||[];
   var decTotal=(_decRaw&&_decRaw.total)||(decItems&&decItems.length)||0;
-  var scores=await fetchJSON('/api/brain/scores');
-  var lc=await fetchJSON('/api/brain/lifecycle');
-  var traders=await fetchJSON('/api/upgrade/trader-performance');
-  var tuner=await fetchJSON('/api/brain/tuner-settings');
-  var cats=await fetchJSON('/api/upgrade/category-heatmap');
-  var paper=await fetchJSON('/api/brain/paper-traders');
-  var candidates=await fetchJSON('/api/upgrade/candidates');
-  var paperTradesList=await fetchJSON('/api/brain/paper-trades-list?limit=200');
-  var paperEvents=await fetchJSON('/api/brain/paper-events?limit=300');
-  var blocked=await fetchJSON('/api/ai/blocked-trades?hours=72&limit=500');
-  var tickerEvents=await fetchJSON('/api/fun/ticker');
-  var filterPrec=await fetchJSON('/api/brain/filter-precision');
-  var dryRun=await fetchJSON('/api/upgrade/promotion-dryrun');
-  // Authoritative followed-wallet list — trader_performance has stale
-  // rows from previously-followed traders, so we fetch the actual
-  // follow list to show the true "active traders" count.
-  var followed=await fetchJSON('/api/wallets/followed');
 
   // Merge decisions + blocked + ticker events into unified stream
   var merged=[];
